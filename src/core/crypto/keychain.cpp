@@ -859,6 +859,19 @@ namespace crypto {
             currentContractorKeysSetSequenceNumber);
     }
 
+    void TrustLineKeychain::removeOutdatedCryptoPaymentsData(
+        IOTransaction::Shared ioTransaction)
+    {
+        auto paymentsTransactionsUUID = ioTransaction->paymentTransactionsHandler()->allTransactionsUUID();
+        for (const auto &transactionUUID : paymentsTransactionsUUID) {
+            if (!isReceiptsPresent(ioTransaction, transactionUUID)) {
+                ioTransaction->paymentParticipantsVotesHandler()->deleteRecords(transactionUUID);
+                ioTransaction->paymentTransactionsHandler()->deleteRecord(transactionUUID);
+                ioTransaction->paymentKeysHandler()->deleteKeyByTransactionUUID(transactionUUID);
+            }
+        }
+    }
+
     bool TrustLineKeychain::isReceiptsPresent(
         IOTransaction::Shared ioTransaction,
         const TransactionUUID &transactionUUID) const

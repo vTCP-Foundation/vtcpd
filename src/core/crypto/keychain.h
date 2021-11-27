@@ -383,6 +383,9 @@ public:
         IOTransaction::Shared ioTransaction,
         AuditNumber auditNumber);
 
+    void removeOutdatedCryptoPaymentsData(
+        IOTransaction::Shared ioTransaction);
+
     bool isReceiptsPresent(
         IOTransaction::Shared ioTransaction,
         const TransactionUUID &transactionUUID) const;

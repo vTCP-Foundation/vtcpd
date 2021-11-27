@@ -34,6 +34,8 @@ public:
     void deleteRecord(
         const TransactionUUID& transactionUUID);
 
+    vector<TransactionUUID> allTransactionsUUID();
+
 private:
     LoggerStream info() const;
 
