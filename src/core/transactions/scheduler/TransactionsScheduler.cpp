@@ -166,6 +166,7 @@ void TransactionsScheduler::launchTransaction(
 #endif
     try {
         const auto kTAType = transaction->transactionType();
+//        todo: uncomment this
 //        if (kTAType >= BaseTransaction::CoordinatorPaymentTransaction
 //            && kTAType <= BaseTransaction::Payments_CycleCloserIntermediateNodeTransaction) {
 

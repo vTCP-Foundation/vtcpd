@@ -31,11 +31,14 @@ TopologyCacheUpdateDelayedTask::TopologyCacheUpdateDelayedTask(
 void TopologyCacheUpdateDelayedTask::runSignalTopologyCacheUpdate(
     const boost::system::error_code &errorCode)
 {
+    // todo : remove
     debug() << "runSignalTopologyCacheUpdate";
     if (errorCode) {
         warning() << errorCode.message().c_str();
     }
     DateTime closestTimeEvent = updateCache();
+    // todo : remove
+    debug() << "cache updated";
     Duration microsecondsDelay = closestTimeEvent - utc_now();
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
     auto duration = chrono::milliseconds(microsecondsDelay.total_milliseconds());
@@ -72,8 +75,12 @@ DateTime TopologyCacheUpdateDelayedTask::minimalAwakeningTimestamp()
 DateTime TopologyCacheUpdateDelayedTask::updateCache()
 {
     mTopologyCacheManager->updateCaches();
+    // todo : remove
+    debug() << "mTopologyCacheManager cache updated";
     DateTime result = mTopologyCacheManager->closestTimeEvent();
     mMaxFlowCalculationNodeCacheManager->updateCaches();
+    // todo : remove
+    debug() << "mMaxFlowCalculationNodeCacheManager cache updated";
     DateTime closestNodeCacheManagerTimeEvent = mMaxFlowCalculationNodeCacheManager->closestTimeEvent();
     if (closestNodeCacheManagerTimeEvent < result) {
         result = closestNodeCacheManagerTimeEvent;
@@ -85,7 +92,11 @@ DateTime TopologyCacheUpdateDelayedTask::updateCache()
         closestTrustLineManagerTimeEvent = utc_now() + kProlongationTrustLineUpdatingDuration();
     } else {
         // if at least one trustline was deleted
+        // todo : remove
+        debug() << "before deleting legacy trust lines";
         if (mTopologyTrustLineManager->deleteLegacyTrustLines()) {
+            // todo : remove
+            debug() << "legacy trust lines deleted";
             mTopologyCacheManager->resetInitiatorCache();
         }
         closestTrustLineManagerTimeEvent = mTopologyTrustLineManager->closestTimeEvent();
