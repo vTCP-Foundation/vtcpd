@@ -31,6 +31,7 @@ TopologyCacheUpdateDelayedTask::TopologyCacheUpdateDelayedTask(
 void TopologyCacheUpdateDelayedTask::runSignalTopologyCacheUpdate(
     const boost::system::error_code &errorCode)
 {
+    debug() << "runSignalTopologyCacheUpdate";
     if (errorCode) {
         warning() << errorCode.message().c_str();
     }

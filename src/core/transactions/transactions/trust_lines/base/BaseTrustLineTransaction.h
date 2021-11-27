@@ -71,7 +71,7 @@ protected:
     static const uint32_t kWaitMillisecondsForResponse = 20000;
     static const uint16_t kMaxCountSendingAttempts = 3;
     static const uint32_t kPendingPeriodInMilliseconds = 5000;
-    static const uint16_t kMaxPendingAttempts = 3;
+    static const uint16_t kMaxPendingAttempts = 5;
 
 protected:
     ContractorsManager *mContractorsManager;

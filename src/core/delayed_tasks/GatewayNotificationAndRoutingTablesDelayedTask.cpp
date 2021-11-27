@@ -37,10 +37,10 @@ GatewayNotificationAndRoutingTablesDelayedTask::GatewayNotificationAndRoutingTab
 void GatewayNotificationAndRoutingTablesDelayedTask::runSignalNotify(
     const boost::system::error_code &errorCode)
 {
+    info() << "run gateway notification signal";
     if (errorCode) {
         warning() << errorCode.message().c_str();
     }
-    info() << "run gateway notification signal";
     mNotificationTimer->cancel();
     mNotificationTimer->expires_from_now(
         std::chrono::seconds(

@@ -176,6 +176,7 @@ void CyclesManager::incrementCurrentCycleClosingState()
 void CyclesManager::runSignalFiveNodes(
     const boost::system::error_code &err)
 {
+    debug() << "runSignalFiveNodes";
     if (err) {
         warning() << err.message();
     }
@@ -198,6 +199,7 @@ void CyclesManager::runSignalFiveNodes(
 void CyclesManager::runSignalSixNodes(
     const boost::system::error_code &err)
 {
+    debug() << "runSignalSixNodes";
     if (err) {
         warning() << err.message();
     }

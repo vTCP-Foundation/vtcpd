@@ -49,9 +49,7 @@ ProvidingHandler::ProvidingHandler(
 void ProvidingHandler::updateAddressForProviders(
     const boost::system::error_code &errorCode)
 {
-#ifdef DEBUG_LOG_PROVIDING_HANDLER
     debug() << "updateAddressForProviders";
-#endif
     if (errorCode) {
         warning() << errorCode.message().c_str();
     }
@@ -125,9 +123,7 @@ bool ProvidingHandler::isProvidersPresent() const
 
 void ProvidingHandler::rescheduleCleaning()
 {
-#ifdef DEBUG_LOG_PROVIDING_HANDLER
     debug() << "rescheduleCleaning";
-#endif
     if (mTimesCache.empty()) {
 #ifdef DEBUG_LOG_PROVIDING_HANDLER
         debug() << "There are no cached addresses";
@@ -146,9 +142,7 @@ void ProvidingHandler::rescheduleCleaning()
 
 void ProvidingHandler::clearCachedAddresses()
 {
-#ifdef DEBUG_LOG_PROVIDING_HANDLER
-    debug() << "clearCahedAddresses " << mCachedAddresses.size() << " " << mTimesCache.size();
-#endif
+    debug() << "clearCachedAddresses " << mCachedAddresses.size() << " " << mTimesCache.size();
     auto now = utc_now();
     auto it = mTimesCache.begin();
     while (it != mTimesCache.end()) {

@@ -104,6 +104,8 @@ void PaymentKeysHandler::saveOwnKey(
 PrivateKey* PaymentKeysHandler::getOwnPrivateKey(
     const TransactionUUID &transactionUUID)
 {
+    info() << "getOwnPrivateKey";
+    info() << "for transaction " << transactionUUID;
     string query = "SELECT private_key FROM " + mTableName
                    + " WHERE transaction_uuid = ?;";
     sqlite3_stmt *stmt;
@@ -112,11 +114,13 @@ PrivateKey* PaymentKeysHandler::getOwnPrivateKey(
         throw IOError("PaymentKeysHandler::getOwnPrivateKey: "
                           "Bad query; sqlite error: " + to_string(rc));
     }
+    info() << "query was successfully prepared";
     rc = sqlite3_bind_blob(stmt, 1, transactionUUID.data, TransactionUUID::kBytesSize, SQLITE_STATIC);
     if (rc != SQLITE_OK) {
         throw IOError("PaymentKeysHandler::getOwnPrivateKey: "
                           "Bad binding of TransactionUUID; sqlite error: " + to_string(rc));
     }
+    info() << "transactionUUID was successfully binded";
 
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {

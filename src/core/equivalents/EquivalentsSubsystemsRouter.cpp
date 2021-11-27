@@ -256,6 +256,7 @@ void EquivalentsSubsystemsRouter::clearContractorsShouldBePinged()
 
 void EquivalentsSubsystemsRouter::sendTopologyEvent() const
 {
+    debug() << "sendTopologyEvent";
     for (const auto &trustLineManager : mTrustLinesManagers) {
         auto neighbors = trustLineManager.second->firstLevelNeighborsAddresses();
         auto neighborIt = neighbors.begin();

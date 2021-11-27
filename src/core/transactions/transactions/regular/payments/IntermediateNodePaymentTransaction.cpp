@@ -817,6 +817,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
                 // todo check if all reservations is outgoing
                 outgoingReservedAmount += pathIDAndReservation.second->amount();
             }
+            debug() << "Try to get serialized receipt";
             auto serializedOutgoingReceiptData = getSerializedReceipt(
                 mContractorsManager->idOnContractorSide(participantID),
                 participantID,

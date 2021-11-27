@@ -20,6 +20,7 @@ GatewayNotificationReceiverTransaction::GatewayNotificationReceiverTransaction(
 
 TransactionResult::SharedConst GatewayNotificationReceiverTransaction::run()
 {
+    debug() << "run";
     bool isContractorNeighbor = false;
     auto ioTransaction = mStorageHandler->beginTransaction();
     for (const auto &equivalent : mEquivalentsSubsystemsRouter->equivalents()) {

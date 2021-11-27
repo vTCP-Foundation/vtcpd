@@ -76,7 +76,6 @@ namespace crypto {
         try {
             auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey(
                 transactionUUID);
-            debug() << "Key is ready fro signing";
             return make_shared<Signature>(
                 dataForSign.get(),
                 dataForSignBytesCount,

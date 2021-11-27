@@ -43,12 +43,18 @@ void OutgoingMessagesHandler::sendMessage(
             << "Send message to the node (" << addressee << ") "
             << "Message type: " << message->typeID() << " encrypted: " << message->isEncrypted();
 #endif
+    BaseAddress::Shared contractorAddress;
     IPv4WithPortAddress::Shared contractorIPAddress;
-    auto contractorAddress = mContractorsManager->contractor(addressee)->mainAddress();
-#ifdef DEBUG_LOG_NETWORK_COMMUNICATOR
+    try {
+        contractorAddress = mContractorsManager->contractor(addressee)->mainAddress();
+    } catch (NotFoundError &e) {
+        mLog.error("OutgoingMessagesHandler::sendMessage")
+            << "There are no contractor with ID " << addressee << ". Message was not send";
+        return;
+    }
     mLog.debug("OutgoingMessagesHandler::sendMessage")
-            << "Send message to contractor main address " << contractorAddress->fullAddress();
-#endif
+            << "Send message " << message->typeID() << " to contractor main address "
+            << contractorAddress->fullAddress();
 
     MsgEncryptor::Buffer sendingData;
     if(!message->isEncrypted()) {
@@ -57,9 +63,7 @@ void OutgoingMessagesHandler::sendMessage(
         sendingData = MsgEncryptor(
             mContractorsManager->contractor(message->contractorId())->cryptoKey()->contractorPublicKey
         ).encrypt(message);
-#ifdef DEBUG_LOG_NETWORK_COMMUNICATOR
         mLog.debug("OutgoingMessagesHandler::sendMessage") << "Message encrypted";
-#endif
     }
 
     if (contractorAddress->typeID() == BaseAddress::IPv4_IncludingPort) {
@@ -124,11 +128,9 @@ void OutgoingMessagesHandler::sendMessage(
     const Message::Shared message,
     const BaseAddress::Shared address)
 {
-#ifdef DEBUG_LOG_NETWORK_COMMUNICATOR
     mLog.debug("OutgoingMessagesHandler::sendMessage")
             << "Send message to the node (" << address->fullAddress() << ") "
             << "Message type: " << message->typeID();
-#endif
 
     auto sendingData = message->serializeToBytes();
 

@@ -35,6 +35,7 @@ TransactionResult::SharedConst GatewayNotificationSenderTransaction::run()
 
 TransactionResult::SharedConst GatewayNotificationSenderTransaction::sendGatewayNotification()
 {
+    debug() << "sendGatewayNotification";
     for (const auto &equivalent : mEquivalentsSubsystemsRouter->equivalents()) {
 #ifdef DEBUG_LOG_ROUTING_TABLES_PROCESSING
         mEquivalentsCyclesSubsystemsRouter->routingTableManager(equivalent)->printRT();
@@ -70,6 +71,7 @@ TransactionResult::SharedConst GatewayNotificationSenderTransaction::sendGateway
 
 TransactionResult::SharedConst GatewayNotificationSenderTransaction::processRoutingTablesResponse()
 {
+    debug() << "processRoutingTablesResponse";
     /// Take messages from TailManager instead of BaseTransaction's 'mContext'
     auto &mContext = mTailManager->getRoutingTableTail();
 
