@@ -14,18 +14,23 @@ public:
     InitiateMaxFlowCalculationMessage(
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> &senderAddresses,
-        bool isSenderGateway);
+        bool isSenderGateway,
+        uint8_t hopsCnt);
 
     InitiateMaxFlowCalculationMessage(
         BytesShared buffer);
 
     bool isSenderGateway() const;
 
+    uint8_t HopsCount() const;
+
     const MessageType typeID() const override;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
 private:
+    // count hops of topology collection from receiver side
+    uint8_t mHopsCnt;
     bool mIsSenderGateway;
 };
 

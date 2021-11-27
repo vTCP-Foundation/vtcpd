@@ -3,11 +3,13 @@
 InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> &senderAddresses,
-    bool isSenderGateway):
+    bool isSenderGateway,
+    uint8_t hopsCnt):
     SenderMessage(
         equivalent,
         senderAddresses),
-    mIsSenderGateway(isSenderGateway)
+    mIsSenderGateway(isSenderGateway),
+    mHopsCnt(hopsCnt)
 {}
 
 InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
@@ -20,11 +22,21 @@ InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
         &mIsSenderGateway,
         buffer.get() + bytesBufferOffset,
         sizeof(byte));
+    bytesBufferOffset += sizeof(byte);
+    memcpy(
+        &mHopsCnt,
+        buffer.get() + bytesBufferOffset,
+        sizeof(uint8_t));
 }
 
 bool InitiateMaxFlowCalculationMessage::isSenderGateway() const
 {
     return mIsSenderGateway;
+}
+
+uint8_t InitiateMaxFlowCalculationMessage::HopsCount() const
+{
+    return mHopsCnt;
 }
 
 const Message::MessageType InitiateMaxFlowCalculationMessage::typeID() const
@@ -37,7 +49,8 @@ pair<BytesShared, size_t> InitiateMaxFlowCalculationMessage::serializeToBytes() 
     auto parentBytesAndCount = SenderMessage::serializeToBytes();
     size_t bytesCount =
             parentBytesAndCount.second +
-            sizeof(byte);
+            sizeof(byte) +
+            sizeof(uint8_t);
 
     BytesShared dataBytesShared = tryCalloc(bytesCount);
     size_t dataBytesOffset = 0;
@@ -51,6 +64,11 @@ pair<BytesShared, size_t> InitiateMaxFlowCalculationMessage::serializeToBytes() 
         dataBytesShared.get() + dataBytesOffset,
         &mIsSenderGateway,
         sizeof(byte));
+    dataBytesOffset += sizeof(byte);
+    memcpy(
+        dataBytesShared.get() + dataBytesOffset,
+        &mHopsCnt,
+        sizeof(uint8_t));
 
     return make_pair(
         dataBytesShared,

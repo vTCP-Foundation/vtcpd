@@ -42,7 +42,8 @@ pair<bool, Message::Shared> MessagesParser::processBytesSequence(
                 buffer = pair.first;
                 if(!buffer) {
                     warning() << "processBytesSequence: "
-                        << "Message decryption error. Message dropped.";
+                        << "Message from contractor " << contractor->getID()
+                        << " decryption error. Message dropped.";
                     return messageInvalidOrIncomplete();
                 }
             }

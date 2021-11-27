@@ -23,7 +23,10 @@ TransactionResult::SharedConst ReceiveMaxFlowCalculationOnTargetTransaction::run
     info() << "run\t" << "initiator: " << mMessage->senderAddresses.at(0)->fullAddress();
 #endif
     sendResultToInitiator();
-    sendMessagesOnFirstLevel();
+    if (mMessage->HopsCount() > 0) {
+        debug() << "ReceiveMaxFlowCalculationOnTargetTransaction: sendMessagesOnFirstLevel";
+        sendMessagesOnFirstLevel();
+    }
     return resultDone();
 }
 

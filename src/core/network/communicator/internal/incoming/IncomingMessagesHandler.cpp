@@ -124,6 +124,7 @@ void IncomingMessagesHandler::handleReceivedInfo(
                     stringstream ss;
                     ss << mRemoteEndpointBuffer.address().to_string() << ":" << mRemoteEndpointBuffer.port();
                     message->setSenderIncomingIP(ss.str());
+                    info() << "Incoming message " << message->typeID() << " from " << message->senderIncomingIP();
                     signalMessageParsed(message);
                 }
                 else {

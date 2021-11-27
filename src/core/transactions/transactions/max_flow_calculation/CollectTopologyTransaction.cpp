@@ -21,7 +21,8 @@ CollectTopologyTransaction::CollectTopologyTransaction(
     mTopologyTrustLineManager(topologyTrustLineManager),
     mTopologyCacheManager(topologyCacheManager),
     mMaxFlowCacheManager(maxFlowCacheManager),
-    mIamGateway(iAmGateway)
+    mIamGateway(iAmGateway),
+    mHopsCnt(0)
 {}
 
 TransactionResult::SharedConst CollectTopologyTransaction::run()
@@ -65,9 +66,12 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
         }
     }
 
-    if (!mTopologyCacheManager->isInitiatorCached()) {
-        sendMessagesOnFirstLevel();
-        mTopologyCacheManager->setInitiatorCache();
+    if (mHopsCnt > 0) {
+        if (!mTopologyCacheManager->isInitiatorCached()) {
+            debug() << "CollectTopologyTransaction: sendMessagesOnFirstLevel";
+            sendMessagesOnFirstLevel();
+            mTopologyCacheManager->setInitiatorCache();
+        }
     }
     return resultDone();
 }
@@ -79,7 +83,10 @@ void CollectTopologyTransaction::sendMessagesToContractors()
             contractorAddress,
             mEquivalent,
             mContractorsManager->ownAddresses(),
-            mIamGateway);
+            mIamGateway,
+            // todo : use parameter from config, which should set the max length of payment path
+            // 0 - points that receiver will send only its neighbours and wil not send message on its first level
+            0);
 }
 
 void CollectTopologyTransaction::sendMessagesOnFirstLevel()
