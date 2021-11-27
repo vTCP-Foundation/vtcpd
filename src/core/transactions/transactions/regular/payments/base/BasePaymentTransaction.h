@@ -424,8 +424,8 @@ protected:
     static const auto kMaxPathLength = 7;
 
     static const uint32_t kWaitMillisecondsToTryRecoverAgain = 30000;
-    static const uint32_t kWaitMillisecondsToTryInitialRecoverAgain = 1800000;
-    static const uint8_t kMaxRecoveryAttempts = 3;
+    static const uint32_t kWaitMillisecondsToTryInitialRecoverAgain = 900000;
+    static const uint8_t kMaxRecoveryAttempts = 30;
 
     // todo : make static
     const PaymentNodeID kCoordinatorPaymentNodeID = 0;

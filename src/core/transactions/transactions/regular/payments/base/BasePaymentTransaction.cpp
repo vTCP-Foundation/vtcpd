@@ -960,7 +960,7 @@ TransactionResult::SharedConst BasePaymentTransaction::sendVotesRequestMessageAn
     debug() << "Send VotesStatusRequestMessage to " << contractor->mainAddress()->fullAddress();
     return resultWaitForMessageTypes(
         {Message::Payments_ParticipantsVotes},
-        maxNetworkDelay(2));
+        maxNetworkDelay(6));
 }
 
 TransactionResult::SharedConst BasePaymentTransaction::runPrepareListNodesToCheckNodes()
