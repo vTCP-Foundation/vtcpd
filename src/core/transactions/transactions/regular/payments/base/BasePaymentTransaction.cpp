@@ -1010,7 +1010,13 @@ TransactionResult::SharedConst BasePaymentTransaction::runCheckCoordinatorVotesS
     }
     if (kMessage->participantsSignatures().empty()) {
         debug() << "Coordinator don't know result of this transaction yet.";
-        return processNextNodeToCheckVotes();
+        // todo : this is only for centralized model
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        debug() << "rollback";
+        removeAllDataFromStorageConcerningTransaction(ioTransaction);
+        rollBack();
+        return resultDone();
+        //return processNextNodeToCheckVotes();
     }
 
     mParticipantsVotesMessage = kMessage;
