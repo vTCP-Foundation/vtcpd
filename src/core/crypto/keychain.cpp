@@ -872,6 +872,17 @@ namespace crypto {
         }
     }
 
+    void TrustLineKeychain::removeOutdatedPaymentsKeysData(
+        IOTransaction::Shared ioTransaction)
+    {
+        auto paymentsTransactionsUUID = ioTransaction->paymentKeysHandler()->allTransactionUUIDs();
+        for (const auto &transactionUUID : paymentsTransactionsUUID) {
+            if (!ioTransaction->paymentTransactionsHandler()->isTransactionPresent(transactionUUID)) {
+                ioTransaction->paymentKeysHandler()->deleteKeyByTransactionUUID(transactionUUID);
+            }
+        }
+    }
+
     bool TrustLineKeychain::isReceiptsPresent(
         IOTransaction::Shared ioTransaction,
         const TransactionUUID &transactionUUID) const

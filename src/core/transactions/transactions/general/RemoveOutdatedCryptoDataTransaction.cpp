@@ -63,6 +63,18 @@ TransactionResult::SharedConst RemoveOutdatedCryptoDataTransaction::run()
         }
     }
 
+    if (tmpEq != 0) {
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        auto keyChain = mKeysStore->keychain(tmpEq);
+        try {
+            keyChain.removeOutdatedPaymentsKeysData(ioTransaction);
+            info() << "Outdated payment keys data successfully deleted";
+        } catch (IOError &e) {
+            ioTransaction->rollback();
+            warning() << "Can't remove outdated payments key data. Details: " << e.what();
+        }
+    }
+
     if (mCommand->vacuum()) {
         mStorageHandler->vacuum();
     }

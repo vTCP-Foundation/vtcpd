@@ -386,6 +386,9 @@ public:
     void removeOutdatedCryptoPaymentsData(
         IOTransaction::Shared ioTransaction);
 
+    void removeOutdatedPaymentsKeysData(
+        IOTransaction::Shared ioTransaction);
+
     bool isReceiptsPresent(
         IOTransaction::Shared ioTransaction,
         const TransactionUUID &transactionUUID) const;
