@@ -295,11 +295,15 @@ protected:
     void buildPathsAgain();
 
 protected:
+    static const uint8_t kMaxCountPathsRecollecting = 3;
+    static const uint32_t kPathsRecollectingIntervalInMilliseconds = 1000;
     // todo discuss this parameter
     // max count failed attempts to connect with Receiver, after which transaction will be rollbacked
     static const uint8_t kMaxReceiverInaccessible = 5;
 
     static const uint16_t kMaxRebuildingAttemptsCount = 3;
+    // this delay should be correlated with audit retrying delay from Audit transactions
+    static const uint32_t kAuditRetryingIntervalInMilliseconds = 5000;
 
     static const uint16_t kMaxCountParticipantKeysResending = 5;
 
@@ -356,6 +360,12 @@ protected:
 
     // indicates that there are participants which have TL with keys absent problem
     bool mParticipantsKeysProblem;
+
+    // todo : improve logic with paths. need to marked audit pending paths and try them after some time.
+    //  now we are rebuilding all paths and tries them all if mIsAuditPendingPathsOccurred = true
+    bool mIsAuditPendingPathsOccurred;
+
+    uint8_t mCountPathsRecollecting;
 
     // count failed attempts to connect with Receiver
     uint8_t mCountReceiverInaccessible;

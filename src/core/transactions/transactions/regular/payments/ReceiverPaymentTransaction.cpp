@@ -234,14 +234,35 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runAmountReservationS
 
     if (! mTrustLinesManager->trustLineIsActive(neighborID)) {
         warning() << "Path is not valid: TL with previous node is not active. Rejected.";
+        if (mTrustLinesManager->trustLineState(neighborID) == TrustLine::AuditPending) {
+            info() << "Due to audit pending";
+            return sendErrorMessageOnPreviousNodeRequest(
+                kNeighbor,
+                kReservation.first,
+                ResponseMessage::RejectedDueAuditPending);
+        }
         return sendErrorMessageOnPreviousNodeRequest(
             kNeighbor,
             kReservation.first,
             ResponseMessage::Rejected);
     }
 
-    // TODO: enhance this check
-    // Neighbor public key must be used here.
+    if (!mTrustLinesManager->trustLineOwnKeysPresent(neighborID)) {
+        warning() << "There are no own keys. Rejected";
+        publicKeysSharingSignal(neighborID, mEquivalent);
+        return sendErrorMessageOnPreviousNodeRequest(
+            kNeighbor,
+            kReservation.first,
+            ResponseMessage::RejectedDueOwnKeysAbsence);
+    }
+
+    if (!mTrustLinesManager->trustLineContractorKeysPresent(neighborID)) {
+        warning() << "There are no contractor keys. Rejected";
+        return sendErrorMessageOnPreviousNodeRequest(
+            kNeighbor,
+            kReservation.first,
+            ResponseMessage::RejectedDueContractorKeysAbsence);
+    }
 
     // update local reservations during amounts from coordinator
     if (!updateReservations(vector<pair<PathID, ConstSharedTrustLineAmount>>(

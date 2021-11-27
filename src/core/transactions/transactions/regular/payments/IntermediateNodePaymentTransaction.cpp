@@ -156,6 +156,13 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runPreviousNe
 
     if (!mTrustLinesManager->trustLineIsActive(senderID)) {
         warning() << "Path is not valid: TL with previous node is not active. Rejected.";
+        if (mTrustLinesManager->trustLineState(senderID) == TrustLine::AuditPending) {
+            info() << "Due to audit pending";
+            return sendErrorMessageOnPreviousNodeRequest(
+                kNeighbor,
+                kReservation.first,
+                ResponseMessage::RejectedDueAuditPending);
+        }
         return sendErrorMessageOnPreviousNodeRequest(
             kNeighbor,
             kReservation.first,
@@ -164,10 +171,11 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runPreviousNe
 
     if (!mTrustLinesManager->trustLineOwnKeysPresent(senderID)) {
         warning() << "There are no own keys. Rejected";
+        publicKeysSharingSignal(senderID, mEquivalent);
         return sendErrorMessageOnPreviousNodeRequest(
             kNeighbor,
             kReservation.first,
-            ResponseMessage::RejectedDueContractorKeysAbsence);
+            ResponseMessage::RejectedDueOwnKeysAbsence);
     }
 
     if (!mTrustLinesManager->trustLineContractorKeysPresent(senderID)) {
@@ -286,6 +294,11 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
 
     if (!mTrustLinesManager->trustLineIsActive(nextNodeID)) {
         warning() << "Path is not valid: TL with next node is not active. Rolled back.";
+        if (mTrustLinesManager->trustLineState(nextNodeID) == TrustLine::AuditPending) {
+            info() << "Due to audit pending";
+            return sendErrorMessageOnCoordinatorRequest(
+                ResponseMessage::RejectedDueAuditPending);
+        }
         return sendErrorMessageOnCoordinatorRequest(
             ResponseMessage::Rejected);
     }
@@ -293,6 +306,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
     // todo maybe check in storage (keyChain)
     if (!mTrustLinesManager->trustLineOwnKeysPresent(nextNodeID)) {
         warning() << "There are no own keys on TL";
+        publicKeysSharingSignal(nextNodeID, mEquivalent);
         return sendErrorMessageOnCoordinatorRequest(
             ResponseMessage::RejectedDueOwnKeysAbsence);
     }
@@ -300,7 +314,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
     if (!mTrustLinesManager->trustLineContractorKeysPresent(nextNodeID)) {
         warning() << "There are no contractor keys on TL";
         return sendErrorMessageOnCoordinatorRequest(
-            ResponseMessage::RejectedDueOwnKeysAbsence);
+            ResponseMessage::RejectedDueContractorKeysAbsence);
     }
 
     // Note: copy of shared pointer is required
@@ -383,7 +397,15 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runNextNeighb
     const auto kMessage = popNextMessage<IntermediateNodeReservationResponseMessage>();
     auto nextNodeAddress = kMessage->senderAddresses.at(0);
     info() << "Next node " << nextNodeAddress->fullAddress() << " sent response";
-    // todo : check sender node
+    // todo : check sender node in path
+
+    auto senderID = mContractorsManager->contractorIDByAddress(nextNodeAddress);
+    if (senderID == ContractorsManager::kNotFoundContractorID) {
+        warning() << "Sender node is not a neighbor";
+        return sendErrorMessageOnNextNodeResponse(
+            ResponseMessage::Rejected);
+    }
+    info() << "Sender ID " << senderID;
 
 #ifdef TESTS
     mSubsystemsController->testForbidSendMessageToCoordinatorOnReservationStage(
@@ -412,9 +434,23 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runNextNeighb
             ResponseMessage::Rejected);
     }
 
+    if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueAuditPending){
+        warning() << "Neighbor node doesn't approved reservation request due to audit pending";
+        return sendErrorMessageOnNextNodeResponse(
+            ResponseMessage::RejectedDueAuditPending);
+    }
+
     if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueContractorKeysAbsence){
         warning() << "Neighbor node doesn't approved reservation request due to contractor keys absence";
-        // todo maybe set mOwnKeysPresent into false and initiate KeysSharing TA
+        publicKeysSharingSignal(senderID, mEquivalent);
+        mTrustLinesManager->setIsOwnKeysPresent(senderID, false);
+        return sendErrorMessageOnNextNodeResponse(
+            ResponseMessage::RejectedDueContractorKeysAbsence);
+    }
+
+    if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueOwnKeysAbsence){
+        warning() << "Neighbor node doesn't approved reservation request due to own keys absence";
+        mTrustLinesManager->setIsContractorKeysPresent(senderID, false);
         return sendErrorMessageOnNextNodeResponse(
             ResponseMessage::RejectedDueContractorKeysAbsence);
     }

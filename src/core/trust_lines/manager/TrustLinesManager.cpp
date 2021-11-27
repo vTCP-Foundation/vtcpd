@@ -579,6 +579,24 @@ ConstSharedTrustLineAmount TrustLinesManager::outgoingTrustAmountConsideringRese
         *kAvailableAmount - *kAlreadyReservedAmount);
 }
 
+ConstSharedTrustLineAmount TrustLinesManager::outgoingTrustAmountInAuditPendingStateConsideringReservations(
+        ContractorID contractorID) const
+{
+    const auto kTL = trustLineReadOnly(contractorID);
+    if (kTL->state() != TrustLine::AuditPending) {
+        return make_shared<const TrustLineAmount>(0);
+    }
+    const auto kAvailableAmount = kTL->availableOutgoingAmount();
+    const auto kAlreadyReservedAmount = mAmountReservationsHandler->totalReserved(
+            contractorID, AmountReservation::Outgoing);
+
+    if (*kAlreadyReservedAmount >= *kAvailableAmount) {
+        return make_shared<const TrustLineAmount>(0);
+    }
+    return make_shared<const TrustLineAmount>(
+            *kAvailableAmount - *kAlreadyReservedAmount);
+}
+
 ConstSharedTrustLineAmount TrustLinesManager::incomingTrustAmountConsideringReservations(
     ContractorID contractorID) const
 {
@@ -595,6 +613,24 @@ ConstSharedTrustLineAmount TrustLinesManager::incomingTrustAmountConsideringRese
     }
     return make_shared<const TrustLineAmount>(
         *kAvailableAmount - *kAlreadyReservedAmount);
+}
+
+ConstSharedTrustLineAmount TrustLinesManager::incomingTrustAmountInAuditPendingStateConsideringReservations(
+        ContractorID contractorID) const
+{
+    const auto kTL = trustLineReadOnly(contractorID);
+    if (kTL->state() != TrustLine::AuditPending) {
+        return make_shared<const TrustLineAmount>(0);
+    }
+    const auto kAvailableAmount = kTL->availableIncomingAmount();
+    const auto kAlreadyReservedAmount = mAmountReservationsHandler->totalReserved(
+            contractorID, AmountReservation::Incoming);
+
+    if (*kAlreadyReservedAmount >= *kAvailableAmount) {
+        return make_shared<const TrustLineAmount>(0);
+    }
+    return make_shared<const TrustLineAmount>(
+            *kAvailableAmount - *kAlreadyReservedAmount);
 }
 
 pair<ConstSharedTrustLineAmount, ConstSharedTrustLineAmount> TrustLinesManager::availableOutgoingCycleAmounts(
@@ -1221,6 +1257,20 @@ ConstSharedTrustLineAmount TrustLinesManager::totalOutgoingAmount() const
     return totalAmount;
 }
 
+ConstSharedTrustLineAmount TrustLinesManager::totalPossibleOutgoingAmountConsiderToAuditPendingTLs() const
+{
+    auto totalAmount = make_shared<TrustLineAmount>(0);
+    for (const auto &kTrustLine : mTrustLines) {
+        if (kTrustLine.second->state() != TrustLine::AuditPending) {
+            continue;
+        }
+        const auto kTLAmount = outgoingTrustAmountInAuditPendingStateConsideringReservations(kTrustLine.first);
+        *totalAmount += *(kTLAmount);
+    }
+
+    return totalAmount;
+}
+
 ConstSharedTrustLineAmount TrustLinesManager::totalIncomingAmount() const
 {
     auto totalAmount = make_shared<TrustLineAmount>(0);
@@ -1229,6 +1279,20 @@ ConstSharedTrustLineAmount TrustLinesManager::totalIncomingAmount() const
             continue;
         }
         const auto kTLAmount = incomingTrustAmountConsideringReservations(kTrustLine.first);
+        *totalAmount += *(kTLAmount);
+    }
+
+    return totalAmount;
+}
+
+ConstSharedTrustLineAmount TrustLinesManager::totalPossibleIncomingAmountConsiderToAuditPendingTLs() const
+{
+    auto totalAmount = make_shared<TrustLineAmount>(0);
+    for (const auto &kTrustLine : mTrustLines) {
+        if (kTrustLine.second->state() != TrustLine::AuditPending) {
+            continue;
+        }
+        const auto kTLAmount = incomingTrustAmountInAuditPendingStateConsideringReservations(kTrustLine.first);
         *totalAmount += *(kTLAmount);
     }
 

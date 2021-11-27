@@ -12,9 +12,10 @@ public:
         Rejected = 2,
         RejectedDueOwnKeysAbsence = 3,
         RejectedDueContractorKeysAbsence = 4,
+        RejectedDueAuditPending = 5,
         // used for immediately closing transaction
-        Closed = 5,
-        NextNodeInaccessible = 6
+        Closed = 6,
+        NextNodeInaccessible = 7
     };
 
 public:

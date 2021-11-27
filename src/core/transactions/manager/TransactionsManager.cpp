@@ -1243,6 +1243,8 @@ void TransactionsManager::launchCoordinatorPaymentTransaction(
             transaction->mBuildCycleFourNodesSignal);
         subscribeForTrustLineActionSignal(
             transaction->trustLineActionSignal);
+        subscribeForKeysSharingSignal(
+            transaction->publicKeysSharingSignal);
         subscribeForObserving(
             transaction);
         prepareAndSchedule(transaction, true, false, true);
@@ -1287,6 +1289,8 @@ void TransactionsManager::launchReceiverPaymentTransaction(
             transaction->mBuildCycleFourNodesSignal);
         subscribeForTrustLineActionSignal(
             transaction->trustLineActionSignal);
+        subscribeForKeysSharingSignal(
+            transaction->publicKeysSharingSignal);
         subscribeForObserving(
             transaction);
         prepareAndSchedule(transaction, false, false, true);
@@ -1330,6 +1334,8 @@ void TransactionsManager::launchIntermediateNodePaymentTransaction(
             transaction->mBuildCycleFourNodesSignal);
         subscribeForTrustLineActionSignal(
             transaction->trustLineActionSignal);
+        subscribeForKeysSharingSignal(
+            transaction->publicKeysSharingSignal);
         subscribeForObserving(
             transaction);
         prepareAndSchedule(transaction, false, false, true);
