@@ -2,6 +2,7 @@
 
 TopologyTrustLinesManager::TopologyTrustLinesManager(
     const SerializedEquivalent equivalent,
+    BaseAddress::Shared ownAddress,
     bool iAmGateway,
     Logger &logger):
 
@@ -14,6 +15,9 @@ TopologyTrustLinesManager::TopologyTrustLinesManager(
     if (iAmGateway) {
         mGateways.insert(0);
     }
+    mParticipantsAddresses.emplace_back(
+        ownAddress,
+        0);
 }
 
 void TopologyTrustLinesManager::addTrustLine(

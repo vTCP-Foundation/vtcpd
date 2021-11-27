@@ -452,7 +452,7 @@ void TransactionsManager::processMessage(
 
         } catch (NotFoundError &) {
             launchIntermediateNodePaymentTransaction(
-                    static_pointer_cast<IntermediateNodeReservationRequestMessage>(message));
+                static_pointer_cast<IntermediateNodeReservationRequestMessage>(message));
         }
 
     } else if (message->typeID() == Message::Payments_IntermediateNodeCycleReservationRequest) {

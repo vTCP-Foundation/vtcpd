@@ -61,6 +61,9 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::run()
                 case Stages::Coordinator_ReceiverResourceProcessing:
                     return runPathsResourceProcessingStage();
 
+                case Stages::Coordinator_ReceiverRequestProcessing:
+                    return runReceiverRequestProcessingStage();
+
                 case Stages::Coordinator_ReceiverResponseProcessing:
                     return runReceiverResponseProcessingStage();
 
@@ -189,9 +192,16 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runPathsResourcePr
     }
 
     debug() << "Collected paths count: " << mPathsStats.size();
+    mCountPathsRecollecting = 0;
 
     // TODO: Ensure paths shuffling
 
+    mStep = Stages::Coordinator_ReceiverRequestProcessing;
+    return runReceiverRequestProcessingStage();
+}
+
+TransactionResult::SharedConst CoordinatorPaymentTransaction::runReceiverRequestProcessingStage()
+{
     // Sending message to the receiver note to approve the payment receiving.
     sendMessage<ReceiverInitPaymentRequestMessage>(
         mContractor->mainAddress(),
@@ -221,6 +231,18 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runReceiverRespons
     }
 
     const auto kMessage = popNextMessage<ReceiverInitPaymentResponseMessage>();
+    if (kMessage->state() == ReceiverInitPaymentResponseMessage::RejectedDueAuditPending) {
+        debug() << "Receiver responded that there are no enough incoming possibilities, "
+                   "but there are some AuditPending TLs. Try to init opeartion later.";
+        mCountPathsRecollecting++;
+        if (mCountPathsRecollecting > kMaxCountPathsRecollecting) {
+            warning() << "Count initializing attempts reaches maximal number. Canceling.";
+            return resultInsufficientFundsError();
+        }
+        mStep = Stages::Coordinator_ReceiverRequestProcessing;
+        return resultAwakeAfterMilliseconds(kAuditRetryingIntervalInMilliseconds);
+    }
+
     if (kMessage->state() != ReceiverInitPaymentResponseMessage::Accepted) {
         info() << "Receiver rejected payment operation. Canceling.";
         return resultInsufficientFundsError();
@@ -399,7 +421,8 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::tryReserveAmountDi
 
     if (!mTrustLinesManager->trustLineIsActive(receiverID)) {
         warning() << "Invalid TL state " << mTrustLinesManager->trustLineState(receiverID);
-        if (mTrustLinesManager->trustLineState(receiverID) == TrustLine::AuditPending) {
+        if (mTrustLinesManager->trustLineState(receiverID) == TrustLine::AuditPending ||
+                mTrustLinesManager->trustLineState(receiverID) == TrustLine::KeysSharing) {
             mIsAuditPendingPathsOccurred = true;
         }
         pathStats->setUnusable();
@@ -566,6 +589,8 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::askNeighborToReser
         path->setUnusable();
         mNeighborsKeysProblem = true;
         publicKeysSharingSignal(neighborID, mEquivalent);
+        // after signal keys will be shared and tx can pass
+        mIsAuditPendingPathsOccurred = true;
         throw CallChainBreakException("Break call chain for preventing call loop");
     }
 
@@ -578,7 +603,8 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::askNeighborToReser
 
     if (!mTrustLinesManager->trustLineIsActive(neighborID)) {
         warning() << "Invalid TL state " << mTrustLinesManager->trustLineState(neighborID);
-        if (mTrustLinesManager->trustLineState(neighborID) == TrustLine::AuditPending) {
+        if (mTrustLinesManager->trustLineState(neighborID) == TrustLine::AuditPending ||
+                mTrustLinesManager->trustLineState(neighborID) == TrustLine::KeysSharing) {
             mIsAuditPendingPathsOccurred = true;
         }
         path->setUnusable();
@@ -1374,6 +1400,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::tryProcessNextPath
         if (mIsAuditPendingPathsOccurred) {
             debug() << "try to build new paths due to audit pending TLs";
             auto countPathsBeforeBuilding = mPathsStats.size();
+            mRejectedTrustLines.clear();
             buildPathsAgain();
 
             if (mPathsStats.size() > countPathsBeforeBuilding) {

@@ -105,6 +105,11 @@ TransactionResult::SharedConst AuditSourceTransaction::runInitializationStage()
         return resultDone();
     }
 
+    if (mTrustLines->trustLineState(mContractorID) == TrustLine::KeysSharing) {
+        info() << "Keys sharing transaction in pending. Audit cancelled.";
+        return resultDone();
+    }
+
     // todo maybe check in storage (keyChain)
     if (!mTrustLines->trustLineOwnKeysPresent(mContractorID)) {
         warning() << "There are no own keys";
@@ -159,6 +164,11 @@ TransactionResult::SharedConst AuditSourceTransaction::runAuditPendingStage()
 
     } catch (NotFoundError &e) {
         warning() << "Attempt to audit not existing TL";
+        return resultDone();
+    }
+
+    if (mTrustLines->trustLineState(mContractorID) == TrustLine::KeysSharing) {
+        info() << "Keys sharing transaction in pending. Audit cancelled.";
         return resultDone();
     }
 
@@ -280,6 +290,11 @@ TransactionResult::SharedConst AuditSourceTransaction::runNextAttemptAuditPendin
         return resultDone();
     }
 
+    if (mTrustLines->trustLineState(mContractorID) == TrustLine::KeysSharing) {
+        info() << "Keys sharing transaction in pending. Audit cancelled.";
+        return resultDone();
+    }
+
     // todo maybe check in storage (keyChain)
     if (!mTrustLines->trustLineOwnKeysPresent(mContractorID)) {
         warning() << "There are no own keys";
@@ -378,6 +393,11 @@ TransactionResult::SharedConst AuditSourceTransaction::runResponseProcessingStag
     if (!mTrustLines->trustLineIsPresent(mContractorID)) {
         warning() << "Something wrong, because TL must be created";
         // todo : need correct reaction
+        return resultDone();
+    }
+
+    if (message->state() == ConfirmationMessage::KeysSharingTxPresent) {
+        info() << "Keys sharing transaction in pending on contractor side. Audit cancelled.";
         return resultDone();
     }
 

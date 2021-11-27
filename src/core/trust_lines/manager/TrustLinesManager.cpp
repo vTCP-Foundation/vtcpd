@@ -583,7 +583,7 @@ ConstSharedTrustLineAmount TrustLinesManager::outgoingTrustAmountInAuditPendingS
         ContractorID contractorID) const
 {
     const auto kTL = trustLineReadOnly(contractorID);
-    if (kTL->state() != TrustLine::AuditPending) {
+    if (kTL->state() != TrustLine::AuditPending && kTL->state() != TrustLine::KeysSharing) {
         return make_shared<const TrustLineAmount>(0);
     }
     const auto kAvailableAmount = kTL->availableOutgoingAmount();
@@ -619,7 +619,7 @@ ConstSharedTrustLineAmount TrustLinesManager::incomingTrustAmountInAuditPendingS
         ContractorID contractorID) const
 {
     const auto kTL = trustLineReadOnly(contractorID);
-    if (kTL->state() != TrustLine::AuditPending) {
+    if (kTL->state() != TrustLine::AuditPending && kTL->state() != TrustLine::KeysSharing) {
         return make_shared<const TrustLineAmount>(0);
     }
     const auto kAvailableAmount = kTL->availableIncomingAmount();
@@ -1261,7 +1261,8 @@ ConstSharedTrustLineAmount TrustLinesManager::totalPossibleOutgoingAmountConside
 {
     auto totalAmount = make_shared<TrustLineAmount>(0);
     for (const auto &kTrustLine : mTrustLines) {
-        if (kTrustLine.second->state() != TrustLine::AuditPending) {
+        if (kTrustLine.second->state() != TrustLine::AuditPending &&
+                kTrustLine.second->state() != TrustLine::KeysSharing) {
             continue;
         }
         const auto kTLAmount = outgoingTrustAmountInAuditPendingStateConsideringReservations(kTrustLine.first);
@@ -1289,7 +1290,8 @@ ConstSharedTrustLineAmount TrustLinesManager::totalPossibleIncomingAmountConside
 {
     auto totalAmount = make_shared<TrustLineAmount>(0);
     for (const auto &kTrustLine : mTrustLines) {
-        if (kTrustLine.second->state() != TrustLine::AuditPending) {
+        if (kTrustLine.second->state() != TrustLine::AuditPending &&
+                kTrustLine.second->state() != TrustLine::KeysSharing) {
             continue;
         }
         const auto kTLAmount = incomingTrustAmountInAuditPendingStateConsideringReservations(kTrustLine.first);

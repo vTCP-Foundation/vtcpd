@@ -63,6 +63,11 @@ protected:
     TransactionResult::SharedConst runPathsResourceProcessingStage();
 
     /**
+     * send request initialization from Receiver
+     */
+    TransactionResult::SharedConst runReceiverRequestProcessingStage();
+
+    /**
      * process response initialization from Receiver
      */
     TransactionResult::SharedConst runReceiverResponseProcessingStage();

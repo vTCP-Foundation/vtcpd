@@ -90,6 +90,12 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
         }
     }
 
+    if (mTrustLines->trustLineState(mContractorID) == TrustLine::KeysSharing) {
+        info() << "Keys sharing transaction in pending. Audit cancelled.";
+        return sendAuditErrorConfirmation(
+            ConfirmationMessage::KeysSharingTxPresent);
+    }
+
     if (mTrustLines->trustLineState(mContractorID) != TrustLine::Active and
         mTrustLines->trustLineState(mContractorID) != TrustLine::Reset) {
         warning() << "Invalid TL state " << mTrustLines->trustLineState(mContractorID);

@@ -128,6 +128,21 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runInitializationStag
     const auto kTotalAvailableIncomingAmount = *(mTrustLinesManager->totalIncomingAmount());
     debug() << "Total incoming amount: " << kTotalAvailableIncomingAmount;
     if (kTotalAvailableIncomingAmount < mTransactionAmount) {
+        const auto kTotalIncomingAuditPendingAmount = *(mTrustLinesManager->totalPossibleIncomingAmountConsiderToAuditPendingTLs());
+        info() << "totalPossibleIncomingAmountConsiderToAuditPendingTLs " << kTotalIncomingAuditPendingAmount;
+        if (kTotalAvailableIncomingAmount + kTotalIncomingAuditPendingAmount >= mTransactionAmount) {
+            info() << "Total incoming possibilities (" << kTotalAvailableIncomingAmount
+                   << ") less then operation amount, "
+                   << "but there are total incoming audit pending possibilities (" << kTotalIncomingAuditPendingAmount;
+            sendMessage<ReceiverInitPaymentResponseMessage>(
+                mCoordinator->mainAddress(),
+                mEquivalent,
+                mContractorsManager->ownAddresses(),
+                currentTransactionUUID(),
+                ReceiverInitPaymentResponseMessage::RejectedDueAuditPending);
+            return resultDone();
+
+        }
         sendMessage<ReceiverInitPaymentResponseMessage>(
             mCoordinator->mainAddress(),
             mEquivalent,
@@ -234,7 +249,8 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runAmountReservationS
 
     if (! mTrustLinesManager->trustLineIsActive(neighborID)) {
         warning() << "Path is not valid: TL with previous node is not active. Rejected.";
-        if (mTrustLinesManager->trustLineState(neighborID) == TrustLine::AuditPending) {
+        if (mTrustLinesManager->trustLineState(neighborID) == TrustLine::AuditPending ||
+                mTrustLinesManager->trustLineState(neighborID) == TrustLine::KeysSharing) {
             info() << "Due to audit pending";
             return sendErrorMessageOnPreviousNodeRequest(
                 kNeighbor,

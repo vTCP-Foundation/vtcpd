@@ -92,6 +92,8 @@ TransactionResult::SharedConst PublicKeysSharingTargetTransaction::runPublicKeyR
         throw e;
     }
 
+    mTrustLines->setTrustLineState(mContractorID, TrustLine::KeysSharing);
+
     mStep = NextKeyProcessing;
     return runProcessKey(ioTransaction);
 }

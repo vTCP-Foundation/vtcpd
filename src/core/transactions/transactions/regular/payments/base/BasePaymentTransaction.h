@@ -129,6 +129,7 @@ public:
     enum Stages {
         Coordinator_Initialization = 1,
         Coordinator_ReceiverResourceProcessing,
+        Coordinator_ReceiverRequestProcessing,
         Coordinator_ReceiverResponseProcessing,
         Coordinator_AmountReservation,
         Coordinator_ShortPathAmountReservationResponseProcessing,

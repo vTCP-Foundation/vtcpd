@@ -434,7 +434,7 @@ vector<PublicKey::Shared> ContractorKeysHandler::publicKeysBySetNumber(
     sqlite3_finalize(stmt);
 
     string query = "SELECT public_key FROM " + mTableName
-            + " WHERE trust_line_id = ? AND keys_set_sequence_number = ?";
+            + " WHERE trust_line_id = ? AND keys_set_sequence_number = ? ORDER BY number";
     rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         throw IOError("ContractorKeysHandler::publicKeysBySetNumber: "

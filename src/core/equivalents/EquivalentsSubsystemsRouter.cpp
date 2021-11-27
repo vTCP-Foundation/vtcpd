@@ -47,6 +47,7 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
                 equivalent,
                 make_unique<TopologyTrustLinesManager>(
                     equivalent,
+                    contractorsManager->selfContractor()->mainAddress(),
                     mIAmGateways[equivalent],
                     mLogger)));
         info() << "Topology Trust Lines Manager is successfully initialized";
@@ -199,6 +200,7 @@ void EquivalentsSubsystemsRouter::initNewEquivalent(
             equivalent,
             make_unique<TopologyTrustLinesManager>(
                 equivalent,
+                mContractorsManager->selfContractor()->mainAddress(),
                 false,
                 mLogger)));
     info() << "Topology Trust Lines Manager is successfully initialized";

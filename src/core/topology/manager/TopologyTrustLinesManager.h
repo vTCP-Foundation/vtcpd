@@ -17,6 +17,7 @@ public:
 public:
     TopologyTrustLinesManager(
         const SerializedEquivalent equivalent,
+        BaseAddress::Shared ownAddress,
         bool iAmGateway,
         Logger &logger);
 

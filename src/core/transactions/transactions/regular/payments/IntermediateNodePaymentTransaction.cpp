@@ -156,7 +156,8 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runPreviousNe
 
     if (!mTrustLinesManager->trustLineIsActive(senderID)) {
         warning() << "Path is not valid: TL with previous node is not active. Rejected.";
-        if (mTrustLinesManager->trustLineState(senderID) == TrustLine::AuditPending) {
+        if (mTrustLinesManager->trustLineState(senderID) == TrustLine::AuditPending ||
+                mTrustLinesManager->trustLineState(senderID) == TrustLine::KeysSharing) {
             info() << "Due to audit pending";
             return sendErrorMessageOnPreviousNodeRequest(
                 kNeighbor,
@@ -294,7 +295,8 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
 
     if (!mTrustLinesManager->trustLineIsActive(nextNodeID)) {
         warning() << "Path is not valid: TL with next node is not active. Rolled back.";
-        if (mTrustLinesManager->trustLineState(nextNodeID) == TrustLine::AuditPending) {
+        if (mTrustLinesManager->trustLineState(nextNodeID) == TrustLine::AuditPending ||
+                mTrustLinesManager->trustLineState(nextNodeID) == TrustLine::KeysSharing) {
             info() << "Due to audit pending";
             return sendErrorMessageOnCoordinatorRequest(
                 ResponseMessage::RejectedDueAuditPending);
