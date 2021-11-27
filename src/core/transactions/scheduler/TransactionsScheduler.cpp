@@ -166,15 +166,14 @@ void TransactionsScheduler::launchTransaction(
 #endif
     try {
         const auto kTAType = transaction->transactionType();
-//        todo: uncomment this
-//        if (kTAType >= BaseTransaction::CoordinatorPaymentTransaction
-//            && kTAType <= BaseTransaction::Payments_CycleCloserIntermediateNodeTransaction) {
+        if (kTAType >= BaseTransaction::CoordinatorPaymentTransaction
+            && kTAType <= BaseTransaction::Payments_CycleCloserIntermediateNodeTransaction) {
 
             info() << "Payment or cycle closing TA launched:"
                 << " TransactionUUID: " << transaction->currentTransactionUUID()
                 << " Type: " << transaction->transactionType()
                 << " Step: " << transaction->currentStep();
-//        }
+        }
 
 
         // Even if transaction will raise an exception -

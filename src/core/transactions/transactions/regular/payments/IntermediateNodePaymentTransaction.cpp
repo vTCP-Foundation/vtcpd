@@ -762,6 +762,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
     auto maximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
     debug() << "maximal claiming block number on own side: " << maximalClaimingBlockNumber;
     if (!checkMaxClaimingBlockNumber(maximalClaimingBlockNumber)) {
+        debug() << "Max claiming block number sending by coordinator is invalid: " << mMaximalClaimingBlockNumber;
         removeAllDataFromStorageConcerningTransaction();
         sendErrorMessageOnFinalAmountsConfiguration();
         return reject("Max claiming block number sending by coordinator is invalid. Rejected.");
@@ -772,6 +773,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
     mPublicKey = mKeysStore->generateAndSaveKeyPairForPaymentTransaction(
         ioTransaction,
         currentTransactionUUID());
+    debug() << "Keys for transaction generated and saved";
     mParticipantsPublicKeysHashes.insert(
         make_pair(
             mContractorsManager->selfContractor()->mainAddress()->fullAddress(),

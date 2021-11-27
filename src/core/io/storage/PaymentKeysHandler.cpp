@@ -105,7 +105,6 @@ PrivateKey* PaymentKeysHandler::getOwnPrivateKey(
     const TransactionUUID &transactionUUID)
 {
     info() << "getOwnPrivateKey";
-    info() << "for transaction " << transactionUUID;
     string query = "SELECT private_key FROM " + mTableName
                    + " WHERE transaction_uuid = ?;";
     sqlite3_stmt *stmt;
@@ -114,19 +113,24 @@ PrivateKey* PaymentKeysHandler::getOwnPrivateKey(
         throw IOError("PaymentKeysHandler::getOwnPrivateKey: "
                           "Bad query; sqlite error: " + to_string(rc));
     }
-    info() << "query was successfully prepared";
     rc = sqlite3_bind_blob(stmt, 1, transactionUUID.data, TransactionUUID::kBytesSize, SQLITE_STATIC);
     if (rc != SQLITE_OK) {
         throw IOError("PaymentKeysHandler::getOwnPrivateKey: "
                           "Bad binding of TransactionUUID; sqlite error: " + to_string(rc));
     }
-    info() << "transactionUUID was successfully binded";
 
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
         info() << "Before private key deserializing";
-        auto result = new PrivateKey((byte*)sqlite3_column_blob(stmt, 0));
-        info() << "Private key deserialized";
+        auto bytesCnt = sqlite3_column_bytes(stmt, 0);
+        info() << "bytes cnt: " << bytesCnt;
+        auto privateKeyBytesPtr = (byte*)sqlite3_column_blob(stmt, 0);
+        info() << "privateKeyBytesPtr = " << reinterpret_cast<int64_t>(privateKeyBytesPtr);
+        if (privateKeyBytesPtr == nullptr) {
+            info() << "privateKeyBytesPtr is null";
+        }
+        auto result = new PrivateKey(privateKeyBytesPtr);
+        info() << "Private key deserialized. ";
         sqlite3_reset(stmt);
         sqlite3_finalize(stmt);
         return result;
