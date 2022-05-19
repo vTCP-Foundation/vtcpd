@@ -13,6 +13,7 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
     mKeysStore(keystore),
     mContractorsManager(contractorsManager),
     mEventsInterfaceManager(eventsInterfaceManager),
+    mEquivalentsIAmGateway(equivalentsIAmGateway),
     mIOService(ioService),
     mLogger(logger)
 {
@@ -182,7 +183,10 @@ void EquivalentsSubsystemsRouter::initNewEquivalent(
     mIAmGateways.insert(
         make_pair(
             equivalent,
-            false));
+            find(
+                mEquivalentsIAmGateway.begin(),
+                mEquivalentsIAmGateway.end(),
+                equivalent) != mEquivalentsIAmGateway.end()));
 
     mTrustLinesManagers.insert(
         make_pair(

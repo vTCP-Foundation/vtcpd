@@ -34,6 +34,9 @@ private:
     TrustLinesManager *mTrustLinesManager;
     TopologyCacheManager *mTopologyCacheManager;
     bool mIAmGateway;
+    // todo : use parameter from config, which should set the max length of payment path
+    // 0 - points that it is need only gateways flows
+    uint32_t mHopsCnt;
 };
 
 

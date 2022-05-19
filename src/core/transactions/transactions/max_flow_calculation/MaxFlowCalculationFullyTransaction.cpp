@@ -141,8 +141,10 @@ TrustLineAmount MaxFlowCalculationFullyTransaction::calculateMaxFlow(
 #endif
     DateTime startTime = utc_now();
 
-    mTopologyTrustLineManager->makeFullyUsedTLsFromGatewaysToAllNodesExceptOne(
-        contractorID);
+    // todo : this is under comment, becouse we don't know all gateways which can be come in topology
+    //  from other nodes (gateways)
+//    mTopologyTrustLineManager->makeFullyUsedTLsFromGatewaysToAllNodesExceptOne(
+//        contractorID);
 
     mCurrentContractor = contractorID;
     if (mFirstLevelTopology.empty()) {

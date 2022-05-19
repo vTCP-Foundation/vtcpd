@@ -36,8 +36,10 @@ void PathsManager::buildPaths(
 {
     info() << "Build paths to " << contractorAddress->fullAddress() << " id " << contractorID;
     auto startTime = utc_now();
-    mTopologyTrustLinesManager->makeFullyUsedTLsFromGatewaysToAllNodesExceptOne(
-        contractorID);
+    // todo : this is under comment, becouse we don't know all gateways which can be come in topology
+    //  from other nodes (gateways)
+//    mTopologyTrustLinesManager->makeFullyUsedTLsFromGatewaysToAllNodesExceptOne(
+//        contractorID);
     mContractorID = contractorID;
     mPathCollection = make_shared<PathsCollection>(
         contractorAddress);

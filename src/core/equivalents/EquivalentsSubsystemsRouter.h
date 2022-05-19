@@ -85,6 +85,7 @@ private:
     map<SerializedEquivalent, unique_ptr<TopologyCacheUpdateDelayedTask>> mTopologyCacheUpdateDelayedTasks;
     map<SerializedEquivalent, unique_ptr<MaxFlowCacheManager>> mMaxFlowCacheManagers;
     map<SerializedEquivalent, unique_ptr<PathsManager>> mPathsManagers;
+    vector<SerializedEquivalent> mEquivalentsIAmGateway;
 
     set<ContractorID> mContractorsShouldBePinged;
 };

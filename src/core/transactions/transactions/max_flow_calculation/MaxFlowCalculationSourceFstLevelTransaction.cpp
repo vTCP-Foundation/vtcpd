@@ -16,7 +16,8 @@ MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTra
     mContractorsManager (contractorsManager),
     mTrustLinesManager(trustLinesManager),
     mTopologyCacheManager(topologyCacheManager),
-    mIAmGateway(iAmGateway)
+    mIAmGateway(iAmGateway),
+    mHopsCnt(0)
 {}
 
 TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run()
@@ -27,6 +28,34 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
     info() << "run\t" << "OutgoingFlows: " << mTrustLinesManager->outgoingFlows().size();
     info() << "run\t" << "IncomingFlows: " << mTrustLinesManager->incomingFlows().size();
 #endif
+    if (mHopsCnt == 0) {
+        vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;
+        auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
+        for (auto const &outgoingFlow : mTrustLinesManager->outgoingFlowsToGateways()) {
+            info() << "outgoingFlow to gateway " << *outgoingFlow.second.get() << " " << outgoingFlow.first->fullAddress();
+            if (*outgoingFlow.second.get() > TrustLine::kZeroAmount() &&
+                outgoingFlow.first != senderMainAddress) {
+                outgoingFlows.push_back(
+                    outgoingFlow);
+            }
+        }
+        vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
+        if (!outgoingFlows.empty() || !incomingFlows.empty()) {
+            sendMessage<ResultMaxFlowCalculationGatewayMessage>(
+                senderMainAddress,
+                mEquivalent,
+                mContractorsManager->ownAddresses(),
+                outgoingFlows,
+                incomingFlows);
+            mTopologyCacheManager->addCache(
+                senderMainAddress,
+                make_shared<TopologyCache>(
+                    outgoingFlows,
+                    incomingFlows));
+        }
+        return resultDone();
+    }
+
     pair<vector<ContractorID>, vector<ContractorID>> outgoingFlowIDs;
     if (mIAmGateway) {
         vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;

@@ -22,7 +22,7 @@ CollectTopologyTransaction::CollectTopologyTransaction(
     mTopologyCacheManager(topologyCacheManager),
     mMaxFlowCacheManager(maxFlowCacheManager),
     mIamGateway(iAmGateway),
-    mHopsCnt(0)
+    mHopsCnt(2)
 {}
 
 TransactionResult::SharedConst CollectTopologyTransaction::run()
