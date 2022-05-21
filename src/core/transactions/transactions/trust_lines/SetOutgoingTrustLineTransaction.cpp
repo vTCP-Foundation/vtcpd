@@ -92,7 +92,7 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runInitializatio
     // todo maybe check in storage (keyChain)
     if (!mTrustLines->trustLineContractorKeysPresent(mContractorID)) {
         warning() << "There are no contractor keys";
-        return resultKeysError();
+        return resultContractorKeysError();
     }
 
     if (mTrustLines->isReservationsPresentOnTrustLine(mContractorID)) {
@@ -152,7 +152,7 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runAuditPendingS
     // todo maybe check in storage (keyChain)
     if (!mTrustLines->trustLineContractorKeysPresent(mContractorID)) {
         warning() << "There are no contractor keys";
-        return resultKeysError();
+        return resultContractorKeysError();
     }
 
     if (mTrustLines->isReservationsPresentOnTrustLine(mContractorID)) {
@@ -265,12 +265,20 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runResponseProce
             kPendingPeriodInMilliseconds);
     }
 
+    if (message->state() == ConfirmationMessage::OwnKeysAbsent) {
+        mTrustLines->setIsContractorKeysPresent(mContractorID, false);
+        return resultDone();
+    }
+
+    if (message->state() == ConfirmationMessage::ContractorKeysAbsent) {
+        mTrustLines->setIsOwnKeysPresent(mContractorID, false);
+        return resultDone();
+    }
+
     auto ioTransaction = mStorageHandler->beginTransaction();
     auto keyChain = mKeysStore->keychain(
         mTrustLines->trustLineID(mContractorID));
     try {
-
-        // todo process ConfirmationMessage::OwnKeysAbsent and ConfirmationMessage::ContractorKeysAbsent
 
         if (message->state() != ConfirmationMessage::OK) {
             warning() << "Contractor didn't accept changing TL. Response code: " << message->state();
@@ -292,19 +300,31 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runResponseProce
         auto contractorSerializedAuditData = getContractorSerializedAuditData(
             keyChain.ownPublicKeysHash(ioTransaction),
             keyChain.contractorPublicKeysHash(ioTransaction));
-        if (!keyChain.checkSign(
-                ioTransaction,
-                contractorSerializedAuditData.first,
-                contractorSerializedAuditData.second,
-                message->signature(),
-                message->keyNumber())) {
-            warning() << "Contractor didn't sign message correct by key number " << message->keyNumber();
-            mTrustLines->setTrustLineState(
-                mContractorID,
-                TrustLine::ConflictResolving,
-                ioTransaction);
-            // todo run conflict resolver TA
-            return resultDone();
+
+        try {
+            if (!keyChain.checkSign(
+                    ioTransaction,
+                    contractorSerializedAuditData.first,
+                    contractorSerializedAuditData.second,
+                    message->signature(),
+                    message->keyNumber())) {
+                warning() << "Contractor didn't sign message correct by key number " << message->keyNumber();
+                mTrustLines->setTrustLineState(
+                        mContractorID,
+                        TrustLine::ConflictResolving,
+                        ioTransaction);
+                // todo run conflict resolver TA
+                return resultDone();
+            }
+        } catch (NotFoundError &e) {
+            mTrustLines->setIsContractorKeysPresent(mContractorID, false);
+            warning() << "Attempt to change trust line to the node " << mContractorID << " failed. "
+                      << "There are no contractor keys. "
+                      << "Details are: " << e.what();
+
+            // Rethrowing the exception,
+            // because the TA can't finish properly and no result may be returned.
+            throw e;
         }
 
         keyChain.saveContractorAuditPart(
@@ -526,6 +546,19 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::initializeAudit(
             BaseTransaction::SetOutgoingTrustLineTransaction);
 #endif
 
+    } catch (NotFoundError &e) {
+        ioTransaction->rollback();
+        mTrustLines->setOutgoing(
+            mContractorID,
+            mPreviousOutgoingAmount);
+        mTrustLines->setTrustLineState(
+            mContractorID,
+            mPreviousState);
+        warning() << "Attempt to set outgoing trust line to the node " << mContractorID << " failed. "
+                  << "There are no own keys. "
+                  << "Details are: " << e.what();
+
+        return resultKeysError();
     } catch(IOError &e) {
         ioTransaction->rollback();
         mTrustLines->setOutgoing(
@@ -585,6 +618,12 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::resultKeysError(
 {
     return transactionResultFromCommand(
         mCommand->responseThereAreNoKeys());
+}
+
+TransactionResult::SharedConst SetOutgoingTrustLineTransaction::resultContractorKeysError()
+{
+    return transactionResultFromCommand(
+        mCommand->responseThereAreNoKeysOnContractorSide());
 }
 
 TransactionResult::SharedConst SetOutgoingTrustLineTransaction::resultUnexpectedError()

@@ -55,6 +55,8 @@ protected:
 
     TransactionResult::SharedConst resultKeysError();
 
+    TransactionResult::SharedConst resultContractorKeysError();
+
     TransactionResult::SharedConst resultUnexpectedError();
 
 protected:

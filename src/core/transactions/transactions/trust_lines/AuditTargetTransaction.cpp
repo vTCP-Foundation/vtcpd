@@ -198,27 +198,50 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
             keyChain.ownPublicKeysHash(ioTransaction),
             keyChain.contractorPublicKeysHash(ioTransaction));
 
-        if (!keyChain.checkSign(
-                ioTransaction,
-                contractorSerializedAuditData.first,
-                contractorSerializedAuditData.second,
-                mMessage->signature(),
-                mMessage->keyNumber())) {
-            warning() << "Contractor didn't sign message correct by key number " << mMessage->keyNumber();
-            return sendAuditErrorConfirmation(
-                ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+        try {
+            if (!keyChain.checkSign(
+                    ioTransaction,
+                    contractorSerializedAuditData.first,
+                    contractorSerializedAuditData.second,
+                    mMessage->signature(),
+                    mMessage->keyNumber())) {
+                warning() << "Contractor didn't sign message correct by key number " << mMessage->keyNumber();
+                return sendAuditErrorConfirmation(
+                        ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+            }
+            info() << "Signature is correct";
+        } catch (NotFoundError &e) {
+            mTrustLines->setIsContractorKeysPresent(mContractorID, false);
+            warning() << "Attempt to change trust line to the node " << mContractorID << " failed. "
+                      << "There are no contractor keys. "
+                      << "Details are: " << e.what();
+
+            // Rethrowing the exception,
+            // because the TA can't finish properly and no result may be returned.
+            throw e;
         }
-        info() << "Signature is correct";
 
         auto ownPublicKeysHash = keyChain.ownPublicKeysHash(ioTransaction);
         auto contractorPublicKeysHash = keyChain.contractorPublicKeysHash(ioTransaction);
         auto serializedAuditData = getOwnSerializedAuditData(
             ownPublicKeysHash,
             contractorPublicKeysHash);
-        mOwnSignatureAndKeyNumber = keyChain.sign(
-            ioTransaction,
-            serializedAuditData.first,
-            serializedAuditData.second);
+
+        try {
+            mOwnSignatureAndKeyNumber = keyChain.sign(
+                ioTransaction,
+                serializedAuditData.first,
+                serializedAuditData.second);
+        } catch (NotFoundError &e) {
+            mTrustLines->setIsOwnKeysPresent(mContractorID, false);
+            warning() << "Attempt to change trust line to the node " << mContractorID << " failed. "
+                      << "There are no own keys. "
+                      << "Details are: " << e.what();
+
+            // Rethrowing the exception,
+            // because the TA can't finish properly and no result may be returned.
+            throw e;
+        }
 
         keyChain.saveFullAudit(
             ioTransaction,
@@ -271,7 +294,7 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
         warning() << "Attempt to change trust line from the node " << mContractorID << " failed. "
                   << e.what();
         return sendAuditErrorConfirmation(
-            ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+                ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
     } catch (IOError &e) {
         ioTransaction->rollback();
         mTrustLines->setIncoming(

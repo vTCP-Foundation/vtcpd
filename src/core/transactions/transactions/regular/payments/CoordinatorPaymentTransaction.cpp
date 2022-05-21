@@ -1477,32 +1477,40 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
                 participantID,
                 outgoingReservedAmount,
                 true);
-            auto signatureAndKeyNumber = keyChain.sign(
-                ioTransaction,
-                serializedOutgoingReceiptData.first,
-                serializedOutgoingReceiptData.second);
-            if (!keyChain.saveOutgoingPaymentReceipt(
+            try {
+                auto signatureAndKeyNumber = keyChain.sign(
+                    ioTransaction,
+                    serializedOutgoingReceiptData.first,
+                    serializedOutgoingReceiptData.second);
+                if (!keyChain.saveOutgoingPaymentReceipt(
                     ioTransaction,
                     mTrustLinesManager->auditNumber(participantID),
                     mTransactionUUID,
                     signatureAndKeyNumber.second,
                     outgoingReservedAmount,
                     signatureAndKeyNumber.first)) {
-                return reject("Can't save outgoing receipt. Rejected.");
+                    return reject("Can't save outgoing receipt. Rejected.");
+                }
+                info() << "send final amount configuration to "
+                       << paymentNodeIdAndContractor.second->mainAddress()->fullAddress()
+                       << " with receipt " << outgoingReservedAmount;
+                sendMessage<FinalAmountsConfigurationMessage>(
+                    paymentNodeIdAndContractor.second->mainAddress(),
+                    mEquivalent,
+                    mContractorsManager->ownAddresses(),
+                    currentTransactionUUID(),
+                    mNodesFinalAmountsConfiguration[paymentNodeIdAndContractor.second->mainAddress()->fullAddress()],
+                    mPaymentParticipants,
+                    mMaximalClaimingBlockNumber,
+                    signatureAndKeyNumber.second,
+                    signatureAndKeyNumber.first,
+                    mPublicKey->hash());
+            } catch (NotFoundError &e) {
+                warning() << e.what();
+                publicKeysSharingSignal(participantID, mEquivalent);
+                info() << "Keys sharing signal";
+                return reject("There are no keys for signing transaction. Transaction will be rejected");
             }
-            info() << "send final amount configuration to " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress()
-                   << " with receipt " << outgoingReservedAmount;
-            sendMessage<FinalAmountsConfigurationMessage>(
-                paymentNodeIdAndContractor.second->mainAddress(),
-                mEquivalent,
-                mContractorsManager->ownAddresses(),
-                currentTransactionUUID(),
-                mNodesFinalAmountsConfiguration[paymentNodeIdAndContractor.second->mainAddress()->fullAddress()],
-                mPaymentParticipants,
-                mMaximalClaimingBlockNumber,
-                signatureAndKeyNumber.second,
-                signatureAndKeyNumber.first,
-                mPublicKey->hash());
         } else {
             info() << "send final amount configuration to " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress();
             sendMessage<FinalAmountsConfigurationMessage>(

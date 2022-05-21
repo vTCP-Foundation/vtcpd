@@ -442,21 +442,32 @@ TransactionResult::SharedConst AuditSourceTransaction::runResponseProcessingStag
             keyChain.ownPublicKeysHash(ioTransaction),
             keyChain.contractorPublicKeysHash(ioTransaction));
 
-        if (!keyChain.checkSign(
-                ioTransaction,
-                contractorSerializedAuditData.first,
-                contractorSerializedAuditData.second,
-                message->signature(),
-                message->keyNumber())) {
-            warning() << "Contractor didn't sign message correct by key number " << message->keyNumber();
-            mTrustLines->setTrustLineState(
-                mContractorID,
-                TrustLine::ConflictResolving,
-                ioTransaction);
-            // todo run conflict resolver TA
-            return resultDone();
+        try {
+            if (!keyChain.checkSign(
+                    ioTransaction,
+                    contractorSerializedAuditData.first,
+                    contractorSerializedAuditData.second,
+                    message->signature(),
+                    message->keyNumber())) {
+                warning() << "Contractor didn't sign message correct by key number " << message->keyNumber();
+                mTrustLines->setTrustLineState(
+                    mContractorID,
+                    TrustLine::ConflictResolving,
+                    ioTransaction);
+                // todo run conflict resolver TA
+                return resultDone();
+            }
+            info() << "Contractor sign audit correct";
+        } catch (NotFoundError &e) {
+        mTrustLines->setIsContractorKeysPresent(mContractorID, false);
+        warning() << "Attempt to change trust line to the node " << mContractorID << " failed. "
+                  << "There are no contractor keys. "
+                  << "Details are: " << e.what();
+
+        // Rethrowing the exception,
+        // because the TA can't finish properly and no result may be returned.
+        throw e;
         }
-        info() << "Contractor sign audit correct";
 
         keyChain.saveContractorAuditPart(
             ioTransaction,
@@ -597,6 +608,17 @@ TransactionResult::SharedConst AuditSourceTransaction::initializeAudit()
             BaseTransaction::AuditSourceTransactionType);
 #endif
 
+    } catch (NotFoundError &e) {
+        ioTransaction->rollback();
+        mTrustLines->setTrustLineState(
+            mContractorID,
+            TrustLine::Active);
+        mTrustLines->setIsOwnKeysPresent(mContractorID, false);
+        warning() << "Attempt to  outgoing trust line to the node " << mContractorID << " failed. "
+                  << "There are no own keys. "
+                  << "Details are: " << e.what();
+
+        throw e;
     } catch(IOError &e) {
         ioTransaction->rollback();
         mTrustLines->setTrustLineState(

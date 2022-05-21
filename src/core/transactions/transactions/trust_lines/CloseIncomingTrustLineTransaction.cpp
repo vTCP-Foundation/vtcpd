@@ -289,19 +289,31 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runResponsePro
         auto contractorSerializedAuditData = getContractorSerializedAuditData(
             keyChain.ownPublicKeysHash(ioTransaction),
             keyChain.contractorPublicKeysHash(ioTransaction));
-        if (!keyChain.checkSign(
+
+        try {
+            if (!keyChain.checkSign(
                 ioTransaction,
                 contractorSerializedAuditData.first,
                 contractorSerializedAuditData.second,
                 message->signature(),
                 message->keyNumber())) {
-            warning() << "Contractor didn't sign message correct by key number " << message->keyNumber();
-            mTrustLines->setTrustLineState(
-                mContractorID,
-                TrustLine::ConflictResolving,
-                ioTransaction);
-            // todo run conflict resolver TA
-            return resultDone();
+                warning() << "Contractor didn't sign message correct by key number " << message->keyNumber();
+                mTrustLines->setTrustLineState(
+                    mContractorID,
+                    TrustLine::ConflictResolving,
+                    ioTransaction);
+                // todo run conflict resolver TA
+                return resultDone();
+            }
+        } catch (NotFoundError &e) {
+            mTrustLines->setIsContractorKeysPresent(mContractorID, false);
+            warning() << "Attempt to process confirmation from contractor " << mContractorID << " failed. "
+                      << "There are no contractor keys. "
+                      << "Details are: " << e.what();
+
+            // Rethrowing the exception,
+            // because the TA can't finish properly and no result may be returned.
+            throw e;
         }
 
         keyChain.saveContractorAuditPart(
@@ -477,6 +489,18 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::initializeAudi
             BaseTransaction::CloseIncomingTrustLineTransactionType);
 #endif
 
+    } catch (NotFoundError &e) {
+        ioTransaction->rollback();
+        mTrustLines->setIncoming(
+            mContractorID,
+            mPreviousIncomingAmount);
+        mTrustLines->setTrustLineState(
+            mContractorID,
+            mPreviousState);
+        warning() << "Attempt to close incoming TL from the node " << mContractorID << " failed. "
+                  << "There are no own keys. "
+                  << "Details are: " << e.what();
+        return resultKeysError();
     } catch (IOError &e) {
         ioTransaction->rollback();
         // return closed TL

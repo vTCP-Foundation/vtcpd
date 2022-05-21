@@ -99,6 +99,8 @@ public:
         noexcept;
     CommandResult::SharedConst responseThereAreNoKeys() const
         noexcept;
+    CommandResult::SharedConst responseThereAreNoKeysOnContractorSide() const
+        noexcept;
     CommandResult::SharedConst responseNoConsensus() const
         noexcept;
     CommandResult::SharedConst responseInsufficientFunds() const

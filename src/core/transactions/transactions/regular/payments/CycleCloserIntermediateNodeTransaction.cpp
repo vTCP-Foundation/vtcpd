@@ -762,30 +762,39 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runCheckO
                 participantID,
                 outgoingReservedAmount,
                 true);
-            auto signatureAndKeyNumber = keyChain.sign(
-                ioTransaction,
-                serializedOutgoingReceiptData.first,
-                serializedOutgoingReceiptData.second);
-            if (!keyChain.saveOutgoingPaymentReceipt(
-                ioTransaction,
-                mTrustLinesManager->auditNumber(participantID),
-                mTransactionUUID,
-                signatureAndKeyNumber.second,
-                outgoingReservedAmount,
-                signatureAndKeyNumber.first)) {
-                removeAllDataFromStorageConcerningTransaction(ioTransaction);
+            try {
+                auto signatureAndKeyNumber = keyChain.sign(
+                    ioTransaction,
+                    serializedOutgoingReceiptData.first,
+                    serializedOutgoingReceiptData.second);
+                if (!keyChain.saveOutgoingPaymentReceipt(
+                        ioTransaction,
+                        mTrustLinesManager->auditNumber(participantID),
+                        mTransactionUUID,
+                        signatureAndKeyNumber.second,
+                        outgoingReservedAmount,
+                        signatureAndKeyNumber.first)) {
+                    removeAllDataFromStorageConcerningTransaction(ioTransaction);
+                    sendErrorMessageOnFinalAmountsConfiguration();
+                    return reject("Can't save outgoing receipt. Rejected.");
+                }
+                sendMessage<TransactionPublicKeyHashMessage>(
+                    paymentNodeIdAndContractor.second->mainAddress(),
+                    mEquivalent,
+                    mContractorsManager->ownAddresses(),
+                    currentTransactionUUID(),
+                    ownPaymentID,
+                    mPublicKey->hash(),
+                    signatureAndKeyNumber.second,
+                    signatureAndKeyNumber.first);
+            } catch (NotFoundError &e) {
+                warning() << e.what();
+                publicKeysSharingSignal(participantID, mEquivalent);
+                info() << "Keys sharing signal";
+                removeAllDataFromStorageConcerningTransaction();
                 sendErrorMessageOnFinalAmountsConfiguration();
-                return reject("Can't save outgoing receipt. Rejected.");
+                return reject("There are no keys for signing transaction. Transaction will be rejected");
             }
-            sendMessage<TransactionPublicKeyHashMessage>(
-                paymentNodeIdAndContractor.second->mainAddress(),
-                mEquivalent,
-                mContractorsManager->ownAddresses(),
-                currentTransactionUUID(),
-                ownPaymentID,
-                mPublicKey->hash(),
-                signatureAndKeyNumber.second,
-                signatureAndKeyNumber.first);
         } else {
             if (paymentNodeIdAndContractor.first == kCoordinatorPaymentNodeID) {
                 continue;

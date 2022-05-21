@@ -891,32 +891,39 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::sendFinalPathCon
                 mNextNodeID,
                 mPathStats->maxFlow(),
                 true);
-            auto signatureAndKeyNumber = keyChain.sign(
-                ioTransaction,
-                serializedOutgoingReceiptData.first,
-                serializedOutgoingReceiptData.second);
-            if (!keyChain.saveOutgoingPaymentReceipt(
-                ioTransaction,
-                mTrustLinesManager->auditNumber(mNextNodeID),
-                mTransactionUUID,
-                signatureAndKeyNumber.second,
-                mPathStats->maxFlow(),
-                signatureAndKeyNumber.first)) {
-                return reject("Can't save outgoing receipt. Rejected.");
+            try {
+                auto signatureAndKeyNumber = keyChain.sign(
+                    ioTransaction,
+                    serializedOutgoingReceiptData.first,
+                    serializedOutgoingReceiptData.second);
+                if (!keyChain.saveOutgoingPaymentReceipt(
+                        ioTransaction,
+                        mTrustLinesManager->auditNumber(mNextNodeID),
+                        mTransactionUUID,
+                        signatureAndKeyNumber.second,
+                        mPathStats->maxFlow(),
+                        signatureAndKeyNumber.first)) {
+                    return reject("Can't save outgoing receipt. Rejected.");
+                }
+                info() << "send message with final path amount info for node "
+                       << mNextNode->fullAddress() << " with receipt";
+                sendMessage<FinalPathCycleConfigurationMessage>(
+                    mNextNode,
+                    mEquivalent,
+                    mContractorsManager->ownAddresses(),
+                    currentTransactionUUID(),
+                    mPathStats->maxFlow(),
+                    mPaymentParticipants,
+                    mMaximalClaimingBlockNumber,
+                    signatureAndKeyNumber.second,
+                    signatureAndKeyNumber.first,
+                    mPublicKey->hash());
+            } catch (NotFoundError &e) {
+                warning() << e.what();
+                publicKeysSharingSignal(mNextNodeID, mEquivalent);
+                info() << "Keys sharing signal";
+                return reject("There are no keys for signing transaction. Transaction will be rejected");
             }
-            info() << "send message with final path amount info for node "
-                   << mNextNode->fullAddress() << " with receipt";
-            sendMessage<FinalPathCycleConfigurationMessage>(
-                mNextNode,
-                mEquivalent,
-                mContractorsManager->ownAddresses(),
-                currentTransactionUUID(),
-                mPathStats->maxFlow(),
-                mPaymentParticipants,
-                mMaximalClaimingBlockNumber,
-                signatureAndKeyNumber.second,
-                signatureAndKeyNumber.first,
-                mPublicKey->hash());
         } else {
             info() << "send message with final path amount info for node "
                    << paymentNodeIdAndContractor.second->mainAddress()->fullAddress();
