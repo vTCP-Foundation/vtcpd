@@ -70,11 +70,12 @@ void ReceiveMaxFlowCalculationOnTargetTransaction::sendResultToInitiator()
             mContractorsManager->ownAddresses(),
             outgoingFlows,
             incomingFlows);
-        mTopologyCacheManager->addCache(
+        // todo : add config if cache need
+        /*mTopologyCacheManager->addCache(
             mMessage->senderAddresses.at(0),
             make_shared<TopologyCache>(
                 outgoingFlows,
-                incomingFlows));
+                incomingFlows));*/
     }
 }
 

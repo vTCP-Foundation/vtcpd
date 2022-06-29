@@ -83,11 +83,12 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendResultToInitiator()
             mContractorsManager->ownAddresses(),
             outgoingFlows,
             incomingFlows);
-        mTopologyCacheManager->addCache(
+        // todo : add config if cache need
+        /*mTopologyCacheManager->addCache(
             mMessage->targetAddresses().at(0),
             make_shared<TopologyCache>(
                 outgoingFlows,
-                incomingFlows));
+                incomingFlows));*/
     }
 }
 
@@ -188,11 +189,12 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendGatewayResultToInitiator()
             mContractorsManager->ownAddresses(),
             outgoingFlows,
             incomingFlows);
-        mTopologyCacheManager->addCache(
+        // todo : add config if cache need
+        /*mTopologyCacheManager->addCache(
             mMessage->targetAddresses().at(0),
             make_shared<TopologyCache>(
                 outgoingFlows,
-                incomingFlows));
+                incomingFlows));*/
     }
 }
 

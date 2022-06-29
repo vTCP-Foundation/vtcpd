@@ -39,6 +39,9 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
                     outgoingFlow);
             }
         }
+#ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
+        info() << "OutgoingFlows: " << outgoingFlows.size();
+#endif
         vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
         if (!outgoingFlows.empty() || !incomingFlows.empty()) {
             sendMessage<ResultMaxFlowCalculationGatewayMessage>(
@@ -47,11 +50,12 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
                 mContractorsManager->ownAddresses(),
                 outgoingFlows,
                 incomingFlows);
-            mTopologyCacheManager->addCache(
+            // todo : add config if cache need
+            /*mTopologyCacheManager->addCache(
                 senderMainAddress,
                 make_shared<TopologyCache>(
                     outgoingFlows,
-                    incomingFlows));
+                    incomingFlows));*/
         }
         return resultDone();
     }
