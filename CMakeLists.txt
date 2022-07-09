@@ -198,11 +198,10 @@ add_subdirectory(src/core/observing)
 add_subdirectory(src/core/features)
 add_subdirectory(src/core/providing)
 
-
 #
 # Libs
 #
-add_subdirectory(src/libs/sqlite3)
+
 
 set(SOURCE_FILES
         main.cpp
@@ -219,9 +218,8 @@ target_link_libraries(geo_network_client
         ${Boost_SYSTEM_LIBRARY}
         ${Boost_THREAD_LIBRARY}
         Boost::thread
-        libsqlite3
         -lsodium
-
+        -lsqlite3
         logger
         settings
 

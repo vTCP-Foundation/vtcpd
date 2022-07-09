@@ -8,7 +8,7 @@
 #include "../../common/memory/MemoryUtils.h"
 #include "../../crypto/lamportkeys.h"
 
-#include "../../../libs/sqlite3/sqlite3.h"
+#include <sqlite3.h>
 
 using namespace crypto::lamport;
 

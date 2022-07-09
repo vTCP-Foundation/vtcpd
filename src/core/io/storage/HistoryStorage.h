@@ -12,7 +12,7 @@
 #include "record/trust_line/TrustLineRecord.h"
 #include "record/payment/PaymentAdditionalRecord.h"
 
-#include "../../../libs/sqlite3/sqlite3.h"
+#include <sqlite3.h>
 
 #include <vector>
 #include <memory>

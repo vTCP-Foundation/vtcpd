@@ -4,7 +4,7 @@
 #include "../../common/Types.h"
 #include "CommunicatorMessagesQueueHandler.h"
 
-#include "../../../libs/sqlite3/sqlite3.h"
+#include <sqlite3.h>
 
 class CommunicatorIOTransaction {
 

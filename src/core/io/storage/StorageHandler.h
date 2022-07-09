@@ -5,10 +5,10 @@
 
 #include "../../logger/Logger.h"
 #include "../../common/exceptions/IOError.h"
-#include "../../../libs/sqlite3/sqlite3.h"
 #include "IOTransaction.h"
 
 #include <boost/filesystem.hpp>
+#include <sqlite3.h>
 #include <vector>
 
 namespace fs = boost::filesystem;

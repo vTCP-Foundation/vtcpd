@@ -3,7 +3,6 @@
 #ifdef INTERNAL_TESTS
 #define CATCH_CONFIG_MAIN
 #include "src/tests/catch.hpp"
-#include "src/tests/TestIncludes.h"
 #endif
 
 #ifdef UNIT_TESTS
