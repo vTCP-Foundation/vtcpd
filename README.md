@@ -16,7 +16,7 @@ Please, follow the link for [releases changelog](https://github.com/GEO-Protocol
 
 
 # How to build
-1. Ensure requirements: `libboost`, `libsodium23`
+1. Ensure requirements: `libboost`, `libsodium23`, `libsqlite3-dev`
 1. `git clone git@github.com:GEO-Protocol/GEO-network-client.git geo-client`
 1. `cd geo-client`
 1. `cmake ./ && make`

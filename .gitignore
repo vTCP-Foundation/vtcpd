@@ -2,7 +2,7 @@
 uuid2address/
 bin/
 cmake-build-debug/
-
+cmake-build-debug-remote-host/
 *.cmake
 *.a
 *Makefile
