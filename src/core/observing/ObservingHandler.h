@@ -115,13 +115,13 @@ public:
     mutable AllowPaymentTransactionsSignal mAllowPaymentTransactionsSignal;
 
 private:
-    static const uint32_t kInitialObservingRequestShiftSeconds = 5;
-    static const uint32_t kInitialObservingRequestNextSeconds = 30;
-    static const BlockNumber kDefaultBlockNumber = 777;
+    const uint32_t kInitialObservingRequestShiftSeconds = 5;
+    const uint32_t kInitialObservingRequestNextSeconds = 30;
+    const BlockNumber kDefaultBlockNumber = 777;
 
     // 6 min for check one transaction state minimum 3 times
-    static const uint32_t kTransactionCheckingSignalRepeatTimeSeconds = 360;
-    static const uint32_t kTransactionCheckingSignalSmallRepeatTimeSeconds = 60;
+    const uint32_t kTransactionCheckingSignalRepeatTimeSeconds = 360;
+    const uint32_t kTransactionCheckingSignalSmallRepeatTimeSeconds = 60;
 
 #ifdef TESTS
     static const uint32_t kTransactionCheckingSignalRepeatTimeSecondsTests = 60;

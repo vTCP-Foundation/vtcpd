@@ -18,7 +18,7 @@ private:
     void runTopologyEvent();
 
 private:
-    static const uint16_t kDelayedTaskTimeSec = 5;
+    const uint16_t kDelayedTaskTimeSec = 5;
 
 private:
     as::io_service &mIOService;
