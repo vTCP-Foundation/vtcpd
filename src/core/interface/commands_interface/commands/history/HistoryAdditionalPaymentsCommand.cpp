@@ -61,13 +61,20 @@ HistoryAdditionalPaymentsCommand::HistoryAdditionalPaymentsCommand(
     auto equivalentParse = [&](auto &ctx) {
         mEquivalent = _attr(ctx);
     };
-
+	
     try {
         parse(
             commandBuffer.begin(),
             commandBuffer.end(),
             char_[check]);
-        parse(
+		
+		std::string command_str;
+
+		auto scommand = [&](auto &ctx) {
+			command_str += _attr(ctx);
+		};
+      
+		parse(
             commandBuffer.begin(),
             commandBuffer.end(), (
                 *(int_[historyFromParse])
@@ -81,13 +88,20 @@ HistoryAdditionalPaymentsCommand::HistoryAdditionalPaymentsCommand(
                 > -(ulong_[timeToPresentNumber])
                 > char_(kTokensSeparator)
                 > -(+(char_("null")[setLowBoundaryAmountNull]))
-                > -(*(digit [lowBoundaryAmountNumber] > !alpha > !punct))
+                > -(*(digit [lowBoundaryAmountNumber] 
+				> !alpha 
+				> !punct))
                 > char_(kTokensSeparator)
-                > -(+(char_("null")[setHighBoundaryAmountNull]))
-                > -(*(digit [highBoundaryAmountNumber] > !alpha > !punct))
+                > *(char_[scommand])));
+				
+		parse(command_str.begin(), command_str.end(),(
+				-(+(char_("null")[setHighBoundaryAmountNull]))
+                > -(*(digit [highBoundaryAmountNumber] 
+				> !alpha 
+				> !punct))
                 > char_(kTokensSeparator)
-                > int_[equivalentParse]
-                > eol > eoi));
+				>int_[equivalentParse] > eol > eoi));
+
         mLowBoundaryAmount = TrustLineAmount(lowBoundaryAmount);
         mHighBoundaryAmount = TrustLineAmount(highBoundaryAmount);
     }
