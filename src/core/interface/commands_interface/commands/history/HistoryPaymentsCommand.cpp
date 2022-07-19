@@ -121,73 +121,93 @@ HistoryPaymentsCommand::HistoryPaymentsCommand(
         mEquivalent = _attr(ctx);
     };
 
-    try {
-        parse(
-            commandBuffer.begin(),
-            commandBuffer.end(),
-            char_[check]);
-        parse(
-            commandBuffer.begin(),
-            commandBuffer.end(), (
-                *(int_[historyFromParse])
-                > char_(kTokensSeparator)
-                > *(int_[historyCountParse])
-                > char_(kTokensSeparator)
-                > (
-                    (parserString::string("null")[timeFromPresentNull]) |
-                    *(ulong_[timeFromPresentNumber]))
-                > char_(kTokensSeparator)
-                > (
-                    (parserString::string("null")[timeToPresentNull]) |
-                    *(ulong_[timeToPresentNumber]))
-                > char_(kTokensSeparator)
-                >(
-                    (parserString::string("null")[setLowBoundaryAmountNull]) |
-                    *(digit [lowBoundaryAmountAddNumber] > !alpha > !punct))
-                > char_(kTokensSeparator)
-                >(
-                    (parserString::string("null")[setHighBoundaryAmountNull]) |
-                    *(digit [highBoundaryAmountAddNumber] > !alpha > !punct ))
-                > char_(kTokensSeparator)
-                >(
-                    parserString::string("null")[paymentRecordUUIDNull] |
-                    UUIDLexeme<
-                        decltype(addUUID8Digits),
-                        decltype(addUUID4Digits),
-                        decltype(addUUID12Digits)>(
-                            addUUID8Digits,
-                            addUUID4Digits,
-                            addUUID12Digits))
-                > char_(kTokensSeparator)
-                >(
-                    parserString::string("null")[paymentTransactionUUIDNull] |
-                    UUIDLexeme<
-                        decltype(addTransactionUUID8Digits),
-                        decltype(addTransactionUUID4Digits),
-                        decltype(addTransactionUUID12Digits)>(
-                            addTransactionUUID8Digits,
-                            addTransactionUUID4Digits,
-                            addTransactionUUID12Digits))
-                > char_(kTokensSeparator)
-                > *(int_[equivalentParse])
-                > eol > eoi));
+	try {
+		parse(
+			commandBuffer.begin(),
+			commandBuffer.end(),
+			char_[check]);
 
-        if(mIsLowBoundaryAmountPresent){
-            mLowBoundaryAmount = TrustLineAmount(lowBoundaryAmount);
-        }
-        if(mIsHighBoundaryAmountPresent){
-            mHighBoundaryAmount = TrustLineAmount(highBoundaryAmount);
-        }
-        if(mIsPaymentRecordCommandUUIDPresent){
-            mPaymentRecordCommandUUID = boost::lexical_cast<uuids::uuid>(paymentRecordCommandUUID);
-        }
-        if(mIsPaymentRecordTransactionUUIDPresent){
-            mPaymentRecordTransactionUUID = boost::lexical_cast<uuids::uuid>(paymentRecordTransactionUUID);
-        }
+		std::string command_str;
+		std::string temp_command;
 
-    } catch(...) {
-        throw ValueError("HistoryPaymentsCommand: cannot parse command.");
-    }
+		auto scommand = [&](auto &ctx) {
+			command_str += _attr(ctx);
+		};
+
+		parse(
+			commandBuffer.begin(),
+			commandBuffer.end(), (
+			*(int_[historyFromParse])
+		> char_(kTokensSeparator)
+				> *(int_[historyCountParse])
+				> char_(kTokensSeparator)
+				> (
+			(parserString::string("null")[timeFromPresentNull]) |
+			*(ulong_[timeFromPresentNumber]))
+				> char_(kTokensSeparator)
+				> (
+			(parserString::string("null")[timeToPresentNull]) |
+			*(ulong_[timeToPresentNumber]))
+				> char_(kTokensSeparator)
+				> (
+			(parserString::string("null")[setLowBoundaryAmountNull]) |
+			*(digit[lowBoundaryAmountAddNumber] > !alpha > !punct))
+				> char_(kTokensSeparator)
+				> (
+			(parserString::string("null")[setHighBoundaryAmountNull]) |
+			*(digit[highBoundaryAmountAddNumber] > !alpha > !punct))
+				> char_(kTokensSeparator)
+				> *(char_[scommand])));
+
+		temp_command = command_str;
+		command_str = "";
+
+		parse(
+			temp_command.begin(),
+			temp_command.end(), (
+			(parserString::string("null")[paymentRecordUUIDNull] |
+			UUIDLexeme <
+			decltype(addUUID8Digits),
+			decltype(addUUID4Digits),
+			decltype(addUUID12Digits)>(
+			addUUID8Digits,
+			addUUID4Digits,
+			addUUID12Digits))
+					> char_(kTokensSeparator)
+					> *(char_[scommand])));
+
+		parse(
+			command_str.begin(),
+			command_str.end(), (
+			(parserString::string("null")[paymentTransactionUUIDNull] |
+			UUIDLexeme<
+			decltype(addTransactionUUID8Digits),
+			decltype(addTransactionUUID4Digits),
+			decltype(addTransactionUUID12Digits)>(
+			addTransactionUUID8Digits,
+			addTransactionUUID4Digits,
+			addTransactionUUID12Digits))
+				> char_(kTokensSeparator)
+				> *(int_[equivalentParse])
+				> eol > eoi));
+
+		if(mIsLowBoundaryAmountPresent) {
+			mLowBoundaryAmount = TrustLineAmount(lowBoundaryAmount);
+		}
+		if(mIsHighBoundaryAmountPresent) {
+			mHighBoundaryAmount = TrustLineAmount(highBoundaryAmount);
+		}
+		if(mIsPaymentRecordCommandUUIDPresent) {
+			mPaymentRecordCommandUUID = boost::lexical_cast<uuids::uuid>(paymentRecordCommandUUID);
+		}
+		if(mIsPaymentRecordTransactionUUIDPresent) {
+			mPaymentRecordTransactionUUID = boost::lexical_cast<uuids::uuid>(paymentRecordTransactionUUID);
+		}
+
+	}
+	catch(...) {
+		throw ValueError("HistoryPaymentsCommand: cannot parse command.");
+	}
 }
 
 const string &HistoryPaymentsCommand::identifier()

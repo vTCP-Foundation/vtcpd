@@ -44,7 +44,7 @@ void PathsManager::buildPaths(
     mPathCollection = make_shared<PathsCollection>(
         contractorAddress);
     auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
-        TopologyTrustLinesManager::kCurrentNodeID);
+        (ContractorID)TopologyTrustLinesManager::kCurrentNodeID);
     if (trustLinePtrsSet.empty()) {
         mTopologyTrustLinesManager->resetAllUsedAmounts();
         return;
@@ -67,7 +67,7 @@ void PathsManager::buildPaths(
 void PathsManager::buildPathsOnOneLevel()
 {
     auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
-        TopologyTrustLinesManager::kCurrentNodeID);
+        (ContractorID)TopologyTrustLinesManager::kCurrentNodeID);
     auto itTrustLinePtr = trustLinePtrsSet.begin();
     while (itTrustLinePtr != trustLinePtrsSet.end()) {
         auto trustLine = (*itTrustLinePtr)->topologyTrustLine();
@@ -94,7 +94,7 @@ void PathsManager::buildPathsOnOneLevel()
 void PathsManager::buildPathsOnSecondLevel()
 {
     auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
-        TopologyTrustLinesManager::kCurrentNodeID);
+        (ContractorID)TopologyTrustLinesManager::kCurrentNodeID);
     auto gateways = mTrustLinesManager->gateways();
     while (!gateways.empty()) {
         auto itGateway = gateways.begin();
@@ -221,7 +221,7 @@ void PathsManager::reBuildPaths(
         contractorAddress);
 
     auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
-        TopologyTrustLinesManager::kCurrentNodeID);
+        (ContractorID)TopologyTrustLinesManager::kCurrentNodeID);
     if (trustLinePtrsSet.empty()) {
         mTopologyTrustLinesManager->resetAllUsedAmounts();
         return;
@@ -243,7 +243,7 @@ TrustLineAmount PathsManager::reBuildPathsOnOneLevel()
 {
     TrustLineAmount result = 0;
     auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
-        TopologyTrustLinesManager::kCurrentNodeID);
+        (ContractorID)TopologyTrustLinesManager::kCurrentNodeID);
     while(true) {
         TrustLineAmount currentFlow = 0;
         for (auto &trustLinePtr : trustLinePtrsSet) {

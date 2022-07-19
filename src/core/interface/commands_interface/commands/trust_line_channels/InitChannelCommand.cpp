@@ -65,24 +65,34 @@ InitChannelCommand::InitChannelCommand(
             command.end(),
             *(int_[addressesCountParse]-char_(kTokensSeparator)) > char_(kTokensSeparator));
         mContractorAddresses.reserve(addressesCount);
-        parse(
-            command.begin(),
-            command.end(),
-            *(int_) > char_(kTokensSeparator)
-            > addressLexeme<
-                decltype(addressAddChar),
-                decltype(addressAddNumber),
-                decltype(addressTypeParse),
-                decltype(addressAddToVector)>(
-                    addressesCount,
-                    addressAddChar,
-                    addressAddNumber,
-                    addressTypeParse,
-                    addressAddToVector)
-            > -(+(char_[cryptoKeyParse] - char_(kTokensSeparator))
-                > char_(kTokensSeparator)
-                > +(int_[contractorChannelIDParse]) > eol)
-            > eoi);
+		
+		std::string command_str;
+
+		auto scommand = [&](auto &ctx) {
+			command_str += _attr(ctx);
+		};
+
+		parse(
+			command.begin(),
+			command.end(),
+			*(int_) > char_(kTokensSeparator)
+			> addressLexeme <
+				decltype(addressAddChar),
+				decltype(addressAddNumber),
+				decltype(addressTypeParse),
+				decltype(addressAddToVector) > (
+			addressesCount,
+			addressAddChar,
+			addressAddNumber,
+			addressTypeParse,
+			addressAddToVector)
+			> *(char_[scommand]));
+
+		parse(command_str.begin(),command_str.end(), (
+			-(+(char_[cryptoKeyParse] - char_(kTokensSeparator))
+			> char_(kTokensSeparator)
+			> +(int_[contractorChannelIDParse]) > eol)
+			> eoi));
 
     } catch(...) {
         throw ValueError("InitChannelCommand: can't parse command.");

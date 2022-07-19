@@ -76,25 +76,36 @@ CreditUsageCommand::CreditUsageCommand(
             commandBuffer.end(),
             *(int_[addressesCountParse]-char_(kTokensSeparator)) > char_(kTokensSeparator));
         mContractorAddresses.reserve(contractorAddressesCount);
-        parse(
-            commandBuffer.begin(),
-            commandBuffer.end(), (
-                *(int_) > char_(kTokensSeparator)
-                > addressLexeme<
-                    decltype(addressAddChar),
-                    decltype(addressAddNumber),
-                    decltype(addressTypeParse),
-                    decltype(addressAddToVector)>(
-                        contractorAddressesCount,
-                        addressAddChar,
-                        addressAddNumber,
-                        addressTypeParse,
-                        addressAddToVector)
-                >*(digit [amountAddNumber] > !alpha > !punct)
-                > char_(kTokensSeparator)
-                > +(int_[equivalentParse])
-                > -(char_(kTokensSeparator) > *(char_[payloadParse] - eol))
-                > eol > eoi));
+
+		std::string command_str;
+
+		auto scommand = [&](auto &ctx) {
+			command_str += _attr(ctx);
+		};
+
+		parse(
+			commandBuffer.begin(),
+			commandBuffer.end(), (
+			*(int_) > char_(kTokensSeparator)
+				> addressLexeme <
+			decltype(addressAddChar),
+			decltype(addressAddNumber),
+			decltype(addressTypeParse),
+			decltype(addressAddToVector) > (
+			contractorAddressesCount,
+			addressAddChar,
+			addressAddNumber,
+			addressTypeParse,
+			addressAddToVector)
+			> *(char_[scommand])));
+
+			parse(command_str.begin(),command_str.end(), (
+				*(digit[amountAddNumber] > !alpha > !punct)
+				> char_(kTokensSeparator)
+				> +(int_[equivalentParse])
+				> -(char_(kTokensSeparator) > *(char_[payloadParse] - eol))
+				> eol > eoi));
+
         mAmount = TrustLineAmount(amount);
         if (mPayload.length() > std::numeric_limits<PayloadLength>::max()) {
             throw ValueError("Payload length is too big");

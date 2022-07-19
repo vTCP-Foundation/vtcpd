@@ -427,7 +427,7 @@ protected: // log shortcuts
         noexcept;
 
 private:
-    static const uint32_t kCountPaymentsForAudit = 10;
+    const uint32_t kCountPaymentsForAudit = 10;
 
 private:
     unordered_map<ContractorID, TrustLine::Shared> mTrustLines;

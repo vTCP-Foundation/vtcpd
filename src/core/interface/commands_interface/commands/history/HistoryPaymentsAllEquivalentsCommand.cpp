@@ -93,6 +93,14 @@ HistoryPaymentsAllEquivalentsCommand::HistoryPaymentsAllEquivalentsCommand(
             commandBuffer.begin(),
             commandBuffer.end(),
             char_[check]);
+	
+		std::string command_str;
+		std::string temp_command;
+
+		auto scommand = [&](auto &ctx) {
+			command_str += _attr(ctx);
+		};
+
         parse(
             commandBuffer.begin(),
             commandBuffer.end(), (
@@ -104,28 +112,46 @@ HistoryPaymentsAllEquivalentsCommand::HistoryPaymentsAllEquivalentsCommand(
                     (parserString::string("null")[timeFromPresentNull]) |
                     *(ulong_[timeFromPresentNumber]))
                 > char_(kTokensSeparator)
-                > (
-                    (parserString::string("null")[timeToPresentNull]) |
-                    *(ulong_[timeToPresentNumber]))
+				> *(char_[scommand])));
+	
+		temp_command = command_str;
+		command_str = "";
+
+		parse(
+			temp_command.begin(), 
+			temp_command.end(), (
+                (parserString::string("null")[timeToPresentNull]) |
+					*(ulong_[timeToPresentNumber]))
                 > char_(kTokensSeparator)
-                >(
+                > (
                     (parserString::string("null")[setLowBoundaryAmountNull]) |
                     *(digit [lowBoundaryAmountAddNumber] > !alpha > !punct))
                 > char_(kTokensSeparator)
-                >(
-                    (parserString::string("null")[setHighBoundaryAmountNull]) |
-                    *(digit [highBoundaryAmountAddNumber] > !alpha > !punct ))
-                > char_(kTokensSeparator)
-                >(
-                    parserString::string("null")[paymentRecordUUIDNull] |
-                    UUIDLexeme<
-                        decltype(addUUID8Digits),
-                        decltype(addUUID4Digits),
-                        decltype(addUUID12Digits)>(
-                            addUUID8Digits,
-                            addUUID4Digits,
-                            addUUID12Digits))
-                > eol > eoi));
+				> *(char_[scommand]));
+
+		temp_command = command_str;
+		command_str = "";
+
+		parse(
+			temp_command.begin(),
+			temp_command.end(), (
+                (parserString::string("null")[setHighBoundaryAmountNull]) |
+                *(digit[highBoundaryAmountAddNumber] > !alpha > !punct ))
+				> char_(kTokensSeparator)
+				> *(char_[scommand]));
+
+		parse(
+			command_str.begin(),
+			command_str.end(), ( 
+					parserString::string("null")[paymentRecordUUIDNull] |
+					UUIDLexeme <
+					decltype(addUUID8Digits),
+					decltype(addUUID4Digits),
+					decltype(addUUID12Digits) 
+				> (	addUUID8Digits,
+					addUUID4Digits,
+					addUUID12Digits)
+				> eol > eoi));
 
         if(mIsLowBoundaryAmountPresent){
             mLowBoundaryAmount = TrustLineAmount(lowBoundaryAmount);

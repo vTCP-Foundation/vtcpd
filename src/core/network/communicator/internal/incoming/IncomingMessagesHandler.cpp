@@ -26,7 +26,7 @@ IncomingMessagesHandler::IncomingMessagesHandler(
     // Large read socket buffer is needed to handle potentially huge amount of messages,
     // that might arrive form the network during max flow calculation.
     const uint32_t kMaxReadSocketSize = 1024*1024*30; // 30MB of data.
-#elif
+#else
 
     // Other platforms might be unable to handle extra large buffers,
     // so the default on is used.

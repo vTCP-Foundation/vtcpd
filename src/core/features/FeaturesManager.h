@@ -41,7 +41,7 @@ private:
 private:
     const string kEquivalentsRegistryAddressFieldName = "EQUIVALENTS_REGISTRY_ADDRESS";
     const string kOwnAddressesFieldName = "OWN_ADDRESSES";
-    static const uint32_t kSignalTimerPeriodSeconds = 15;
+    const uint32_t kSignalTimerPeriodSeconds = 15;
 
 private:
     StorageHandler *mStorageHandler;

@@ -65,8 +65,8 @@ protected:
     void delayedRescheduleResending();
 
 protected:
-    static const uint16_t kMessagesReschedulingSecondsTime = 150;
-    static const uint16_t kPingMessagesSecondsTimeOut = 60;
+    const uint16_t kMessagesReschedulingSecondsTime = 150;
+    const uint16_t kPingMessagesSecondsTimeOut = 60;
 
 private:
     ContractorsManager *mContractorsManager;
