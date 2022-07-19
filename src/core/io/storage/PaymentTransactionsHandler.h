@@ -8,7 +8,7 @@
 #include "../../common/exceptions/ValueError.h"
 #include "../../common/exceptions/NotFoundError.h"
 
-#include <sqlite3.h>
+#include "../../../libs/sqlite3/sqlite3.h"
 
 class PaymentTransactionsHandler {
 

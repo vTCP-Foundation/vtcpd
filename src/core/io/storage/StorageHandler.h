@@ -7,8 +7,8 @@
 #include "../../common/exceptions/IOError.h"
 #include "IOTransaction.h"
 
+#include "../../../libs/sqlite3/sqlite3.h"
 #include <boost/filesystem.hpp>
-#include <sqlite3.h>
 #include <vector>
 
 namespace fs = boost::filesystem;

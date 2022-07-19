@@ -11,7 +11,7 @@
 #include "../../crypto/lamportkeys.h"
 #include "../../crypto/lamportscheme.h"
 
-#include <sqlite3.h>
+#include "../../../libs/sqlite3/sqlite3.h"
 
 using namespace crypto;
 

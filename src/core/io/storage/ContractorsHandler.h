@@ -5,7 +5,7 @@
 #include "../../logger/Logger.h"
 #include "../../common/exceptions/IOError.h"
 
-#include <sqlite3.h>
+#include "../../../libs/sqlite3/sqlite3.h"
 
 #include <vector>
 

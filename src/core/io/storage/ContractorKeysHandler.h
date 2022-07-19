@@ -8,7 +8,7 @@
 #include "../../common/exceptions/ValueError.h"
 #include "../../crypto/lamportkeys.h"
 
-#include <sqlite3.h>
+#include "../../../libs/sqlite3/sqlite3.h"
 
 using namespace crypto::lamport;
 

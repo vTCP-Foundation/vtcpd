@@ -5,7 +5,7 @@
 #include "CommunicatorMessagesQueueHandler.h"
 #include "CommunicatorIOTransaction.h"
 #include "../../common/exceptions/IOError.h"
-#include <sqlite3.h>
+#include "../../../libs/sqlite3/sqlite3.h"
 
 #include <boost/filesystem.hpp>
 #include <vector>
