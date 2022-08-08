@@ -122,7 +122,8 @@ public:
         CyclesRunningParameters cyclesRunningParameters,
         Logger &logger,
         SubsystemsController *subsystemsController,
-        TrustLinesInfluenceController *trustLinesInfluenceController);
+        TrustLinesInfluenceController *trustLinesInfluenceController,
+		uint8_t hops_count);
 
     void processCommand(
         bool success,
@@ -558,7 +559,7 @@ private:
     TailManager *mTailManager;
     Logger &mLog;
     bool isPaymentTransactionsAllowedDueToObserving;
-
+	uint8_t mHopsCnt;
     CyclesRunningParameters mCyclesRunningParameters;
 
     SubsystemsController *mSubsystemsController;

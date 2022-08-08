@@ -18,7 +18,8 @@ TransactionsManager::TransactionsManager(
     CyclesRunningParameters cyclesRunningParameters,
     Logger &logger,
     SubsystemsController *subsystemsController,
-    TrustLinesInfluenceController *trustLinesInfluenceController) :
+    TrustLinesInfluenceController *trustLinesInfluenceController,
+	uint8_t hops_count) :
 
     mIOService(IOService),
     mContractorsManager(contractorsManager),
@@ -33,6 +34,7 @@ TransactionsManager::TransactionsManager(
     mLog(logger),
     mSubsystemsController(subsystemsController),
     mTrustLinesInfluenceController(trustLinesInfluenceController),
+	mHopsCnt(hops_count),
     isPaymentTransactionsAllowedDueToObserving(true),
     mCyclesRunningParameters(cyclesRunningParameters),
 
@@ -1032,7 +1034,8 @@ void TransactionsManager::launchInitiateMaxFlowCalculatingTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter,
                 mTailManager,
-                mLog),
+                mLog,
+				mHopsCnt),
             true,
             true,
             true);
@@ -2110,7 +2113,8 @@ void TransactionsManager::launchFindPathByMaxFlowTransaction(
                 mResourcesManager,
                 mEquivalentsSubsystemsRouter,
                 mTailManager,
-                mLog),
+                mLog,
+				this->mHopsCnt),
             true,
             true,
             false);

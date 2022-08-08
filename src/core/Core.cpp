@@ -342,6 +342,7 @@ int Core::initTransactionsManager(
                 cyclesClearingConf.at("six_nodes_interval_sec").get<uint32_t>(),
                 cyclesClearingConf.at("routing_tables_interval_days").get<uint16_t>());
         }
+		
         mTransactionsManager = make_unique<TransactionsManager>(
             mIOService,
             mContractorsManager.get(),
@@ -356,7 +357,8 @@ int Core::initTransactionsManager(
             cyclesRunningParameters,
             *mLog,
             mSubsystemsController.get(),
-            mTrustLinesInfluenceController.get());
+            mTrustLinesInfluenceController.get(),
+			mSettings->hopsCount(&conf));
         info() << "Transactions handler is successfully initialised";
         return 0;
 

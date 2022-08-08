@@ -14,7 +14,8 @@ public:
         const SerializedEquivalent equivalent,
         ContractorID idOnReceiverSide,
         vector<BaseAddress::Shared> targetAddresses,
-        bool isTargetGateway);
+        bool isTargetGateway,
+		uint8_t hopsCount);
 
     MaxFlowCalculationTargetFstLevelMessage(
         BytesShared buffer);
@@ -25,8 +26,11 @@ public:
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
+	uint8_t getHopsCount() const;
+
 private:
     bool mIsTargetGateway;
+	uint8_t mHopsCnt;
 };
 
 #endif //GEO_NETWORK_CLIENT_MAXFLOWCALCULATIONTARGETFSTLEVELMESSAGE_H

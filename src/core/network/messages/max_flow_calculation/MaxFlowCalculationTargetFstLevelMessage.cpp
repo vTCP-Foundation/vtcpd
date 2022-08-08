@@ -4,12 +4,14 @@ MaxFlowCalculationTargetFstLevelMessage::MaxFlowCalculationTargetFstLevelMessage
     const SerializedEquivalent equivalent,
     ContractorID idOnReceiverSide,
     vector<BaseAddress::Shared> targetAddresses,
-    bool isTargetGateway):
+    bool isTargetGateway,
+	uint8_t hopsCount):
     MaxFlowCalculationMessage(
         equivalent,
         idOnReceiverSide,
         targetAddresses),
-    mIsTargetGateway(isTargetGateway)
+    mIsTargetGateway(isTargetGateway),
+	mHopsCnt(hopsCount)
 {}
 
 MaxFlowCalculationTargetFstLevelMessage::MaxFlowCalculationTargetFstLevelMessage(
@@ -22,6 +24,13 @@ MaxFlowCalculationTargetFstLevelMessage::MaxFlowCalculationTargetFstLevelMessage
         &mIsTargetGateway,
         buffer.get() + bytesBufferOffset,
         sizeof(byte));
+	
+	bytesBufferOffset += sizeof(byte);
+	
+	memcpy(
+		&mHopsCnt,
+		buffer.get() + bytesBufferOffset,
+		sizeof(byte));
 }
 
 bool MaxFlowCalculationTargetFstLevelMessage::isTargetGateway() const
@@ -38,8 +47,9 @@ pair<BytesShared, size_t> MaxFlowCalculationTargetFstLevelMessage::serializeToBy
 {
     auto parentBytesAndCount = MaxFlowCalculationMessage::serializeToBytes();
     size_t bytesCount =
-        parentBytesAndCount.second +
-        sizeof(byte);
+        parentBytesAndCount.second + 
+		sizeof(byte) +
+        sizeof(byte); // 1 byte for mIstargetGateway and 1 byte for mHopsCnt;
 
     BytesShared dataBytesShared = tryCalloc(bytesCount);
     size_t dataBytesOffset = 0;
@@ -49,12 +59,23 @@ pair<BytesShared, size_t> MaxFlowCalculationTargetFstLevelMessage::serializeToBy
         parentBytesAndCount.first.get(),
         parentBytesAndCount.second);
     dataBytesOffset += parentBytesAndCount.second;
+
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         &mIsTargetGateway,
         sizeof(byte));
 
+	dataBytesOffset += sizeof(byte);
+
+	memcpy(
+		dataBytesShared.get() + dataBytesOffset,
+		&mHopsCnt, sizeof(byte));
+
     return make_pair(
         dataBytesShared,
         bytesCount);
+}
+
+uint8_t MaxFlowCalculationTargetFstLevelMessage::getHopsCount() const {
+	return this->mHopsCnt;
 }

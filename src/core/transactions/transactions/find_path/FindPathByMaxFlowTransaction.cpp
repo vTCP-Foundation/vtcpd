@@ -8,7 +8,8 @@ FindPathByMaxFlowTransaction::FindPathByMaxFlowTransaction(
     ResourcesManager *resourcesManager,
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     TailManager *tailManager,
-    Logger &logger) :
+    Logger &logger,
+	uint8_t hopsCount) :
 
     BaseCollectTopologyTransaction(
         BaseTransaction::FindPathByMaxFlowTransactionType,
@@ -17,7 +18,7 @@ FindPathByMaxFlowTransaction::FindPathByMaxFlowTransaction(
         equivalentsSubsystemsRouter,
         tailManager,
         logger),
-
+	mHopsCnt(hopsCount),
     mContractorAddress(contractorAddress),
     mRequestedTransactionUUID(requestedTransactionUUID),
     mPathsManager(equivalentsSubsystemsRouter->pathsManager(equivalent)),
@@ -43,7 +44,8 @@ TransactionResult::SharedConst FindPathByMaxFlowTransaction::sendRequestForColle
             mTopologyCacheManager,
             mMaxFlowCacheManager,
             mIamGateway,
-            mLog);
+            mLog,
+			this->mHopsCnt);
 
         mTopologyTrustLineManager->setPreventDeleting(true);
         launchSubsidiaryTransaction(kTransaction);

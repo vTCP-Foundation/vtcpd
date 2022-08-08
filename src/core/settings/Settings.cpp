@@ -1,5 +1,7 @@
 ﻿#include "Settings.h"
 
+#define MAX_HOPS_COUNT 5
+
 json Settings::loadParsedJSON() const
 {
     string buffer;
@@ -160,4 +162,29 @@ json Settings::cyclesClearing(
         // todo : throw RuntimeError
         return nullptr;
     }
+}
+
+int Settings::hopsCount(const json *conf) const {
+	if (conf == nullptr) {
+        auto j = loadParsedJSON();
+        conf = &j;
+    }
+    try {
+
+        auto result = (*conf).at("max_hops_count").get<int>();
+		if(result > 6) {
+			 throw("Max max_hops_count > 6"); 
+		}
+        return result;
+
+    }
+	catch(const char* msg) {
+		 throw IOError(msg);  
+	}
+	catch (...) {
+        // todo : throw RuntimeError
+		 throw IOError("Not found max_hops_count!");   
+    } 
+
+	return 0;
 }

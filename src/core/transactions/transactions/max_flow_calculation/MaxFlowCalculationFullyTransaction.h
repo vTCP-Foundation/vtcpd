@@ -64,6 +64,7 @@ private:
     vector<pair<ContractorID, TrustLineAmount>> mMaxFlows;
     size_t mCurrentGlobalContractorIdx;
     bool mIamGateway;
+	const int mHopsCnt = 6;
 };
 
 

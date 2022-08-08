@@ -47,43 +47,47 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
     } else {
         incomingFlowIDs = mTrustLinesManager->firstLevelNonGatewayNeighborsWithIncomingFlow();
     }
-    auto targetContractorID = mContractorsManager->contractorIDByAddress(
-        mMessage->targetAddresses().at(0));
-    for (auto const &nodeIDWithIncomingFlow : incomingFlowIDs.first) {
-        if (nodeIDWithIncomingFlow == mMessage->idOnReceiverSide or
-                nodeIDWithIncomingFlow == targetContractorID) {
-            continue;
-        }
+
+	if(mMessage->getHopsCount() > 1) {
+		auto targetContractorID = mContractorsManager->contractorIDByAddress(
+			mMessage->targetAddresses().at(0));
+		for(auto const &nodeIDWithIncomingFlow : incomingFlowIDs.first) {
+			if(nodeIDWithIncomingFlow == mMessage->idOnReceiverSide or
+				nodeIDWithIncomingFlow == targetContractorID) {
+				continue;
+			}
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
-        info() << "sendFirst: " << nodeIDWithIncomingFlow;
+			info() << "sendFirst: " << nodeIDWithIncomingFlow;
 #endif
-        sendMessage<MaxFlowCalculationTargetSndLevelMessage>(
-            nodeIDWithIncomingFlow,
-            mEquivalent,
-            mContractorsManager->idOnContractorSide(nodeIDWithIncomingFlow),
-            mMessage->targetAddresses(),
-            mMessage->isTargetGateway());
-        mTopologyCacheManager->addIntoFirstLevelCache(
-            nodeIDWithIncomingFlow);
-    }
-    for (auto const &nodeIDWithIncomingFlow : incomingFlowIDs.second) {
-        if (nodeIDWithIncomingFlow == mMessage->idOnReceiverSide or
-            nodeIDWithIncomingFlow == targetContractorID) {
-            continue;
-        }
-        if (!mTopologyCacheManager->isInFirstLevelCache(nodeIDWithIncomingFlow)) {
-            continue;
-        }
+			sendMessage<MaxFlowCalculationTargetSndLevelMessage>(
+				nodeIDWithIncomingFlow,
+				mEquivalent,
+				mContractorsManager->idOnContractorSide(nodeIDWithIncomingFlow),
+				mMessage->targetAddresses(),
+				mMessage->isTargetGateway());
+			mTopologyCacheManager->addIntoFirstLevelCache(
+				nodeIDWithIncomingFlow);
+		}
+		for(auto const &nodeIDWithIncomingFlow : incomingFlowIDs.second) {
+			if(nodeIDWithIncomingFlow == mMessage->idOnReceiverSide or
+				nodeIDWithIncomingFlow == targetContractorID) {
+				continue;
+			}
+			if(!mTopologyCacheManager->isInFirstLevelCache(nodeIDWithIncomingFlow)) {
+				continue;
+			}
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
-        info() << "sendFirst zero: " << nodeIDWithIncomingFlow;
+			info() << "sendFirst zero: " << nodeIDWithIncomingFlow;
 #endif
-        sendMessage<MaxFlowCalculationTargetSndLevelMessage>(
-            nodeIDWithIncomingFlow,
-            mEquivalent,
-            mContractorsManager->idOnContractorSide(nodeIDWithIncomingFlow),
-            mMessage->targetAddresses(),
-            mMessage->isTargetGateway());
-    }
+			sendMessage<MaxFlowCalculationTargetSndLevelMessage>(
+				nodeIDWithIncomingFlow,
+				mEquivalent,
+				mContractorsManager->idOnContractorSide(nodeIDWithIncomingFlow),
+				mMessage->targetAddresses(),
+				mMessage->isTargetGateway());
+		}
+	}
+
     return resultDone();
 }
 

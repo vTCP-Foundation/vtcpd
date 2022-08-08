@@ -141,7 +141,8 @@ void ReceiveMaxFlowCalculationOnTargetTransaction::sendMessagesOnFirstLevel()
             mEquivalent,
             mContractorsManager->idOnContractorSide(nodeIDWithIncomingFlow),
             mMessage->senderAddresses,
-            mMessage->isSenderGateway());
+            mMessage->isSenderGateway(),
+			mMessage->HopsCount());
     }
 }
 

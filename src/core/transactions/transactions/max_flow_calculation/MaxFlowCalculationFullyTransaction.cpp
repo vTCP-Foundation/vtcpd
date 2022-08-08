@@ -64,7 +64,8 @@ TransactionResult::SharedConst MaxFlowCalculationFullyTransaction::sendRequestFo
         mTopologyCacheManager,
         mMaxFlowCacheManager,
         mIamGateway,
-        mLog);
+        mLog,
+		this->mHopsCnt);
     mTopologyTrustLineManager->setPreventDeleting(true);
     launchSubsidiaryTransaction(kTransaction);
 
