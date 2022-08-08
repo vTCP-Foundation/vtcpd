@@ -172,8 +172,8 @@ int Settings::hopsCount(const json *conf) const {
     try {
 
         auto result = (*conf).at("max_hops_count").get<int>();
-		if(result > 6) {
-			 throw("Max max_hops_count > 6"); 
+		if(result > 5) {
+			 throw("Max max_hops_count > 5"); 
 		}
         return result;
 
