@@ -1068,7 +1068,8 @@ void TransactionsManager::launchMaxFlowCalculationFullyTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter,
                 mTailManager,
-                mLog),
+                mLog,
+				mHopsCnt),
             true,
             true,
             true);

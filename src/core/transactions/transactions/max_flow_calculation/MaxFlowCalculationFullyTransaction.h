@@ -17,7 +17,8 @@ public:
         ContractorsManager *contractorsManager,
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         TailManager *tailManager,
-        Logger &logger);
+        Logger &logger,
+		uint8_t hopsCount);
 
 protected:
     const string logHeader() const override;
@@ -64,7 +65,7 @@ private:
     vector<pair<ContractorID, TrustLineAmount>> mMaxFlows;
     size_t mCurrentGlobalContractorIdx;
     bool mIamGateway;
-	const int mHopsCnt = 6;
+	int mHopsCnt;
 };
 
 

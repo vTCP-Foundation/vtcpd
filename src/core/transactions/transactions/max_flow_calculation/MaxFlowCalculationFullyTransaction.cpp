@@ -5,7 +5,8 @@ MaxFlowCalculationFullyTransaction::MaxFlowCalculationFullyTransaction(
     ContractorsManager *contractorsManager,
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     TailManager *tailManager,
-    Logger &logger) :
+    Logger &logger,
+	uint8_t hopsCount) :
 
     BaseCollectTopologyTransaction(
         BaseTransaction::MaxFlowCalculationFullyTransactionType,
@@ -15,7 +16,8 @@ MaxFlowCalculationFullyTransaction::MaxFlowCalculationFullyTransaction(
         tailManager,
         logger),
     mCommand(command),
-    mIamGateway(equivalentsSubsystemsRouter->iAmGateway(command->equivalent()))
+    mIamGateway(equivalentsSubsystemsRouter->iAmGateway(command->equivalent())),
+	mHopsCnt(hopsCount)
 {}
 
 TransactionResult::SharedConst MaxFlowCalculationFullyTransaction::sendRequestForCollectingTopology()
