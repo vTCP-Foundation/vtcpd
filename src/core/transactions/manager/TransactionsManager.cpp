@@ -370,8 +370,13 @@ void TransactionsManager::processCommand(
         launchGetTrustLineByIDTransaction(
             static_pointer_cast<GetTrustLineByIDCommand>(
                 command));
+	
+    } else if(command->identifier() == GetAllTrustLineCommand::identifier()) {
+			launchGetAllTrustLineTransaction(
+				static_pointer_cast<GetAllTrustLineCommand>(
+				command));
 
-    } else if (command->identifier() == EquivalentListCommand::identifier()){
+	} else if (command->identifier() == EquivalentListCommand::identifier()){
         launchGetEquivalentListTransaction(
             static_pointer_cast<EquivalentListCommand>(
                 command));
@@ -2043,6 +2048,30 @@ void TransactionsManager::launchGetEquivalentListTransaction(
         false,
         false);
 }
+
+
+void TransactionsManager::launchGetAllTrustLineTransaction(
+	GetAllTrustLineCommand::Shared command) {
+
+	try {
+		
+		prepareAndSchedule(
+			make_shared<GetAllTrustLineListTransaction>(
+				command,
+				mContractorsManager,
+				mEquivalentsSubsystemsRouter,
+				mLog),
+			true,
+			false,
+			false
+		);
+
+	}
+	catch(ConflictError &e) {
+		throw ConflictError(e.message());
+	}
+}
+
 
 void TransactionsManager::launchPaymentTransactionByCommandUUIDTransaction(
     PaymentTransactionByCommandUUIDCommand::Shared command)

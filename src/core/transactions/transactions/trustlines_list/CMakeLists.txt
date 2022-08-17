@@ -13,7 +13,10 @@ set(SOURCE_FILES
         GetTrustLineByAddressTransaction.cpp
 
         GetEquivalentListTransaction.h
-        GetEquivalentListTransaction.cpp)
+        GetEquivalentListTransaction.cpp
+
+	GetAllTrustLineListTransaction.h
+	GetAllTrustLineListTransaction.cpp)
 
 add_library(transactions__trustlines_list ${SOURCE_FILES})
 target_link_libraries(transactions__trustlines_list

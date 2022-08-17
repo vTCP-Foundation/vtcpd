@@ -72,6 +72,7 @@
 #include "../transactions/trustlines_list/GetTrustLineByAddressTransaction.h"
 #include "../transactions/trustlines_list/GetTrustLineByIDTransaction.h"
 #include "../transactions/trustlines_list/GetEquivalentListTransaction.h"
+#include "../transactions/trustlines_list/GetAllTrustLineListTransaction.h"
 
 #include "../transactions/find_path/FindPathByMaxFlowTransaction.h"
 
@@ -351,6 +352,9 @@ protected: // Transactions
 
     void launchGetEquivalentListTransaction(
         EquivalentListCommand::Shared command);
+
+	void launchGetAllTrustLineTransaction(
+		GetAllTrustLineCommand::Shared command);
 
     /*
      * Transaction

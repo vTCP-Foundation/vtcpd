@@ -75,6 +75,8 @@ set(SOURCE_FILES
         commands/trust_lines_list/GetTrustLineByIDCommand.cpp
         commands/trust_lines_list/EquivalentListCommand.h
         commands/trust_lines_list/EquivalentListCommand.cpp
+	commands/trust_lines_list/GetAllTrustLineCommand.h
+	commands/trust_lines_list/GetAllTrustLineCommand.cpp
 
         commands/subsystems_controller/SubsystemsInfluenceCommand.h
         commands/subsystems_controller/SubsystemsInfluenceCommand.cpp
