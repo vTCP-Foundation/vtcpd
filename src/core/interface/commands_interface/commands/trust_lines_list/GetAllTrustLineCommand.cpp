@@ -39,7 +39,7 @@ GetAllTrustLineCommand::GetAllTrustLineCommand(
 
 const string &GetAllTrustLineCommand::identifier()
 {
-    static const string kIdentifier = " GET:contractors/trust-lines-all";
+    static const string kIdentifier = "GET:contractors/trust-lines-all";
     return kIdentifier;
 }
 
