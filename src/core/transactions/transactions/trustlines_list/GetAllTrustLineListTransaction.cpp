@@ -16,8 +16,6 @@ GetAllTrustLineListTransaction::GetAllTrustLineListTransaction(
 {}
 
 TransactionResult::SharedConst GetAllTrustLineListTransaction::run() {
-
-	//count_equivalents \t equivalent_1 \t GetTrustLinesListTransaction result for equivalent_1 \t equivalent_2 GetTrustLinesListTransaction result for equivalent_1 .....
 	
 	stringstream ss;
 

@@ -33,7 +33,7 @@ GetAllTrustLineCommand::GetAllTrustLineCommand(
                 > *(int_[trustLinesCountParse])
                 > eol > eoi));
     } catch(...) {
-        throw ValueError("GetTrustLinesCommand: cannot parse command.");
+        throw ValueError("GetAllTrustLinesCommand: cannot parse command.");
     }
 }
 
