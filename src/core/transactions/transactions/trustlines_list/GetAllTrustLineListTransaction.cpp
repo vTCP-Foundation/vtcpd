@@ -35,7 +35,7 @@ TransactionResult::SharedConst GetAllTrustLineListTransaction::run() {
 
 			// todo discuss if exclude non active TLs
 			auto resultRecordsCount = min(mCommand->count(), kNeighborsCount - mCommand->from());
-			ss << to_string(resultRecordsCount);
+			ss << kTokensSeparator << to_string(resultRecordsCount);
 			size_t recordIdx = 0;
 			size_t currentRecordsCount = 0;
 			for(const auto &kNodeIDAndTrustLine : trustLineManager->trustLines()) {
