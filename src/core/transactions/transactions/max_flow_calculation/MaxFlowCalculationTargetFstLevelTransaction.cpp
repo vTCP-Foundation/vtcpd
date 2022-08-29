@@ -29,7 +29,11 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
     info() << "run\t" << "IncomingFlows: " << mTrustLinesManager->incomingFlows().size();
 #endif
 
-	if(mMessage->getHopsCount() < 2) {
+	if(mMessage->getHopsCount() < 1 || mMessage->getHopsCount() > 3) {
+		return resultDone();
+	}
+
+	if(mMessage->getHopsCount() == 1) {
 		if(mIAmGateway) {
 			sendGatewayResultToInitiator();
 		}
@@ -37,11 +41,9 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
 			sendResultToInitiator();
 		}
 		return resultDone();
-
 	}
 
-	if(mMessage->getHopsCount() > 1) {
-		pair<vector<ContractorID>, vector<ContractorID>> incomingFlowIDs;
+	pair<vector<ContractorID>, vector<ContractorID>> incomingFlowIDs;
 		if(mIAmGateway) {
 			vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;
 			vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
@@ -100,7 +102,6 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
 				mMessage->targetAddresses(),
 				mMessage->isTargetGateway());
 		}
-	}
 
     return resultDone();
 }

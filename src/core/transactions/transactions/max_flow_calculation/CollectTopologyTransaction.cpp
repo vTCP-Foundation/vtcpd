@@ -10,7 +10,7 @@ CollectTopologyTransaction::CollectTopologyTransaction(
     MaxFlowCacheManager *maxFlowCacheManager,
     bool iAmGateway,
     Logger &logger,
-	uint8_t hopsCount) :
+	HopsCount_t hopsCount) :
 
     BaseTransaction(
         BaseTransaction::CollectTopologyTransactionType,
@@ -93,7 +93,7 @@ void CollectTopologyTransaction::sendMessagesToContractors()
 	// [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
 	//===============================================================
 
-	uint8_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
+	HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
 
 
     for (const auto &contractorAddress : mContractorAddresses)
@@ -118,8 +118,8 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
 	// [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
 	//===============================================================
 
-	uint8_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
-	uint8_t source_hops_count = (this->mHopsCnt == 1 ? 1 : (this->mHopsCnt - 1 - target_hops_count));
+	HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
+	HopsCount_t source_hops_count = (this->mHopsCnt == 1 ? 1 : (this->mHopsCnt - 1 - target_hops_count));
 
     if (mIamGateway) {
         auto outgoingFlowIDs = mTrustLinesManager->firstLevelGatewayNeighborsWithOutgoingFlow().first;
@@ -132,7 +132,6 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
                 nodeIDOutgoingFlow,
                 mEquivalent,
                 mContractorsManager->idOnContractorSide(nodeIDOutgoingFlow),
-				this->mIamGateway,
 				source_hops_count);
         }
     } else {
@@ -145,7 +144,6 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
                     *outgoingFlowIDIt,
                     mEquivalent,
                     mContractorsManager->idOnContractorSide(*outgoingFlowIDIt),
-					this->mIamGateway,
 					source_hops_count);
                 outgoingFlowIDs.erase(outgoingFlowIDIt);
             } else {
@@ -162,7 +160,6 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
                 nodeIDWithOutgoingFlow,
                 mEquivalent,
                 mContractorsManager->idOnContractorSide(nodeIDWithOutgoingFlow),
-				this->mIamGateway,
 				source_hops_count);
         }
     }

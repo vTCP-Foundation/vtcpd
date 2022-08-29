@@ -6,7 +6,7 @@ MaxFlowCalculationFullyTransaction::MaxFlowCalculationFullyTransaction(
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     TailManager *tailManager,
     Logger &logger,
-	uint8_t hopsCount) :
+	HopsCount_t hopsCount) :
 
     BaseCollectTopologyTransaction(
         BaseTransaction::MaxFlowCalculationFullyTransactionType,
@@ -67,7 +67,7 @@ TransactionResult::SharedConst MaxFlowCalculationFullyTransaction::sendRequestFo
         mMaxFlowCacheManager,
         mIamGateway,
         mLog,
-		this->mHopsCnt);
+		mHopsCnt);
     mTopologyTrustLineManager->setPreventDeleting(true);
     launchSubsidiaryTransaction(kTransaction);
 

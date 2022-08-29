@@ -7,7 +7,7 @@ GetAllTrustLineListTransaction::GetAllTrustLineListTransaction(
     Logger &logger)
 	noexcept:
     BaseTransaction(
-        BaseTransaction::AllTrustLinesList,
+        BaseTransaction::AllEquivalentsTrustLinesList,
         0,
         logger),
     mCommand(command),

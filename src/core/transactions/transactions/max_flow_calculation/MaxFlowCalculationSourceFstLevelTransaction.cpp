@@ -27,6 +27,11 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
     info() << "run\t" << "OutgoingFlows: " << mTrustLinesManager->outgoingFlows().size();
     info() << "run\t" << "IncomingFlows: " << mTrustLinesManager->incomingFlows().size();
 #endif
+
+	if(mMessage->getHopsCount() < 1 || mMessage->getHopsCount() > 3) {
+		return resultDone();
+	}
+
     if (this->mMessage->getHopsCount() == 1) {
 		if(mIAmGateway)
 			sendGatewayResultToInitiator();

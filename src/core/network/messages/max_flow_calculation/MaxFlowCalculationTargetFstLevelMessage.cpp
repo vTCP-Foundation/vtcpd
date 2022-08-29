@@ -5,7 +5,7 @@ MaxFlowCalculationTargetFstLevelMessage::MaxFlowCalculationTargetFstLevelMessage
     ContractorID idOnReceiverSide,
     vector<BaseAddress::Shared> targetAddresses,
     bool isTargetGateway,
-	uint8_t hopsCount):
+	HopsCount_t hopsCount):
     MaxFlowCalculationMessage(
         equivalent,
         idOnReceiverSide,
@@ -76,6 +76,7 @@ pair<BytesShared, size_t> MaxFlowCalculationTargetFstLevelMessage::serializeToBy
         bytesCount);
 }
 
-uint8_t MaxFlowCalculationTargetFstLevelMessage::getHopsCount() const {
+HopsCount_t
+MaxFlowCalculationTargetFstLevelMessage::getHopsCount() const {
 	return this->mHopsCnt;
 }

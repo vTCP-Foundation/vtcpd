@@ -100,7 +100,7 @@ public:
         TrustLineOneByAddress = 501,
         TrustLineOneByID = 502,
         EquivalentsList = 503,
-		AllTrustLinesList = 504,
+		AllEquivalentsTrustLinesList = 504,
 
         // TotalBalances
         TotalBalancesTransactionType = 600,

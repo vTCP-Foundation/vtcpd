@@ -25,6 +25,7 @@ typedef uint32_t TrustLineID;
 typedef uint32_t KeyNumber;
 typedef uint32_t KeysCount;
 typedef uint32_t AuditNumber;
+typedef uint8_t HopsCount_t;
 
 typedef multiprecision::int256_t TrustLineBalance;
 typedef shared_ptr<TrustLineBalance> SharedTrustLineBalance;

@@ -15,8 +15,7 @@ public:
 	MaxFlowCalculationSourceFstLevelMessage(
 	 const SerializedEquivalent equivalent,
 		ContractorID idOnReceiverSide,
-        bool isSenderGateway,
-        uint8_t hopsCount
+        HopsCount_t hopsCount
 	);
 
 	MaxFlowCalculationSourceFstLevelMessage(BytesShared buffer);
@@ -25,12 +24,11 @@ public:
 
     const MessageType typeID() const override;
 
-	uint8_t getHopsCount() const;
+	HopsCount_t getHopsCount() const;
 
 private:
 
-	bool mIsSenderGateway;
-	uint8_t mHopsCnt;
+	HopsCount_t mHopsCnt;
 	
 };
 

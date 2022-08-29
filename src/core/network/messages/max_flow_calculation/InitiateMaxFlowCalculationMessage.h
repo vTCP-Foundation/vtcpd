@@ -22,7 +22,7 @@ public:
 
     bool isSenderGateway() const;
 
-    uint8_t HopsCount() const;
+    HopsCount_t HopsCount() const;
 
     const MessageType typeID() const override;
 
@@ -30,7 +30,7 @@ public:
 
 private:
     // count hops of topology collection from receiver side
-    uint8_t mHopsCnt;
+    HopsCount_t mHopsCnt;
     bool mIsSenderGateway;
 };
 

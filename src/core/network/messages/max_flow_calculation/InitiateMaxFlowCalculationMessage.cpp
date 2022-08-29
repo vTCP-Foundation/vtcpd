@@ -34,7 +34,7 @@ bool InitiateMaxFlowCalculationMessage::isSenderGateway() const
     return mIsSenderGateway;
 }
 
-uint8_t InitiateMaxFlowCalculationMessage::HopsCount() const
+HopsCount_t InitiateMaxFlowCalculationMessage::HopsCount() const
 {
     return mHopsCnt;
 }

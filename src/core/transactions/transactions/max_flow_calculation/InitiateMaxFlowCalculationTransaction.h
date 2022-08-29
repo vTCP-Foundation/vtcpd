@@ -22,7 +22,7 @@ public:
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         TailManager *tailManager,
         Logger &logger,
-		uint8_t hopsCount);
+		HopsCount_t hopsCount);
 
 protected:
     const string logHeader() const override;
@@ -77,7 +77,7 @@ private:
     bool mFinalTopologyCollected;
     byte mMaxPathLength;
     bool mIamGateway;
-	uint8_t mHopsCnt;
+	HopsCount_t mHopsCnt;
 };
 
 
