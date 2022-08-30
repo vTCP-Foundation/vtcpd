@@ -134,7 +134,7 @@ void MaxFlowCalculationTargetFstLevelTransaction::sendResultToInitiator() {
 
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
     auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-    for (auto const &incomingFlow : mTrustLinesManager->incomingFlowsFromNonGateways()) {
+    for (auto const &incomingFlow : mTrustLinesManager->incomingFlows()) {
         if (*incomingFlow.second.get() > TrustLine::kZeroAmount() &&
                 incomingFlow.first != senderMainAddress &&
                 incomingFlow.first != mMessage->targetAddresses().at(0)) {
@@ -221,7 +221,7 @@ void MaxFlowCalculationTargetFstLevelTransaction::sendGatewayResultToInitiator()
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
     if (mMessage->isTargetGateway()) {
         auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-        for (auto const &incomingFlow : mTrustLinesManager->incomingFlowsFromGateways()) {
+        for (auto const &incomingFlow : mTrustLinesManager->incomingFlows()) {
             if (*incomingFlow.second.get() > TrustLine::kZeroAmount() &&
                     incomingFlow.first != senderMainAddress &&
                     incomingFlow.first != mMessage->targetAddresses().at(0)) {
