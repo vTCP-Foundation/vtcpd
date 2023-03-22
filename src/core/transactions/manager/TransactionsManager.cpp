@@ -2486,7 +2486,8 @@ void TransactionsManager::onCommandResultReady(
                 result->identifier() != EquivalentListCommand::identifier() and
                 result->identifier() != GetTrustLinesCommand::identifier() and
                 result->identifier() != GetTrustLineByAddressCommand::identifier() and
-                result->identifier() != GetTrustLineByIDCommand::identifier()) {
+                result->identifier() != GetTrustLineByIDCommand::identifier() and
+                result->identifier() != GetAllTrustLineCommand::identifier()) {
             info() << "Result for command " + result->identifier();
             info() << "CommandResultReady: " << message;
         }
