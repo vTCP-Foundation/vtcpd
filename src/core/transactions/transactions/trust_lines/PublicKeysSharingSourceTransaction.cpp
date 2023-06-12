@@ -319,8 +319,10 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
             mCurrentKeyNumber);
         if (mCurrentPublicKey == nullptr) {
             warning() << "There are no data for keyNumber " << mCurrentKeyNumber;
-            // todo run reset keys sharing TA
             mTrustLines->setTrustLineState(mContractorID, TrustLine::Active);
+            // remove all unused keys for triggering new keys sharing TA in future
+            keyChain.removeUnusedOwnKeys(
+                ioTransaction);
             return resultDone();
         }
 
