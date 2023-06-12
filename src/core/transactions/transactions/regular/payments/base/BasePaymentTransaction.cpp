@@ -32,6 +32,8 @@ BasePaymentTransaction::BasePaymentTransaction(
     mParticipantsVotesMessage(nullptr),
     mBlockNumberObtainingInProcess(false),
     mSignedTransaction(nullptr),
+    mIsSuspendedOnFinalAmountsConfirmationStage(false),
+    mCntSuspendingOnFinalAmountsConfirmationStage(0),
     mPayload("")
 {}
 
@@ -69,6 +71,8 @@ BasePaymentTransaction::BasePaymentTransaction(
     mParticipantsVotesMessage(nullptr),
     mBlockNumberObtainingInProcess(false),
     mSignedTransaction(nullptr),
+    mIsSuspendedOnFinalAmountsConfirmationStage(false),
+    mCntSuspendingOnFinalAmountsConfirmationStage(0),
     mPayload("")
 {}
 
@@ -99,6 +103,8 @@ BasePaymentTransaction::BasePaymentTransaction(
     mKeysStore(keystore),
     mSubsystemsController(subsystemsController),
     mCountRecoveryAttempts(0),
+    mIsSuspendedOnFinalAmountsConfirmationStage(false),
+    mCntSuspendingOnFinalAmountsConfirmationStage(0),
     mSignedTransaction(nullptr)
 {
     auto bytesBufferOffset = BaseTransaction::kOffsetToInheritedBytes();

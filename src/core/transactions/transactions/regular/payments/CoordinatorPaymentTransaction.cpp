@@ -1428,11 +1428,14 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
 {
     debug() << "sendFinalAmountsConfigurationToAllParticipants";
 
-    if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
-        return resultUnexpectedError();
+    // suspending process means that we already have block number resource
+    if (!mIsSuspendedOnFinalAmountsConfirmationStage) {
+        if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
+            return resultUnexpectedError();
+        }
+        auto blockNumberResource = popNextResource<BlockNumberRecourse>();
+        mMaximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
     }
-    auto blockNumberResource = popNextResource<BlockNumberRecourse>();
-    mMaximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
 
     // check if reservation to contractor present
     auto receiverID = mContractorsManager->contractorIDByAddress(mContractor->mainAddress());
@@ -1440,6 +1443,19 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
     if (contractorNodeReservations != mReservations.end()) {
         if (contractorNodeReservations->second.size() > 1) {
             return reject("Coordinator has more than one reservation to contractor");
+        }
+    }
+
+    for (auto const &reservation : mReservations) {
+        // if node have reservation on TL with keysSharing state it will suspend on some period
+        // waiting for keys sharing process finishing
+        if (mTrustLinesManager->trustLineState(reservation.first) == TrustLine::KeysSharing) {
+            mIsSuspendedOnFinalAmountsConfirmationStage = true;
+            if (mCntSuspendingOnFinalAmountsConfirmationStage < kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage) {
+                mCntSuspendingOnFinalAmountsConfirmationStage++;
+                return resultAwakeAfterMilliseconds(maxNetworkDelay(2));
+            }
+            break;
         }
     }
 

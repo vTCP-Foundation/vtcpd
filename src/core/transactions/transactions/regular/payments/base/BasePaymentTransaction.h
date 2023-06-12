@@ -427,6 +427,7 @@ protected:
     static const uint32_t kWaitMillisecondsToTryRecoverAgain = 30000;
     static const uint32_t kWaitMillisecondsToTryInitialRecoverAgain = 900000;
     static const uint8_t kMaxRecoveryAttempts = 30;
+    static const uint8_t kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage = 3;
 
     // todo : make static
     const PaymentNodeID kCoordinatorPaymentNodeID = 0;
@@ -507,6 +508,10 @@ protected:
     // this fields are used by coordinators on final amount configuration clarification
     bool mAllNodesSentConfirmationOnFinalAmountsConfiguration;
     bool mAllNeighborsSentFinalReservations;
+
+    // suspending on final amounts confirmations
+    bool mIsSuspendedOnFinalAmountsConfirmationStage;
+    uint8_t mCntSuspendingOnFinalAmountsConfirmationStage;
 
     lamport::PublicKey::Shared mPublicKey;
 
