@@ -2664,6 +2664,11 @@ void TransactionsManager::onAuditSlot(
     ContractorID contractorID,
     const SerializedEquivalent equivalent)
 {
+    if (mScheduler->checkAuditTransactionPresence(equivalent,contractorID)) {
+        info() << "Audit with contractor " << contractorID << " in equivalent " << equivalent
+               << " will not started because another one";
+        return;
+    }
     try {
         auto trustLinesManager = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent);
         auto transaction = make_shared<AuditSourceTransaction>(

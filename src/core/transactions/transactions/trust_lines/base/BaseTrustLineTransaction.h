@@ -45,6 +45,8 @@ public:
         TrustLinesInfluenceController *trustLinesInfluenceController,
         Logger &log);
 
+    ContractorID contractorID() const;
+
 protected:
     enum Stages {
         Initialization = 1,

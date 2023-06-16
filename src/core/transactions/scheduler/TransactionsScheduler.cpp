@@ -298,6 +298,23 @@ void TransactionsScheduler::forgetTransaction(
     mTransactions->erase(transaction);
 }
 
+bool TransactionsScheduler::checkAuditTransactionPresence(
+    SerializedEquivalent equivalent,
+    ContractorID contractorId) const
+{
+    for (const auto &transactionAndState : *mTransactions) {
+        if (transactionAndState.first->transactionType() != BaseTransaction::AuditSourceTransactionType
+            or transactionAndState.first->equivalent() != equivalent) {
+            continue;
+        }
+        auto auditTransaction = static_pointer_cast<AuditSourceTransaction>(transactionAndState.first);
+        if (auditTransaction->contractorID() == contractorId) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void TransactionsScheduler::adjustAwakeningToNextTransaction()
 {
     try {

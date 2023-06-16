@@ -230,3 +230,8 @@ pair<BytesShared, size_t> BaseTrustLineTransaction::getContractorSerializedAudit
         dataBytesShared,
         bytesCount);
 }
+
+ContractorID BaseTrustLineTransaction::contractorID() const
+{
+    return mContractorID;
+}
