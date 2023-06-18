@@ -63,6 +63,7 @@ void TrustLinesManager::loadTrustLinesFromStorage()
                     totalOutgoingReceiptsAmount);
             } else {
                 info() << "audit pending TL in storage with contractor " << kTrustLine->contractorID();
+                kTrustLine->setBalance(auditRecord->balance());
                 kTrustLine->setState(TrustLine::AuditPending);
                 mContractorsShouldBePinged.push_back(
                     kTrustLine->contractorID());

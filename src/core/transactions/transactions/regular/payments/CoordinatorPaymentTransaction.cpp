@@ -1450,11 +1450,14 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
         // if node have reservation on TL with keysSharing state it will suspend on some period
         // waiting for keys sharing process finishing
         if (mTrustLinesManager->trustLineState(reservation.first) == TrustLine::KeysSharing) {
+            info() << "reservation with " << reservation.first << " in KeysSharing state";
             mIsSuspendedOnFinalAmountsConfirmationStage = true;
             if (mCntSuspendingOnFinalAmountsConfirmationStage < kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage) {
                 mCntSuspendingOnFinalAmountsConfirmationStage++;
+                info() << "suspend " << mCntSuspendingOnFinalAmountsConfirmationStage << " time";
                 return resultAwakeAfterMilliseconds(maxNetworkDelay(2));
             }
+            info() << "Suspending done max times. Continue";
             break;
         }
     }

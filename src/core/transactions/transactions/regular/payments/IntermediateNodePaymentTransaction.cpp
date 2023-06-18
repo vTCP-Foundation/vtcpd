@@ -791,21 +791,40 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
         return reject("Coordinator send TTL message with transaction finish state. Rolling Back");
     }
 
-    if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
-        removeAllDataFromStorageConcerningTransaction();
-        sendErrorMessageOnFinalAmountsConfiguration();
-        return reject("Can't check observing actual block number. Rejected.");
+    // suspending process means that we already have block number resource
+    if (!mIsSuspendedOnFinalAmountsConfirmationStage) {
+        if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
+            removeAllDataFromStorageConcerningTransaction();
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Can't check observing actual block number. Rejected.");
+        }
+        auto blockNumberResource = popNextResource<BlockNumberRecourse>();
+        auto maximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
+        debug() << "maximal claiming block number on own side: " << maximalClaimingBlockNumber;
+        if (!checkMaxClaimingBlockNumber(maximalClaimingBlockNumber)) {
+            debug() << "Max claiming block number sending by coordinator is invalid: " << mMaximalClaimingBlockNumber;
+            removeAllDataFromStorageConcerningTransaction();
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Max claiming block number sending by coordinator is invalid. Rejected.");
+        }
+        mBlockNumberObtainingInProcess = false;
     }
-    auto blockNumberResource = popNextResource<BlockNumberRecourse>();
-    auto maximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
-    debug() << "maximal claiming block number on own side: " << maximalClaimingBlockNumber;
-    if (!checkMaxClaimingBlockNumber(maximalClaimingBlockNumber)) {
-        debug() << "Max claiming block number sending by coordinator is invalid: " << mMaximalClaimingBlockNumber;
-        removeAllDataFromStorageConcerningTransaction();
-        sendErrorMessageOnFinalAmountsConfiguration();
-        return reject("Max claiming block number sending by coordinator is invalid. Rejected.");
+
+    for (auto const &reservation : mReservations) {
+        // if node have reservation on TL with keysSharing state it will suspend on some period
+        // waiting for keys sharing process finishing
+        if (mTrustLinesManager->trustLineState(reservation.first) == TrustLine::KeysSharing) {
+            info() << "reservation with " << reservation.first << " in KeysSharing state";
+            mIsSuspendedOnFinalAmountsConfirmationStage = true;
+            if (mCntSuspendingOnFinalAmountsConfirmationStage < kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage) {
+                mCntSuspendingOnFinalAmountsConfirmationStage++;
+                info() << "suspend " << mCntSuspendingOnFinalAmountsConfirmationStage << " time";
+                return resultAwakeAfterMilliseconds(maxNetworkDelay(2));
+            }
+            info() << "Suspending done max times. Continue";
+            break;
+        }
     }
-    mBlockNumberObtainingInProcess = false;
 
     auto ioTransaction = mStorageHandler->beginTransaction();
     mPublicKey = mKeysStore->generateAndSaveKeyPairForPaymentTransaction(
