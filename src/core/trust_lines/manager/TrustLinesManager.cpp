@@ -1110,9 +1110,6 @@ ConstSharedTrustLineBalance TrustLinesManager::totalBalance() const
 {
     TrustLineBalance result = TrustLine::kZeroBalance();
     for (const auto &trustLine : mTrustLines) {
-        if (trustLine.second->state() != TrustLine::Active) {
-            continue;
-        }
         result += trustLine.second->balance();
     }
     return make_shared<const TrustLineBalance>(result);
