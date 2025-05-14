@@ -159,7 +159,7 @@ int Core::initSubsystems()
         return initCode;
     }
 
-    initCode = initTransactionsManager();
+    initCode = initTransactionsManager(conf);
     if (initCode != 0) {
         return initCode;
     }
@@ -338,9 +338,23 @@ int Core::initResourcesManager()
     }
 }
 
-int Core::initTransactionsManager()
+int Core::initTransactionsManager(
+    const json &conf)
 {
+    auto cyclesClearingConf = mSettings->cyclesClearing(&conf);
     try {
+        CyclesRunningParameters cyclesRunningParameters;
+        if (cyclesClearingConf != nullptr) {
+            cyclesRunningParameters = CyclesRunningParameters(
+                                          cyclesClearingConf.at("three_nodes_enabled").get<bool>(),
+                                          cyclesClearingConf.at("four_nodes_enabled").get<bool>(),
+                                          cyclesClearingConf.at("five_nodes_enabled").get<bool>(),
+                                          cyclesClearingConf.at("five_nodes_interval_sec").get<uint32_t>(),
+                                          cyclesClearingConf.at("six_nodes_enabled").get<bool>(),
+                                          cyclesClearingConf.at("six_nodes_interval_sec").get<uint32_t>(),
+                                          cyclesClearingConf.at("routing_tables_interval_days").get<uint16_t>());
+        }
+
         mTransactionsManager = make_unique<TransactionsManager>(
                                    mIOCtx,
                                    mContractorsManager.get(),
@@ -352,9 +366,11 @@ int Core::initTransactionsManager()
                                    mFeaturesManager.get(),
                                    mEventsInterfaceManager.get(),
                                    mTailManager.get(),
+                                   cyclesRunningParameters,
                                    *mLog,
                                    mSubsystemsController.get(),
-                                   mTrustLinesInfluenceController.get());
+                                   mTrustLinesInfluenceController.get(),
+                                   mSettings->hopsCount(&conf));
         info() << "Transactions handler is successfully initialised";
         return 0;
 
@@ -416,10 +432,14 @@ int Core::initProvidingHandler(
     auto providersConf = mSettings->providers(&conf);
     try {
         vector<Provider::Shared> providers;
+        uint32_t addressUpdatingPeriod = 0;
+        uint32_t cachedAddressTTLSeconds = 0;
         if (providersConf == nullptr) {
             info() << "There are no providers in config";
         } else {
-            for (const auto &providerConf : providersConf) {
+            addressUpdatingPeriod = providersConf.at("address_updating_period_sec").get<uint32_t>();
+            cachedAddressTTLSeconds = providersConf.at("cached_addresses_ttl_sec").get<uint32_t>();
+            for (const auto &providerConf : providersConf.at("providers")) {
                 vector<pair<string, string>> providerAddressesStr;
                 for (const auto &providerAddressConf : providerConf.at("addresses")) {
                     providerAddressesStr.emplace_back(
@@ -437,6 +457,8 @@ int Core::initProvidingHandler(
 
         mProvidingHandler = make_unique<ProvidingHandler>(
                                 providers,
+                                addressUpdatingPeriod,
+                                cachedAddressTTLSeconds,
                                 mIOCtx,
                                 mContractorsManager->selfContractor(),
                                 *mLog);

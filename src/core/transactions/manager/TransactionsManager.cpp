@@ -15,9 +15,11 @@ TransactionsManager::TransactionsManager(
     FeaturesManager *featuresManager,
     EventsInterfaceManager *eventsInterfaceManager,
     TailManager *tailManager,
+    CyclesRunningParameters cyclesRunningParameters,
     Logger &logger,
     SubsystemsController *subsystemsController,
-    TrustLinesInfluenceController *trustLinesInfluenceController) :
+    TrustLinesInfluenceController *trustLinesInfluenceController,
+    uint8_t hops_count) :
 
     mIOCtx(IOCtx),
     mContractorsManager(contractorsManager),
@@ -32,7 +34,9 @@ TransactionsManager::TransactionsManager(
     mLog(logger),
     mSubsystemsController(subsystemsController),
     mTrustLinesInfluenceController(trustLinesInfluenceController),
+    mHopsCnt(hops_count),
     isPaymentTransactionsAllowedDueToObserving(true),
+    mCyclesRunningParameters(cyclesRunningParameters),
 
     mScheduler(
         new TransactionsScheduler(
@@ -46,6 +50,7 @@ TransactionsManager::TransactionsManager(
             mSubsystemsController,
             mIOCtx,
             mEquivalentsSubsystemsRouter->equivalents(),
+            cyclesRunningParameters,
             mLog))
 {
     subscribeForCommandResult(
@@ -61,7 +66,7 @@ TransactionsManager::TransactionsManager(
     subscribeForTryCloseNextCycleSignal(
         mScheduler->cycleCloserTransactionWasFinishedSignal);
     subscribeForGatewayNotificationSignal(
-        mEquivalentsSubsystemsRouter->gatewayNotificationSignal);
+        mEquivalentsCyclesSubsystemsRouter->gatewayNotificationSignal);
 
     try {
         loadTransactionsFromStorage();
@@ -266,6 +271,11 @@ void TransactionsManager::processCommand(
             static_pointer_cast<RegenerateChannelCryptoKeyCommand>(
                 command));
 
+    } else if (command->identifier() == RemoveChannelCommand::identifier()) {
+        launchRemoveChannelTransaction(
+            static_pointer_cast<RemoveChannelCommand>(
+                command));
+
     } else if (command->identifier() == InitTrustLineCommand::identifier()) {
         launchInitTrustLineTransaction(
             static_pointer_cast<InitTrustLineCommand>(
@@ -359,6 +369,11 @@ void TransactionsManager::processCommand(
     } else if (command->identifier() == GetTrustLineByIDCommand::identifier()) {
         launchGetTrustLineByIDTransaction(
             static_pointer_cast<GetTrustLineByIDCommand>(
+                command));
+
+    } else if(command->identifier() == GetAllTrustLineCommand::identifier()) {
+        launchGetAllTrustLineTransaction(
+            static_pointer_cast<GetAllTrustLineCommand>(
                 command));
 
     } else if (command->identifier() == EquivalentListCommand::identifier()) {
@@ -1010,7 +1025,8 @@ void TransactionsManager::launchInitiateMaxFlowCalculatingTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter,
                 mTailManager,
-                mLog),
+                mLog,
+                mHopsCnt),
             true,
             true,
             true);
@@ -1043,7 +1059,8 @@ void TransactionsManager::launchMaxFlowCalculationFullyTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter,
                 mTailManager,
-                mLog),
+                mLog,
+                mHopsCnt),
             true,
             true,
             true);
@@ -1221,6 +1238,8 @@ void TransactionsManager::launchCoordinatorPaymentTransaction(
             transaction->mBuildCycleFourNodesSignal);
         subscribeForTrustLineActionSignal(
             transaction->trustLineActionSignal);
+        subscribeForKeysSharingSignal(
+            transaction->publicKeysSharingSignal);
         subscribeForObserving(
             transaction);
         prepareAndSchedule(transaction, true, false, true);
@@ -1265,6 +1284,8 @@ void TransactionsManager::launchReceiverPaymentTransaction(
             transaction->mBuildCycleFourNodesSignal);
         subscribeForTrustLineActionSignal(
             transaction->trustLineActionSignal);
+        subscribeForKeysSharingSignal(
+            transaction->publicKeysSharingSignal);
         subscribeForObserving(
             transaction);
         prepareAndSchedule(transaction, false, false, true);
@@ -1308,6 +1329,8 @@ void TransactionsManager::launchIntermediateNodePaymentTransaction(
             transaction->mBuildCycleFourNodesSignal);
         subscribeForTrustLineActionSignal(
             transaction->trustLineActionSignal);
+        subscribeForKeysSharingSignal(
+            transaction->publicKeysSharingSignal);
         subscribeForObserving(
             transaction);
         prepareAndSchedule(transaction, false, false, true);
@@ -2068,6 +2091,30 @@ void TransactionsManager::launchGetEquivalentListTransaction(
         false);
 }
 
+
+void TransactionsManager::launchGetAllTrustLineTransaction(
+    GetAllTrustLineCommand::Shared command)
+{
+
+    try {
+
+        prepareAndSchedule(
+            make_shared<GetAllTrustLineListTransaction>(
+                command,
+                mContractorsManager,
+                mEquivalentsSubsystemsRouter,
+                mLog),
+            true,
+            false,
+            false
+        );
+
+    } catch(ConflictError &e) {
+        throw ConflictError(e.message());
+    }
+}
+
+
 void TransactionsManager::launchPaymentTransactionByCommandUUIDTransaction(
     PaymentTransactionByCommandUUIDCommand::Shared command)
 {
@@ -2138,7 +2185,8 @@ void TransactionsManager::launchFindPathByMaxFlowTransaction(
                 mResourcesManager,
                 mEquivalentsSubsystemsRouter,
                 mTailManager,
-                mLog),
+                mLog,
+                this->mHopsCnt),
             true,
             true,
             false);
@@ -2373,7 +2421,7 @@ void TransactionsManager::subscribeForProcessingPongMessage(
 }
 
 void TransactionsManager::subscribeForGatewayNotificationSignal(
-    EquivalentsSubsystemsRouter::GatewayNotificationSignal &signal)
+    EquivalentsCyclesSubsystemsRouter::GatewayNotificationSignal &signal)
 {
     signal.connect(
         boost::bind(
@@ -2480,7 +2528,8 @@ void TransactionsManager::onCommandResultReady(
                 result->identifier() != EquivalentListCommand::identifier() and
                 result->identifier() != GetTrustLinesCommand::identifier() and
                 result->identifier() != GetTrustLineByAddressCommand::identifier() and
-                result->identifier() != GetTrustLineByIDCommand::identifier()) {
+                result->identifier() != GetTrustLineByIDCommand::identifier() and
+                result->identifier() != GetAllTrustLineCommand::identifier()) {
             info() << "Result for command " + result->identifier();
             info() << "CommandResultReady: " << message;
         }
@@ -2524,10 +2573,12 @@ void TransactionsManager::onBuildCycleThreeNodesTransaction(
     set<ContractorID> &contractorsIDs,
     const SerializedEquivalent equivalent)
 {
-    for (const auto &contractorID : contractorsIDs) {
-        launchThreeNodesCyclesInitTransaction(
-            contractorID,
-            equivalent);
+    if (mCyclesRunningParameters.mCyclesThreeNodesEnabled) {
+        for (const auto &contractorID : contractorsIDs) {
+            launchThreeNodesCyclesInitTransaction(
+                contractorID,
+                equivalent);
+        }
     }
 }
 
@@ -2535,10 +2586,12 @@ void TransactionsManager::onBuildCycleFourNodesTransaction(
     set<ContractorID> &contractorsIDs,
     const SerializedEquivalent equivalent)
 {
-    for (const auto &contractorID : contractorsIDs) {
-        launchFourNodesCyclesInitTransaction(
-            contractorID,
-            equivalent);
+    if (mCyclesRunningParameters.mCyclesFourNodesEnabled) {
+        for (const auto &contractorID : contractorsIDs) {
+            launchFourNodesCyclesInitTransaction(
+                contractorID,
+                equivalent);
+        }
     }
 }
 
@@ -2653,6 +2706,11 @@ void TransactionsManager::onAuditSlot(
     ContractorID contractorID,
     const SerializedEquivalent equivalent)
 {
+    if (mScheduler->checkAuditTransactionPresence(equivalent,contractorID)) {
+        info() << "Audit with contractor " << contractorID << " in equivalent " << equivalent
+               << " will not started because another one";
+        return;
+    }
     try {
         auto trustLinesManager = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent);
         auto transaction = make_shared<AuditSourceTransaction>(

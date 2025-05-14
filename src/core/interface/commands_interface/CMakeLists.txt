@@ -22,6 +22,8 @@ add_library(interface__commands
     commands/trust_line_channels/SetChannelContractorCryptoKeyCommand.cpp
     commands/trust_line_channels/RegenerateChannelCryptoKeyCommand.h
     commands/trust_line_channels/RegenerateChannelCryptoKeyCommand.cpp
+    commands/trust_line_channels/RemoveChannelCommand.h
+    commands/trust_line_channels/RemoveChannelCommand.cpp
     commands/trust_lines/InitTrustLineCommand.h
     commands/trust_lines/InitTrustLineCommand.cpp
     commands/trust_lines/SetOutgoingTrustLineCommand.h
@@ -62,6 +64,8 @@ add_library(interface__commands
     commands/trust_lines_list/GetTrustLineByIDCommand.cpp
     commands/trust_lines_list/EquivalentListCommand.h
     commands/trust_lines_list/EquivalentListCommand.cpp
+	commands/trust_lines_list/GetAllTrustLineCommand.h
+	commands/trust_lines_list/GetAllTrustLineCommand.cpp
     commands/subsystems_controller/SubsystemsInfluenceCommand.h
     commands/subsystems_controller/SubsystemsInfluenceCommand.cpp
     commands/subsystems_controller/TrustLinesInfluenceCommand.h

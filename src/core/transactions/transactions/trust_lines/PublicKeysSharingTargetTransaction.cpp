@@ -92,6 +92,8 @@ TransactionResult::SharedConst PublicKeysSharingTargetTransaction::runPublicKeyR
         throw e;
     }
 
+    mTrustLines->setTrustLineState(mContractorID, TrustLine::KeysSharing);
+
     mStep = NextKeyProcessing;
     return runProcessKey(ioTransaction);
 }
@@ -184,7 +186,7 @@ TransactionResult::SharedConst PublicKeysSharingTargetTransaction::runProcessKey
     }
 
     try {
-        if (keyChain.allContractorKeysPresent(ioTransaction, mContractorKeysCount)) {
+        if (keyChain.allContractorKeysReceive(ioTransaction, mCurrentKeysSetSequenceNumber, mContractorKeysCount)) {
             info() << "All keys received";
             // todo maybe don't save TL state in storage only in memory (don't use ioTransaction and try catch)
             mTrustLines->setTrustLineState(

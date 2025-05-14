@@ -37,10 +37,15 @@ PathsManager::buildPaths(BaseAddress::Shared contractorAddress, ContractorID con
 {
     info() << "Build paths to " << contractorAddress->fullAddress() << " id " << contractorID;
     auto startTime = utc_now();
-    mTopologyTrustLinesManager->makeFullyUsedTLsFromGatewaysToAllNodesExceptOne(contractorID);
+    // todo : this is under comment, becouse we don't know all gateways which can be come in topology
+    //  from other nodes (gateways)
+//    mTopologyTrustLinesManager->makeFullyUsedTLsFromGatewaysToAllNodesExceptOne(
+//        contractorID);
     mContractorID = contractorID;
-    mPathCollection = make_shared<PathsCollection>(contractorAddress);
-    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(TopologyTrustLinesManager::kCurrentNodeID);
+    mPathCollection = make_shared<PathsCollection>(
+                          contractorAddress);
+    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
+                                TopologyTrustLinesManager::kCurrentNodeID);
     if (trustLinePtrsSet.empty()) {
         mTopologyTrustLinesManager->resetAllUsedAmounts();
         return;
@@ -63,7 +68,8 @@ PathsManager::buildPaths(BaseAddress::Shared contractorAddress, ContractorID con
 void
 PathsManager::buildPathsOnOneLevel()
 {
-    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(TopologyTrustLinesManager::kCurrentNodeID);
+    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
+                                TopologyTrustLinesManager::kCurrentNodeID);
     auto itTrustLinePtr = trustLinePtrsSet.begin();
     while (itTrustLinePtr != trustLinePtrsSet.end()) {
         auto trustLine = (*itTrustLinePtr)->topologyTrustLine();
@@ -87,7 +93,8 @@ PathsManager::buildPathsOnOneLevel()
 void
 PathsManager::buildPathsOnSecondLevel()
 {
-    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(TopologyTrustLinesManager::kCurrentNodeID);
+    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
+                                TopologyTrustLinesManager::kCurrentNodeID);
     auto gateways = mTrustLinesManager->gateways();
     while (!gateways.empty()) {
         auto itGateway = gateways.begin();
@@ -193,7 +200,8 @@ PathsManager::reBuildPaths(BaseAddress::Shared contractorAddress, const vector<B
     }
     mPathCollection = make_shared<PathsCollection>(contractorAddress);
 
-    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(TopologyTrustLinesManager::kCurrentNodeID);
+    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
+                                TopologyTrustLinesManager::kCurrentNodeID);
     if (trustLinePtrsSet.empty()) {
         mTopologyTrustLinesManager->resetAllUsedAmounts();
         return;
@@ -215,8 +223,9 @@ TrustLineAmount
 PathsManager::reBuildPathsOnOneLevel()
 {
     TrustLineAmount result = 0;
-    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(TopologyTrustLinesManager::kCurrentNodeID);
-    while (true) {
+    auto trustLinePtrsSet = mTopologyTrustLinesManager->trustLinePtrsSet(
+                                TopologyTrustLinesManager::kCurrentNodeID);
+    while(true) {
         TrustLineAmount currentFlow = 0;
         for (auto& trustLinePtr : trustLinePtrsSet) {
             auto trustLine = trustLinePtr->topologyTrustLine();

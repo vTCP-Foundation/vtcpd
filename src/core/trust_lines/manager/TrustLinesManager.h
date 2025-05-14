@@ -265,11 +265,17 @@ public:
     ConstSharedTrustLineAmount outgoingTrustAmountConsideringReservations(
         ContractorID contractorID) const;
 
+    ConstSharedTrustLineAmount outgoingTrustAmountInAuditPendingStateConsideringReservations(
+        ContractorID contractorID) const;
+
     /**
      * @returns incoming trust amount with total reserved amount EXCLUDED.
      * @throws NotFoundError in case if no trust line from this contractor is present.
      */
     ConstSharedTrustLineAmount incomingTrustAmountConsideringReservations(
+        ContractorID contractorID) const;
+
+    ConstSharedTrustLineAmount incomingTrustAmountInAuditPendingStateConsideringReservations(
         ContractorID contractorID) const;
 
     //ToDo: comment this method
@@ -289,11 +295,16 @@ public:
      */
     ConstSharedTrustLineAmount totalOutgoingAmount() const;
 
+    ConstSharedTrustLineAmount totalPossibleOutgoingAmountConsiderToAuditPendingTLs() const;
+
+    ConstSharedTrustLineAmount totalPossibleOutgoingAmountAll() const;
+
     /**
      * @returns total summary of all incoming possibilities of the node.
      */
-    ConstSharedTrustLineAmount totalIncomingAmount()
-    const;
+    ConstSharedTrustLineAmount totalIncomingAmount() const;
+
+    ConstSharedTrustLineAmount totalPossibleIncomingAmountConsiderToAuditPendingTLs() const;
 
     // get all reservations (all transactions) to requested contractor
     vector<AmountReservation::ConstShared> reservationsToContractor(

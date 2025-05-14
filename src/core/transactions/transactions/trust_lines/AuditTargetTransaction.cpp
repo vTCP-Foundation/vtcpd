@@ -72,10 +72,12 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
                 mAuditNumber = mTrustLines->auditNumber(mContractorID) + 1;
                 info() << "Previous audit was successfully cancelled";
             } catch (ValueError &e) {
-                warning() << "Attempt to remove previous audit from the node " << mContractorID << " failed. "
-                          << e.what();
-                return sendAuditErrorConfirmation(
-                           ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+                info() << "Attempt to remove previous audit from the node " << mContractorID << " failed. "
+                       << e.what();
+                mTrustLines->setTrustLineState(
+                    mContractorID,
+                    TrustLine::Active);
+                info() << "Previous audit was suspended and now successfully cancelled";
             } catch (IOError &e) {
                 warning() << "Attempt to remove previous audit from the node " << mContractorID << " failed. "
                           << "IO transaction can't be completed. "
@@ -86,6 +88,12 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
                 throw e;
             }
         }
+    }
+
+    if (mTrustLines->trustLineState(mContractorID) == TrustLine::KeysSharing) {
+        info() << "Keys sharing transaction in pending. Audit cancelled.";
+        return sendAuditErrorConfirmation(
+                   ConfirmationMessage::KeysSharingTxPresent);
     }
 
     if (mTrustLines->trustLineState(mContractorID) != TrustLine::Active and
@@ -120,6 +128,22 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
                    ConfirmationMessage::Audit_IncorrectNumber);
     }
 
+    if (mTrustLines->isReservationsPresentOnTrustLine(mContractorID)) {
+        warning() << "There are some reservations on TL. Audit will be suspended";
+        auto incomingReservations = mTrustLines->reservationsFromContractor(mContractorID);
+        for (auto &incomingReservation : incomingReservations) {
+            info() << "Incoming reservation " << incomingReservation->transactionUUID()
+                   << " " << incomingReservation->amount();
+        }
+        auto outgoingReservations = mTrustLines->reservationsToContractor(mContractorID);
+        for (auto &outgoingReservation : outgoingReservations) {
+            info() << "Outgoing reservation " << outgoingReservation->transactionUUID()
+                   << " " << outgoingReservation->amount();
+        }
+        return sendAuditErrorConfirmation(
+                   ConfirmationMessage::ReservationsPresentOnTrustLine);
+    }
+
     // Trust line must be created (or updated) in the internal storage.
     // Also, history record must be written about this operation.
     // Both writes must be done atomically, so the IO transaction is used.
@@ -129,20 +153,26 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
 
     if (mAuditNumber - mMessage->auditNumber() == 1) {
         info() << "Contractor send current audit " << mMessage->auditNumber();
-        mOwnSignatureAndKeyNumber = keyChain.getCurrentAuditSignatureAndKeyNumber(ioTransaction);
-        // Sending confirmation back.
-        sendMessageWithTemporaryCaching<AuditResponseMessage>(
-            mContractorID,
-            Message::TrustLines_Audit,
-            kWaitMillisecondsForResponse / 1000 * kMaxCountSendingAttempts,
-            mEquivalent,
-            mContractorsManager->contractor(mContractorID),
-            currentTransactionUUID(),
-            mOwnSignatureAndKeyNumber.second,
-            mOwnSignatureAndKeyNumber.first);
+        if (!keyChain.isActualAuditFull(ioTransaction)) {
+            info() << "Current audit was cancelled";
+            keyChain.removeCancelledOwnAuditPart(ioTransaction);
+            info() << "Cancelled audit removed. Continue.";
+        } else {
+            mOwnSignatureAndKeyNumber = keyChain.getCurrentAuditSignatureAndKeyNumber(ioTransaction);
+            // Sending confirmation back.
+            sendMessageWithTemporaryCaching<AuditResponseMessage>(
+                mContractorID,
+                Message::TrustLines_Audit,
+                kWaitMillisecondsForResponse / 1000 * kMaxCountSendingAttempts,
+                mEquivalent,
+                mContractorsManager->contractor(mContractorID),
+                currentTransactionUUID(),
+                mOwnSignatureAndKeyNumber.second,
+                mOwnSignatureAndKeyNumber.first);
 
-        info() << "Send audit again message signed by key " << mOwnSignatureAndKeyNumber.second;
-        return resultDone();
+            info() << "Send audit again message signed by key " << mOwnSignatureAndKeyNumber.second;
+            return resultDone();
+        }
     }
 
     mPreviousIncomingAmount = mTrustLines->incomingTrustAmount(mContractorID);

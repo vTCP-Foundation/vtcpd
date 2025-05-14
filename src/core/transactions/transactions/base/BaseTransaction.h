@@ -102,6 +102,7 @@ public:
         TrustLineOneByAddress = 501,
         TrustLineOneByID = 502,
         EquivalentsList = 503,
+		AllEquivalentsTrustLinesList = 504,
 
         // TotalBalances
         TotalBalancesTransactionType = 600,
@@ -127,6 +128,7 @@ public:
         SetChannelContractorAddresses = 907,
         SetChannelContractorCryptoKey = 908,
         RegenerateChannelCryptoKey = 909,
+        RemoveChannel = 910,
 
         // Transactions
         TransactionByCommandUUIDType = 1000,

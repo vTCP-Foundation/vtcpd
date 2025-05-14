@@ -19,10 +19,12 @@ RemoveOutdatedCryptoDataTransaction::RemoveOutdatedCryptoDataTransaction(
 TransactionResult::SharedConst RemoveOutdatedCryptoDataTransaction::run()
 {
     info() << "run";
+    SerializedEquivalent tmpEq = 0;
     for (const auto &equivalent : mEquivalentsSubsystemsRouter->equivalents()) {
         auto ioTransaction = mStorageHandler->beginTransaction();
         try {
             info() << "Equivalent " << equivalent;
+            tmpEq = equivalent;
             auto trustLinesManager = mEquivalentsSubsystemsRouter->trustLinesManager(
                                          equivalent);
             for (const auto &contractorIDAndTrustLine : trustLinesManager->trustLines()) {
@@ -48,6 +50,31 @@ TransactionResult::SharedConst RemoveOutdatedCryptoDataTransaction::run()
             warning() << "Can't remove outdated crypto data. Details: " << e.what();
         }
     }
+
+    if (tmpEq != 0) {
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        auto keyChain = mKeysStore->keychain(tmpEq);
+        try {
+            keyChain.removeOutdatedCryptoPaymentsData(ioTransaction);
+            info() << "Outdated payment crypto data successfully deleted";
+        } catch (IOError &e) {
+            ioTransaction->rollback();
+            warning() << "Can't remove outdated crypto payments data. Details: " << e.what();
+        }
+    }
+
+    if (tmpEq != 0) {
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        auto keyChain = mKeysStore->keychain(tmpEq);
+        try {
+            keyChain.removeOutdatedPaymentsKeysData(ioTransaction);
+            info() << "Outdated payment keys data successfully deleted";
+        } catch (IOError &e) {
+            ioTransaction->rollback();
+            warning() << "Can't remove outdated payments key data. Details: " << e.what();
+        }
+    }
+
     if (mCommand->vacuum()) {
         mStorageHandler->vacuum();
     }

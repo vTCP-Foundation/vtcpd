@@ -60,8 +60,18 @@ lamport::Signature::Shared Keystore::signPaymentTransaction(IOTransaction::Share
         BytesShared dataForSign,
         size_t dataForSignBytesCount)
 {
-    auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey(transactionUUID);
-    return make_shared<Signature>(dataForSign.get(), dataForSignBytesCount, privateKey);
+    try {
+        auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey(
+                              transactionUUID);
+        return make_shared<Signature>(
+                   dataForSign.get(),
+                   dataForSignBytesCount,
+                   privateKey);
+    } catch (NotFoundError &e) {
+        warning() << "Can't get key for transaction " << transactionUUID.stringUUID()
+                  << ". Details: " << e.what();
+        return nullptr;
+    }
 }
 
 LoggerStream Keystore::info() const
@@ -169,11 +179,11 @@ bool TrustLineKeychain::ownKeysPresent(IOTransaction::Shared ioTransaction)
     return ioTransaction->ownKeysHandler()->availableKeysCnt(mTrustLineID) > 0;
 }
 
-bool TrustLineKeychain::allContractorKeysPresent(IOTransaction::Shared ioTransaction,
-        KeysCount contractorKeysCount)
+bool TrustLineKeychain::allContractorKeysPresent(
+    IOTransaction::Shared ioTransaction,
+    KeysCount contractorKeysCount)
 {
-    return ioTransaction->contractorKeysHandler()->availableKeysCnt(mTrustLineID) ==
-           contractorKeysCount;
+    return ioTransaction->contractorKeysHandler()->availableKeysCnt(mTrustLineID) == contractorKeysCount;
 }
 
 bool TrustLineKeychain::ownKeysCriticalCount(IOTransaction::Shared ioTransaction)
@@ -183,13 +193,12 @@ bool TrustLineKeychain::ownKeysCriticalCount(IOTransaction::Shared ioTransaction
     return ioTransaction->ownKeysHandler()->availableKeysCnt(mTrustLineID) <= kMinKeysSetSize;
 }
 
-bool TrustLineKeychain::isInitialAuditCondition(IOTransaction::Shared ioTransaction)
+bool TrustLineKeychain::isInitialAuditCondition(
+    IOTransaction::Shared ioTransaction)
 {
     auto ownValidKeysCount = ioTransaction->ownKeysHandler()->availableKeysCnt(mTrustLineID);
-    auto contractorKeysCount =
-        ioTransaction->contractorKeysHandler()->availableKeysCnt(mTrustLineID);
-    return ownValidKeysCount == kDefaultKeysSetSize - 1 and
-           contractorKeysCount == kDefaultKeysSetSize - 1;
+    auto contractorKeysCount = ioTransaction->contractorKeysHandler()->availableKeysCnt(mTrustLineID);
+    return ownValidKeysCount == kDefaultKeysSetSize -1 and contractorKeysCount == kDefaultKeysSetSize - 1;
 }
 
 pair<lamport::Signature::Shared, KeyNumber> TrustLineKeychain::sign(
@@ -391,7 +400,8 @@ void TrustLineKeychain::saveContractorAuditPart(IOTransaction::Shared ioTransact
 bool TrustLineKeychain::isAuditWasCancelled(IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber)
 {
-    auto actualAudit = ioTransaction->auditHandler()->getActualAuditFull(mTrustLineID);
+    auto actualAudit = ioTransaction->auditHandler()->getActualAuditFull(
+                           mTrustLineID);
     if (actualAudit->auditNumber() > auditNumber) {
         return true;
     }
@@ -649,10 +659,10 @@ void TrustLineKeychain::removeOutdatedCryptoData(IOTransaction::Shared ioTransac
     auto currentContractorKeysSetSequenceNumber =
         ioTransaction->contractorKeysHandler()->maxKeySetSequenceNumber(mTrustLineID);
 
-    auto outgoingReceipts =
-        ioTransaction->outgoingPaymentReceiptHandler()->receiptsLessEqualThanAuditNumber(
-            mTrustLineID, auditNumber);
-    for (const auto& outgoingReceipt : outgoingReceipts) {
+    auto outgoingReceipts = ioTransaction->outgoingPaymentReceiptHandler()->receiptsLessEqualThanAuditNumber(
+                                mTrustLineID,
+                                auditNumber);
+    for (const auto &outgoingReceipt : outgoingReceipts) {
         ioTransaction->outgoingPaymentReceiptHandler()->deleteRecords(
             outgoingReceipt->transactionUUID());
         if (!isReceiptsPresent(ioTransaction, outgoingReceipt->transactionUUID())) {
@@ -664,12 +674,13 @@ void TrustLineKeychain::removeOutdatedCryptoData(IOTransaction::Shared ioTransac
                 outgoingReceipt->transactionUUID());
         }
         ioTransaction->ownKeysHandler()->deleteKeyByHashExceptSequenceNumber(
-            outgoingReceipt->keyHash(), currentOwnKeysSetSequenceNumber);
+            outgoingReceipt->keyHash(),
+            currentOwnKeysSetSequenceNumber);
     }
-    auto incomingReceipts =
-        ioTransaction->incomingPaymentReceiptHandler()->receiptsLessEqualThanAuditNumber(
-            mTrustLineID, auditNumber);
-    for (const auto& incomingReceipt : incomingReceipts) {
+    auto incomingReceipts = ioTransaction->incomingPaymentReceiptHandler()->receiptsLessEqualThanAuditNumber(
+                                mTrustLineID,
+                                auditNumber);
+    for (const auto &incomingReceipt : incomingReceipts) {
         ioTransaction->incomingPaymentReceiptHandler()->deleteRecords(
             incomingReceipt->transactionUUID());
         if (!isReceiptsPresent(ioTransaction, incomingReceipt->transactionUUID())) {
@@ -681,20 +692,28 @@ void TrustLineKeychain::removeOutdatedCryptoData(IOTransaction::Shared ioTransac
                 incomingReceipt->transactionUUID());
         }
         ioTransaction->contractorKeysHandler()->deleteKeyByHashExceptSequenceNumber(
-            incomingReceipt->keyHash(), currentContractorKeysSetSequenceNumber);
+            incomingReceipt->keyHash(),
+            currentContractorKeysSetSequenceNumber);
     }
     auto audits = ioTransaction->auditHandler()->auditsLessEqualThanAuditNumber(
-                      mTrustLineID, auditNumber);
-    for (const auto& audit : audits) {
-        ioTransaction->auditHandler()->deleteAuditByNumber(mTrustLineID, audit->auditNumber());
+                      mTrustLineID,
+                      auditNumber);
+    for (const auto &audit : audits) {
+        ioTransaction->auditHandler()->deleteAuditByNumber(
+            mTrustLineID,
+            audit->auditNumber());
         ioTransaction->ownKeysHandler()->deleteKeyByHashExceptSequenceNumber(
-            audit->ownKeyHash(), currentOwnKeysSetSequenceNumber);
+            audit->ownKeyHash(),
+            currentOwnKeysSetSequenceNumber);
         ioTransaction->contractorKeysHandler()->deleteKeyByHashExceptSequenceNumber(
-            audit->contractorKeyHash(), currentContractorKeysSetSequenceNumber);
+            audit->contractorKeyHash(),
+            currentContractorKeysSetSequenceNumber);
     }
 
     removeOutdatedKeys(
-        ioTransaction, currentOwnKeysSetSequenceNumber, currentContractorKeysSetSequenceNumber);
+        ioTransaction,
+        currentOwnKeysSetSequenceNumber,
+        currentContractorKeysSetSequenceNumber);
 }
 
 bool TrustLineKeychain::isReceiptsPresent(IOTransaction::Shared ioTransaction,

@@ -196,6 +196,11 @@ protected:
 private:
     // time waiting (in milliseconds) for closing of conflicted transaction
     const uint16_t kWaitingForReleasingAmountMSec = 50;
+
+    static const uint16_t kMaxCountParticipantKeysResending = 3;
+
+private:
+    uint8_t mCountParticipantKeysResending;
 };
 
 #endif // VTCPD_CYCLECLOSERINITIATORTRANSACTION_H

@@ -81,7 +81,7 @@ noexcept
 void ConfirmationNotStronglyRequiredMessagesQueue::resetInternalTimeout()
 noexcept
 {
-    mNextTimeoutSeconds = 3;
+    mNextTimeoutSeconds = 4;
     mCountResendingAttempts = 0;
 }
 

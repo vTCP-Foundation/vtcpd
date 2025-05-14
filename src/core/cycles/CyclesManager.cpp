@@ -4,12 +4,14 @@ CyclesManager::CyclesManager(
     const SerializedEquivalent equivalent,
     TransactionsScheduler *transactionsScheduler,
     as::io_context &ioCtx,
+    CyclesRunningParameters cyclesRunningParameters,
     Logger &logger,
     SubsystemsController *subsystemsController) :
 
     mEquivalent(equivalent),
     mTransactionScheduler(transactionsScheduler),
     mIOCtx(ioCtx),
+    mCyclesRunningParameters(cyclesRunningParameters),
     mLog(logger),
     mSubsystemsController(subsystemsController),
     mIsCycleInProcess(false)
@@ -21,8 +23,7 @@ CyclesManager::CyclesManager(
 #ifdef TESTS
     timeStarted = kSignalStartTimeSecondsTests;
 #endif
-    mFiveNodesCycleTimer = make_unique<as::steady_timer>(
-                               mIOCtx);
+    mFiveNodesCycleTimer = make_unique<as::steady_timer>(mIOCtx);
     mFiveNodesCycleTimer->expires_after(
         std::chrono::seconds(
             timeStarted));
@@ -36,8 +37,7 @@ CyclesManager::CyclesManager(
 #ifdef TESTS
     timeStarted = kSignalStartTimeSecondsTests;
 #endif
-    mSixNodesCycleTimer = make_unique<as::steady_timer>(
-                              mIOCtx);
+    mSixNodesCycleTimer = make_unique<as::steady_timer>(mIOCtx);
     mSixNodesCycleTimer->expires_after(
         std::chrono::seconds(
             timeStarted));
@@ -170,11 +170,12 @@ void CyclesManager::incrementCurrentCycleClosingState()
 void CyclesManager::runSignalFiveNodes(
     const boost::system::error_code &err)
 {
+    debug() << "runSignalFiveNodes";
     if (err) {
         warning() << err.message();
     }
     mFiveNodesCycleTimer->cancel();
-    auto timeRepeated = kFiveNodesSignalRepeatTimeSeconds;
+    auto timeRepeated = mCyclesRunningParameters.mCyclesFiveNodesIntervalSec;
 #ifdef TESTS
     timeRepeated = kSignalRepeatTimeSecondsTests;
 #endif
@@ -192,11 +193,12 @@ void CyclesManager::runSignalFiveNodes(
 void CyclesManager::runSignalSixNodes(
     const boost::system::error_code &err)
 {
+    debug() << "runSignalSixNodes";
     if (err) {
         warning() << err.message();
     }
     mSixNodesCycleTimer->cancel();
-    auto timeRepeated = kSixNodesSignalRepeatTimeSeconds;
+    auto timeRepeated = mCyclesRunningParameters.mCyclesSixNodesIntervalSec;
 #ifdef TESTS
     timeRepeated = kSignalRepeatTimeSecondsTests;
 #endif

@@ -2,16 +2,22 @@
 
 ProvidingHandler::ProvidingHandler(
     vector<Provider::Shared> &providers,
+    uint32_t updatingAddressPeriodSeconds,
+    uint32_t cachedAddressTTLSeconds,
     IOCtx &ioCtx,
     Contractor::Shared selfContractor,
     Logger &logger) :
     LoggerMixin(logger),
     mProviders(providers),
+    mUpdatingAddressPeriodSeconds(updatingAddressPeriodSeconds),
+    mCachedAddressTTLSeconds(cachedAddressTTLSeconds),
     mUpdatingAddressTimer(ioCtx),
     mCacheCleaningTimer(ioCtx),
     mSelfContractor(selfContractor)
 {
 #ifdef DEBUG_LOG_PROVIDING_HANDLER
+    info() << "updatingAddressPeriodSeconds " << updatingAddressPeriodSeconds;
+    info() << "cachedAddressTTLSeconds " << cachedAddressTTLSeconds;
     info() << "Providers:";
     for (const auto &provider : mProviders) {
         info() << provider->info();
@@ -43,9 +49,7 @@ ProvidingHandler::ProvidingHandler(
 void ProvidingHandler::updateAddressForProviders(
     const boost::system::error_code &errorCode)
 {
-#ifdef DEBUG_LOG_PROVIDING_HANDLER
     debug() << "updateAddressForProviders";
-#endif
     if (errorCode) {
         warning() << errorCode.message().c_str();
     }
@@ -58,7 +62,7 @@ void ProvidingHandler::updateAddressForProviders(
 
     mUpdatingAddressTimer.expires_after(
         std::chrono::seconds(
-            +kUpdatingAddressPeriodSeconds));
+            mUpdatingAddressPeriodSeconds));
     mUpdatingAddressTimer.async_wait(
         boost::bind(
             &ProvidingHandler::updateAddressForProviders,
@@ -95,7 +99,7 @@ void ProvidingHandler::setCachedIPv4AddressForGNS(
             gnsAddress->fullAddress(),
             ipv4Address));
     mTimesCache.emplace_back(
-        utc_now() + kResetCacheAddressDuration(),
+        utc_now() + pt::seconds(mCachedAddressTTLSeconds),
         gnsAddress->fullAddress());
 #ifdef DEBUG_LOG_PROVIDING_HANDLER
     debug() << "setCachedIPv4AddressForGNS " << gnsAddress->fullAddress() << " "
@@ -119,9 +123,7 @@ bool ProvidingHandler::isProvidersPresent() const
 
 void ProvidingHandler::rescheduleCleaning()
 {
-#ifdef DEBUG_LOG_PROVIDING_HANDLER
     debug() << "rescheduleCleaning";
-#endif
     if (mTimesCache.empty()) {
 #ifdef DEBUG_LOG_PROVIDING_HANDLER
         debug() << "There are no cached addresses";
@@ -140,9 +142,7 @@ void ProvidingHandler::rescheduleCleaning()
 
 void ProvidingHandler::clearCachedAddresses()
 {
-#ifdef DEBUG_LOG_PROVIDING_HANDLER
-    debug() << "clearCahedAddresses " << mCachedAddresses.size() << " " << mTimesCache.size();
-#endif
+    debug() << "clearCachedAddresses " << mCachedAddresses.size() << " " << mTimesCache.size();
     auto now = utc_now();
     auto it = mTimesCache.begin();
     while (it != mTimesCache.end()) {

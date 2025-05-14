@@ -20,7 +20,10 @@ add_library(transactions__channels
     SetChannelContractorCryptoKeyTransaction.h
     SetChannelContractorCryptoKeyTransaction.cpp
     RegenerateChannelCryptoKeyTransaction.h
-    RegenerateChannelCryptoKeyTransaction.cpp)
+    RegenerateChannelCryptoKeyTransaction.cpp
+
+    RemoveChannelTransaction.h
+    RemoveChannelTransaction.cpp)
 
 target_include_directories(transactions__channels
     PUBLIC

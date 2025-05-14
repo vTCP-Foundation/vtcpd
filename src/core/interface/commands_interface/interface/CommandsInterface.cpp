@@ -174,6 +174,11 @@ pair<bool, BaseUserCommand::Shared> CommandsParser::tryParseCommand(
                 uuid,
                 buffer);
 
+        } else if (identifier == RemoveChannelCommand::identifier()) {
+            command = new RemoveChannelCommand(
+                uuid,
+                buffer);
+
         } else if (identifier == InitTrustLineCommand::identifier()) {
             command = new InitTrustLineCommand(
                 uuid,
@@ -259,7 +264,13 @@ pair<bool, BaseUserCommand::Shared> CommandsParser::tryParseCommand(
                 uuid,
                 buffer);
 
-        } else if (identifier == GetTrustLineByAddressCommand::identifier()) {
+		}
+		else if(identifier == GetAllTrustLineCommand::identifier()) {
+			command = new GetAllTrustLineCommand(
+				uuid,
+				buffer);
+		}
+		else if (identifier == GetTrustLineByAddressCommand::identifier()) {
             command = new GetTrustLineByAddressCommand(
                 uuid,
                 buffer);

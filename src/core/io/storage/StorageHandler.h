@@ -5,9 +5,9 @@
 
 #include "../../logger/Logger.h"
 #include "../../common/exceptions/IOError.h"
-#include "../../../libs/sqlite3/sqlite3.h"
 #include "IOTransaction.h"
 
+#include "../../../libs/sqlite3/sqlite3.h"
 #include <boost/filesystem.hpp>
 #include <vector>
 

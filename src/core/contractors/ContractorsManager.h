@@ -80,6 +80,10 @@ public:
         ContractorID contractorID,
         vector<BaseAddress::Shared> newAddresses);
 
+    void removeContractor(
+        IOTransaction::Shared ioTransaction,
+        ContractorID contractorID);
+
 protected:
     const ContractorID nextFreeID(
         IOTransaction::Shared ioTransaction) const;

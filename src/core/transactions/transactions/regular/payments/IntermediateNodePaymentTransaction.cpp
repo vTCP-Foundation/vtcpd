@@ -156,10 +156,35 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runPreviousNe
 
     if (!mTrustLinesManager->trustLineIsActive(senderID)) {
         warning() << "Path is not valid: TL with previous node is not active. Rejected.";
+        if (mTrustLinesManager->trustLineState(senderID) == TrustLine::AuditPending ||
+                mTrustLinesManager->trustLineState(senderID) == TrustLine::KeysSharing) {
+            info() << "Due to audit pending";
+            return sendErrorMessageOnPreviousNodeRequest(
+                       kNeighbor,
+                       kReservation.first,
+                       ResponseMessage::RejectedDueAuditPending);
+        }
         return sendErrorMessageOnPreviousNodeRequest(
                    kNeighbor,
                    kReservation.first,
                    ResponseMessage::Rejected);
+    }
+
+    if (!mTrustLinesManager->trustLineOwnKeysPresent(senderID)) {
+        warning() << "There are no own keys. Rejected";
+        publicKeysSharingSignal(senderID, mEquivalent);
+        return sendErrorMessageOnPreviousNodeRequest(
+                   kNeighbor,
+                   kReservation.first,
+                   ResponseMessage::RejectedDueOwnKeysAbsence);
+    }
+
+    if (!mTrustLinesManager->trustLineContractorKeysPresent(senderID)) {
+        warning() << "There are no contractor keys. Rejected";
+        return sendErrorMessageOnPreviousNodeRequest(
+                   kNeighbor,
+                   kReservation.first,
+                   ResponseMessage::RejectedDueContractorKeysAbsence);
     }
 
     // update local reservations during amounts from coordinator
@@ -278,6 +303,12 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
 
     if (!mTrustLinesManager->trustLineIsActive(nextNodeID)) {
         warning() << "Path is not valid: TL with next node is not active. Rolled back.";
+        if (mTrustLinesManager->trustLineState(nextNodeID) == TrustLine::AuditPending ||
+                mTrustLinesManager->trustLineState(nextNodeID) == TrustLine::KeysSharing) {
+            info() << "Due to audit pending";
+            return sendErrorMessageOnCoordinatorRequest(
+                       ResponseMessage::RejectedDueAuditPending);
+        }
         return sendErrorMessageOnCoordinatorRequest(
                    ResponseMessage::Rejected);
     }
@@ -285,8 +316,15 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
     // todo maybe check in storage (keyChain)
     if (!mTrustLinesManager->trustLineOwnKeysPresent(nextNodeID)) {
         warning() << "There are no own keys on TL";
+        publicKeysSharingSignal(nextNodeID, mEquivalent);
         return sendErrorMessageOnCoordinatorRequest(
                    ResponseMessage::RejectedDueOwnKeysAbsence);
+    }
+
+    if (!mTrustLinesManager->trustLineContractorKeysPresent(nextNodeID)) {
+        warning() << "There are no contractor keys on TL";
+        return sendErrorMessageOnCoordinatorRequest(
+                   ResponseMessage::RejectedDueContractorKeysAbsence);
     }
 
     // Note: copy of shared pointer is required
@@ -369,7 +407,15 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runNextNeighb
     const auto kMessage = popNextMessage<IntermediateNodeReservationResponseMessage>();
     auto nextNodeAddress = kMessage->senderAddresses.at(0);
     info() << "Next node " << nextNodeAddress->fullAddress() << " sent response";
-    // todo : check sender node
+    // todo : check sender node in path
+
+    auto senderID = mContractorsManager->contractorIDByAddress(nextNodeAddress);
+    if (senderID == ContractorsManager::kNotFoundContractorID) {
+        warning() << "Sender node is not a neighbor";
+        return sendErrorMessageOnNextNodeResponse(
+                   ResponseMessage::Rejected);
+    }
+    info() << "Sender ID " << senderID;
 
 #ifdef TESTS
     mSubsystemsController->testForbidSendMessageToCoordinatorOnReservationStage(
@@ -398,9 +444,29 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runNextNeighb
                    ResponseMessage::Rejected);
     }
 
+    if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueAuditPending) {
+        warning() << "Neighbor node doesn't approved reservation request due to audit pending";
+        return sendErrorMessageOnNextNodeResponse(
+                   ResponseMessage::RejectedDueAuditPending);
+    }
+
+    if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueAuditPending) {
+        warning() << "Neighbor node doesn't approved reservation request due to audit pending";
+        return sendErrorMessageOnNextNodeResponse(
+                   ResponseMessage::RejectedDueAuditPending);
+    }
+
     if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueContractorKeysAbsence) {
         warning() << "Neighbor node doesn't approved reservation request due to contractor keys absence";
-        // todo maybe set mOwnKeysPresent into false and initiate KeysSharing TA
+        publicKeysSharingSignal(senderID, mEquivalent);
+        mTrustLinesManager->setIsOwnKeysPresent(senderID, false);
+        return sendErrorMessageOnNextNodeResponse(
+                   ResponseMessage::RejectedDueContractorKeysAbsence);
+    }
+
+    if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueOwnKeysAbsence) {
+        warning() << "Neighbor node doesn't approved reservation request due to own keys absence";
+        mTrustLinesManager->setIsContractorKeysPresent(senderID, false);
         return sendErrorMessageOnNextNodeResponse(
                    ResponseMessage::RejectedDueContractorKeysAbsence);
     }
@@ -722,22 +788,59 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
         return runFinalReservationsNeighborConfirmation();
     }
 
-    // todo : add Payments_TTLProlongationResponse checking
+    if (contextIsValid(Message::Payments_TTLProlongationResponse, false)) {
+        debug() << "Receive TTL prolongation message";
+        const auto kMessage = popNextMessage<TTLProlongationResponseMessage>();
+        if (kMessage->state() == TTLProlongationResponseMessage::Continue) {
+            info() << "Transactions is still alive. Continue waiting for messages";
+            if (utc_now() - mTimeStarted > kMaxTransactionDuration()) {
+                return reject("Transaction duration time has expired. Rolling back");
+            }
+            return resultWaitForResourceAndMessagesTypes(
+            {BaseResource::ObservingBlockNumber}, {
+                Message::Payments_TransactionPublicKeyHash,
+                Message::Payments_TTLProlongationResponse
+            },
+            maxNetworkDelay(1));
+        }
+        removeAllDataFromStorageConcerningTransaction();
+        return reject("Coordinator send TTL message with transaction finish state. Rolling Back");
+    }
 
-    if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
-        removeAllDataFromStorageConcerningTransaction();
-        sendErrorMessageOnFinalAmountsConfiguration();
-        return reject("Can't check observing actual block number. Rejected.");
+    // suspending process means that we already have block number resource
+    if (!mIsSuspendedOnFinalAmountsConfirmationStage) {
+        if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
+            removeAllDataFromStorageConcerningTransaction();
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Can't check observing actual block number. Rejected.");
+        }
+        auto blockNumberResource = popNextResource<BlockNumberRecourse>();
+        auto maximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
+        debug() << "maximal claiming block number on own side: " << maximalClaimingBlockNumber;
+        if (!checkMaxClaimingBlockNumber(maximalClaimingBlockNumber)) {
+            debug() << "Max claiming block number sending by coordinator is invalid: " << mMaximalClaimingBlockNumber;
+            removeAllDataFromStorageConcerningTransaction();
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Max claiming block number sending by coordinator is invalid. Rejected.");
+        }
+        mBlockNumberObtainingInProcess = false;
     }
-    auto blockNumberResource = popNextResource<BlockNumberRecourse>();
-    auto maximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
-    debug() << "maximal claiming block number on own side: " << maximalClaimingBlockNumber;
-    if (!checkMaxClaimingBlockNumber(maximalClaimingBlockNumber)) {
-        removeAllDataFromStorageConcerningTransaction();
-        sendErrorMessageOnFinalAmountsConfiguration();
-        return reject("Max claiming block number sending by coordinator is invalid. Rejected.");
+
+    for (auto const &reservation : mReservations) {
+        // if node have reservation on TL with keysSharing state it will suspend on some period
+        // waiting for keys sharing process finishing
+        if (mTrustLinesManager->trustLineState(reservation.first) == TrustLine::KeysSharing) {
+            info() << "reservation with " << reservation.first << " in KeysSharing state";
+            mIsSuspendedOnFinalAmountsConfirmationStage = true;
+            if (mCntSuspendingOnFinalAmountsConfirmationStage < kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage) {
+                mCntSuspendingOnFinalAmountsConfirmationStage++;
+                info() << "suspend " << mCntSuspendingOnFinalAmountsConfirmationStage << " time";
+                return resultAwakeAfterMilliseconds(maxNetworkDelay(2));
+            }
+            info() << "Suspending done max times. Continue";
+            break;
+        }
     }
-    mBlockNumberObtainingInProcess = false;
 
     auto ioTransaction = mStorageHandler->beginTransaction();
     mPublicKey = mKeysStore->generateAndSaveKeyPairForPaymentTransaction(
@@ -788,6 +891,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
                 // todo check if all reservations is outgoing
                 outgoingReservedAmount += pathIDAndReservation.second->amount();
             }
+            debug() << "Try to get serialized receipt";
             auto serializedOutgoingReceiptData = getSerializedReceipt(
                     mContractorsManager->idOnContractorSide(participantID),
                     participantID,

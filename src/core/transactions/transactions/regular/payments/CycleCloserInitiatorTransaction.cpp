@@ -27,7 +27,8 @@ CycleCloserInitiatorTransaction::CycleCloserInitiatorTransaction(
         keystore,
         log,
         subsystemsController),
-    mCyclesManager(cyclesManager)
+    mCyclesManager(cyclesManager),
+    mCountParticipantKeysResending(1)
 {
     mStep = Stages::Coordinator_Initialization;
     mPathStats = make_unique<PathStats>(path);
@@ -216,7 +217,7 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::propagateVotesLi
     mStep = Stages::Common_VotesChecking;
     return resultWaitForMessageTypes(
     {Message::Payments_ParticipantVote},
-    maxNetworkDelay(6));
+    maxNetworkDelay(4));
 }
 
 TransactionResult::SharedConst CycleCloserInitiatorTransaction::tryReserveNextIntermediateNodeAmount()
@@ -255,6 +256,14 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::askNeighborToRes
     // todo maybe check in storage (keyChain)
     if (!mTrustLinesManager->trustLineOwnKeysPresent(mNextNodeID)) {
         warning() << "There are no own keys on TL with contractor " << mNextNode->fullAddress();
+        mCyclesManager->addClosedTrustLine(
+            mContractorsManager->selfContractor()->mainAddress(),
+            mNextNode);
+        return resultDone();
+    }
+
+    if (!mTrustLinesManager->trustLineIsActive(mNextNodeID)) {
+        warning() << "Invalid TL state " << mTrustLinesManager->trustLineState(mNextNodeID);
         mCyclesManager->addClosedTrustLine(
             mContractorsManager->selfContractor()->mainAddress(),
             mNextNode);
@@ -696,6 +705,14 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runPreviousNeigh
         return resultDone();
     }
 
+    if (!mTrustLinesManager->trustLineIsActive(mPreviousNodeID)) {
+        warning() << "Invalid TL state " << mTrustLinesManager->trustLineState(mPreviousNodeID);
+        rollBack();
+        informIntermediateNodesAboutTransactionFinish(
+            mPathStats->currentIntermediateNodeAndPos().second);
+        return resultDone();
+    }
+
     const auto kIncomingAmounts = mTrustLinesManager->availableIncomingCycleAmounts(mPreviousNodeID);
     const auto kIncomingAmountWithReservations = kIncomingAmounts.first;
     const auto kIncomingAmountWithoutReservations = kIncomingAmounts.second;
@@ -1049,9 +1066,34 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runFinalReservat
 TransactionResult::SharedConst CycleCloserInitiatorTransaction::runVotesConsistencyCheckingStage()
 {
     debug() << "runVotesConsistencyCheckingStage";
-    if (!contextIsValid(Message::Payments_ParticipantVote)) {
-        removeAllDataFromStorageConcerningTransaction();
-        return reject("Coordinator didn't receive all messages with votes");
+    if (! contextIsValid(Message::Payments_ParticipantVote)) {
+        if (mCountParticipantKeysResending >= kMaxCountParticipantKeysResending) {
+            removeAllDataFromStorageConcerningTransaction();
+            return reject("Too many resending attempts");
+        }
+
+        info() << "Resend participants public keys " << mCountParticipantKeysResending << " times";
+        // resend message with all public keys to participants which don't send participant vote
+        for (const auto &paymentNodeIdAndAddress : mPaymentParticipants) {
+            if (paymentNodeIdAndAddress.first == kCoordinatorPaymentNodeID) {
+                continue;
+            }
+            if (mParticipantsSignatures.find(paymentNodeIdAndAddress.first) != mParticipantsSignatures.end()) {
+                continue;
+            }
+            info() << "Resend to " << paymentNodeIdAndAddress.second->mainAddress()->fullAddress();
+            sendMessage<ParticipantsPublicKeysMessage>(
+                paymentNodeIdAndAddress.second->mainAddress(),
+                mEquivalent,
+                mContractorsManager->ownAddresses(),
+                currentTransactionUUID(),
+                mParticipantsPublicKeys);
+        }
+        mCountParticipantKeysResending++;
+        return resultWaitForMessageTypes( {
+            Message::Payments_ParticipantVote,
+            Message::Payments_TTLProlongationRequest},
+        maxNetworkDelay(2));
     }
 
 #ifdef TESTS

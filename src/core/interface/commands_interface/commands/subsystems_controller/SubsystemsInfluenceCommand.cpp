@@ -57,23 +57,24 @@ SubsystemsInfluenceCommand::SubsystemsInfluenceCommand(
             commandBuffer.begin(),
             commandBuffer.end(),
             char_[check]);
-        parse(
-            commandBuffer.begin(),
-            commandBuffer.end(), (
-                +(int_[flagsAdd])
-                > (eol | (char_(kTokensSeparator)
-                          > addressLexeme<
-                          decltype(addressAddChar),
-                          decltype(addressAddNumber),
-                          decltype(addressTypeParse),
-                          decltype(addressAddToVector)>(
-                              1,
-                              addressAddChar,
-                              addressAddNumber,
-                              addressTypeParse,
-                              addressAddToVector)
-                          > -((digit [forbiddenAmountAdd] > !alpha > !punct) > eol)))
-                > eoi));
+
+        /*parse(
+        	commandBuffer.begin(),
+        	commandBuffer.end(), (
+        	+(int_[flagsAdd])
+        	> (eol | (char_(kTokensSeparator)
+        	> addressLexeme <
+        	decltype(addressAddChar),
+        	decltype(addressAddNumber),
+        	decltype(addressTypeParse),
+        	decltype(addressAddToVector) > (
+        	1,
+        	addressAddChar,
+        	addressAddNumber,
+        	addressTypeParse,
+        	addressAddToVector)
+        	> -((digit[forbiddenAmountAdd] > !alpha > !punct) > eol)))
+        	> eoi));*/
 
         mForbiddenAmount = TrustLineAmount(forbiddenAmount);
     } catch (...) {

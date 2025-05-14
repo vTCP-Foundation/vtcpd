@@ -59,9 +59,9 @@ public:
 
     const bool isLastIntermediateNodeApproved() const;
 
-    const bool isValid () const;
+    const bool isValid() const;
 
-    void setUnusable ();
+    void setUnusable();
 
 protected:
     const Path::Shared mPath;

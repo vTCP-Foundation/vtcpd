@@ -74,6 +74,12 @@ noexcept
     return makeResult(406);
 }
 
+CommandResult::SharedConst BaseUserCommand::responseThereAreNoKeysOnContractorSide() const
+noexcept
+{
+    return makeResult(407);
+}
+
 CommandResult::SharedConst BaseUserCommand::responseNoConsensus() const
 noexcept
 {

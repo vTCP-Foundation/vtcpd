@@ -33,6 +33,7 @@ public:
         ConflictResolving = 6,
         ResetPending = 7,
         Reset = 8,
+        KeysSharing = 9,
     };
 
 public:

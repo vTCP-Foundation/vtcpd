@@ -15,7 +15,8 @@ public:
         const SerializedEquivalent equivalent,
         ContractorID idOnReceiverSide,
         vector<BaseAddress::Shared> targetAddresses,
-        bool isTargetGateway);
+        bool isTargetGateway,
+		HopsCount_t hopsCount);
 
     MaxFlowCalculationTargetFstLevelMessage(
         BytesShared buffer);
@@ -26,8 +27,11 @@ public:
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
+	uint8_t getHopsCount() const;
+
 private:
     bool mIsTargetGateway;
+	HopsCount_t mHopsCnt;
 };
 
 #endif //VTCPD_MAXFLOWCALCULATIONTARGETFSTLEVELMESSAGE_H

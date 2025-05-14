@@ -483,7 +483,7 @@ const AuditRecord::Shared AuditHandler::getActualAuditFull(
         sqlite3_reset(stmt);
         sqlite3_finalize(stmt);
         throw NotFoundError("AuditHandler::getActualAuditFull: "
-                            "There are no records with requested trust line id");
+                            "There are no records with requested trust line id " + to_string(trustLineID));
     }
 }
 

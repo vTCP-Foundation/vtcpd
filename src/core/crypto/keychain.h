@@ -103,7 +103,7 @@ private:
 class TrustLineKeychain
 {
 public:
-    static const size_t kDefaultKeysSetSize = 10; // 16MB of PubKeys, and 16MB of PKeys.
+    static const size_t kDefaultKeysSetSize = 20;
     static const size_t kMaxKeysSetSize = 1024;
     static const size_t kMinKeysSetSize = 2;
 
@@ -190,8 +190,9 @@ public:
     bool ownKeysPresent(
         IOTransaction::Shared ioTransaction);
 
-    bool allContractorKeysPresent(
+    bool allContractorKeysReceive(
         IOTransaction::Shared ioTransaction,
+        KeyNumber currentKeysSetSequenceNumber,
         KeysCount contractorKeysCount = kDefaultKeysSetSize);
 
     bool ownKeysCriticalCount(
@@ -293,6 +294,9 @@ public:
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber);
 
+    bool isActualAuditFull(
+        IOTransaction::Shared ioTransaction);
+
     pair<lamport::Signature::Shared, KeyNumber> getSignatureAndKeyNumberForPendingAudit(
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber);
@@ -373,6 +377,12 @@ public:
     void removeOutdatedCryptoData(
         IOTransaction::Shared ioTransaction,
         AuditNumber auditNumber);
+
+    void removeOutdatedCryptoPaymentsData(
+        IOTransaction::Shared ioTransaction);
+
+    void removeOutdatedPaymentsKeysData(
+        IOTransaction::Shared ioTransaction);
 
     bool isReceiptsPresent(
         IOTransaction::Shared ioTransaction,

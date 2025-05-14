@@ -22,7 +22,8 @@ public:
         ContractorsManager *contractorsManager,
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         TailManager *tailManager,
-        Logger &logger);
+        Logger &logger,
+		HopsCount_t hopsCount);
 
 protected:
     const string logHeader() const override;
@@ -77,6 +78,7 @@ private:
     bool mFinalTopologyCollected;
     byte_t mMaxPathLength;
     bool mIamGateway;
+	HopsCount_t mHopsCnt;
 };
 
 #endif // VTCPD_INITIATEMAXFLOWCALCULATIONTRANSACTION_H

@@ -88,6 +88,11 @@ TransactionResult::SharedConst InitChannelTransaction::runResponseProcessingStag
 {
     if (mContext.empty()) {
         warning() << "Contractor don't send response.";
+        // channel can be removed, so we need to check it presence
+        if (!mContractorsManager->contractorPresent(mContractor->getID())) {
+            error() << "There no contractor with specified ID. Transaction will be finished.";
+            return resultDone();
+        }
         if (mCountSendingAttempts < kMaxCountSendingAttempts) {
             sendMessage<InitChannelMessage>(
                 mContractor->getID(),

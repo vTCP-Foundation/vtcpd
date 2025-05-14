@@ -62,6 +62,7 @@ void TrustLinesManager::loadTrustLinesFromStorage()
                     totalOutgoingReceiptsAmount);
             } else {
                 info() << "audit pending TL in storage with contractor " << kTrustLine->contractorID();
+                kTrustLine->setBalance(auditRecord->balance());
                 kTrustLine->setState(TrustLine::AuditPending);
                 mContractorsShouldBePinged.push_back(
                     kTrustLine->contractorID());
@@ -578,6 +579,24 @@ ConstSharedTrustLineAmount TrustLinesManager::outgoingTrustAmountConsideringRese
                *kAvailableAmount - *kAlreadyReservedAmount);
 }
 
+ConstSharedTrustLineAmount TrustLinesManager::outgoingTrustAmountInAuditPendingStateConsideringReservations(
+        ContractorID contractorID) const
+{
+    const auto kTL = trustLineReadOnly(contractorID);
+    if (kTL->state() != TrustLine::AuditPending && kTL->state() != TrustLine::KeysSharing) {
+        return make_shared<const TrustLineAmount>(0);
+    }
+    const auto kAvailableAmount = kTL->availableOutgoingAmount();
+    const auto kAlreadyReservedAmount = mAmountReservationsHandler->totalReserved(
+            contractorID, AmountReservation::Outgoing);
+
+    if (*kAlreadyReservedAmount >= *kAvailableAmount) {
+        return make_shared<const TrustLineAmount>(0);
+    }
+    return make_shared<const TrustLineAmount>(
+            *kAvailableAmount - *kAlreadyReservedAmount);
+}
+
 ConstSharedTrustLineAmount TrustLinesManager::incomingTrustAmountConsideringReservations(
     ContractorID contractorID) const
 {
@@ -594,6 +613,24 @@ ConstSharedTrustLineAmount TrustLinesManager::incomingTrustAmountConsideringRese
     }
     return make_shared<const TrustLineAmount>(
                *kAvailableAmount - *kAlreadyReservedAmount);
+}
+
+ConstSharedTrustLineAmount TrustLinesManager::incomingTrustAmountInAuditPendingStateConsideringReservations(
+        ContractorID contractorID) const
+{
+    const auto kTL = trustLineReadOnly(contractorID);
+    if (kTL->state() != TrustLine::AuditPending && kTL->state() != TrustLine::KeysSharing) {
+        return make_shared<const TrustLineAmount>(0);
+    }
+    const auto kAvailableAmount = kTL->availableIncomingAmount();
+    const auto kAlreadyReservedAmount = mAmountReservationsHandler->totalReserved(
+            contractorID, AmountReservation::Incoming);
+
+    if (*kAlreadyReservedAmount >= *kAvailableAmount) {
+        return make_shared<const TrustLineAmount>(0);
+    }
+    return make_shared<const TrustLineAmount>(
+            *kAvailableAmount - *kAlreadyReservedAmount);
 }
 
 pair<ConstSharedTrustLineAmount, ConstSharedTrustLineAmount> TrustLinesManager::availableOutgoingCycleAmounts(
@@ -773,6 +810,10 @@ void TrustLinesManager::updateTrustLineFromStorage(
 
     } catch (NotFoundError&) {
         info() << "init TL in storage with contractor " << kTrustLine->contractorID();
+        kTrustLine->setIncomingTrustAmount(TrustLine::kZeroAmount());
+        kTrustLine->setOutgoingTrustAmount(TrustLine::kZeroAmount());
+        kTrustLine->setBalance(TrustLine::kZeroBalance());
+        kTrustLine->setAuditNumber(TrustLine::kInitialAuditNumber);
     }
 
     mTrustLines[kTrustLine->contractorID()] = kTrustLine;
@@ -1065,9 +1106,6 @@ ConstSharedTrustLineBalance TrustLinesManager::totalBalance() const
 {
     TrustLineBalance result = TrustLine::kZeroBalance();
     for (const auto &trustLine : mTrustLines) {
-        if (trustLine.second->state() != TrustLine::Active) {
-            continue;
-        }
         result += trustLine.second->balance();
     }
     return make_shared<const TrustLineBalance>(result);
@@ -1213,6 +1251,21 @@ ConstSharedTrustLineAmount TrustLinesManager::totalOutgoingAmount() const
     return totalAmount;
 }
 
+ConstSharedTrustLineAmount TrustLinesManager::totalPossibleOutgoingAmountConsiderToAuditPendingTLs() const
+{
+    auto totalAmount = make_shared<TrustLineAmount>(0);
+    for (const auto &kTrustLine : mTrustLines) {
+        if (kTrustLine.second->state() != TrustLine::AuditPending &&
+                kTrustLine.second->state() != TrustLine::KeysSharing) {
+            continue;
+        }
+        const auto kTLAmount = outgoingTrustAmountInAuditPendingStateConsideringReservations(kTrustLine.first);
+        *totalAmount += *(kTLAmount);
+    }
+
+    return totalAmount;
+}
+
 ConstSharedTrustLineAmount TrustLinesManager::totalIncomingAmount() const
 {
     auto totalAmount = make_shared<TrustLineAmount>(0);
@@ -1221,6 +1274,21 @@ ConstSharedTrustLineAmount TrustLinesManager::totalIncomingAmount() const
             continue;
         }
         const auto kTLAmount = incomingTrustAmountConsideringReservations(kTrustLine.first);
+        *totalAmount += *(kTLAmount);
+    }
+
+    return totalAmount;
+}
+
+ConstSharedTrustLineAmount TrustLinesManager::totalPossibleIncomingAmountConsiderToAuditPendingTLs() const
+{
+    auto totalAmount = make_shared<TrustLineAmount>(0);
+    for (const auto &kTrustLine : mTrustLines) {
+        if (kTrustLine.second->state() != TrustLine::AuditPending &&
+                kTrustLine.second->state() != TrustLine::KeysSharing) {
+            continue;
+        }
+        const auto kTLAmount = incomingTrustAmountInAuditPendingStateConsideringReservations(kTrustLine.first);
         *totalAmount += *(kTLAmount);
     }
 
@@ -1292,6 +1360,16 @@ TrustLinesManager::TrustLineActionType TrustLinesManager::checkTrustLineAfterTra
         // AuditSource TA run on node which pay
         if (isActionInitiator) {
             info() << "Audit signal";
+            auto keyChain = mKeysStore->keychain(
+                trustLineID(
+                    contractorID));
+            if (keyChain.ownKeysCriticalCount(ioTransaction)) {
+                setIsOwnKeysPresent(
+                    contractorID,
+                    false);
+                info() << "Public key sharing signal priority";
+                return TrustLineActionType::KeysSharing;
+            }
             return TrustLineActionType::Audit;
         } else {
             return TrustLineActionType::NoActions;

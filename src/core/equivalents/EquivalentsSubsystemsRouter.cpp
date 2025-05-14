@@ -13,6 +13,7 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
     mKeysStore(keystore),
     mContractorsManager(contractorsManager),
     mEventsInterfaceManager(eventsInterfaceManager),
+    mEquivalentsIAmGateway(equivalentsIAmGateway),
     mIOCtx(ioCtx),
     mLogger(logger)
 {
@@ -47,6 +48,7 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
                 equivalent,
                 make_unique<TopologyTrustLinesManager>(
                     equivalent,
+                    contractorsManager->selfContractor()->mainAddress(),
                     mIAmGateways[equivalent],
                     mLogger)));
         info() << "Topology Trust Lines Manager is successfully initialized";
@@ -188,7 +190,10 @@ void EquivalentsSubsystemsRouter::initNewEquivalent(
     mIAmGateways.insert(
         make_pair(
             equivalent,
-            false));
+            find(
+                mEquivalentsIAmGateway.begin(),
+                mEquivalentsIAmGateway.end(),
+                equivalent) != mEquivalentsIAmGateway.end()));
 
     mTrustLinesManagers.insert(
         make_pair(
@@ -206,6 +211,7 @@ void EquivalentsSubsystemsRouter::initNewEquivalent(
             equivalent,
             make_unique<TopologyTrustLinesManager>(
                 equivalent,
+                mContractorsManager->selfContractor()->mainAddress(),
                 false,
                 mLogger)));
     info() << "Topology Trust Lines Manager is successfully initialized";
@@ -263,6 +269,7 @@ void EquivalentsSubsystemsRouter::clearContractorsShouldBePinged()
 
 void EquivalentsSubsystemsRouter::sendTopologyEvent() const
 {
+    debug() << "sendTopologyEvent";
     for (const auto &trustLineManager : mTrustLinesManagers) {
         auto neighbors = trustLineManager.second->firstLevelNeighborsAddresses();
         auto neighborIt = neighbors.begin();
@@ -309,20 +316,6 @@ void EquivalentsSubsystemsRouter::sendTopologyEvent() const
             warning() << "Can't write topology event " << e.what();
         }
     }
-}
-
-void EquivalentsSubsystemsRouter::subscribeForGatewayNotification(
-    GatewayNotificationAndRoutingTablesDelayedTask::GatewayNotificationSignal &signal)
-{
-    signal.connect(
-        boost::bind(
-            &EquivalentsSubsystemsRouter::onGatewayNotificationSlot,
-            this));
-}
-
-void EquivalentsSubsystemsRouter::onGatewayNotificationSlot()
-{
-    gatewayNotificationSignal();
 }
 
 #ifdef TESTS

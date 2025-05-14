@@ -27,7 +27,8 @@ public:
         TopologyCacheManager *topologyCacheManager,
         MaxFlowCacheManager *maxFlowCacheManager,
         bool iAmGateway,
-        Logger &logger);
+        Logger &logger,
+		HopsCount_t hopsCount);
 
     TransactionResult::SharedConst run() override;
 
@@ -49,6 +50,9 @@ private:
     TopologyCacheManager *mTopologyCacheManager;
     MaxFlowCacheManager *mMaxFlowCacheManager;
     bool mIamGateway;
+    // todo : use parameter from config, which should set the max length of payment path
+    // 0 - points that coordinator will collect its neighbours for topology and wil not send message on its first level
+    HopsCount_t mHopsCnt;
 
     vector<BaseAddress::Shared> mContractorAddresses;
 };

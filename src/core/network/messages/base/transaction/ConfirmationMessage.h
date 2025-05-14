@@ -25,6 +25,7 @@ public:
         Audit_IncorrectNumber = 11,
         OwnKeysAbsent = 12,
         ContractorKeysAbsent = 13,
+        KeysSharingTxPresent = 14,
     };
 
 public:

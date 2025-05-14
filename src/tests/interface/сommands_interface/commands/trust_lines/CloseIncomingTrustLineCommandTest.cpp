@@ -1,5 +1,6 @@
 #include "../../../../catch.hpp"
-#include "../../../../../core/interface/commands_interface/commands/trust_lines/CloseIncomingTrustLineCommandTest.h"
+#include "../../../../../core/interface/commands_interface/commands/trust_lines/CloseIncomingTrustLineCommand.h"
+
 
 TEST_CASE("Testing CloseIncomingTrustLineCommand")
 {

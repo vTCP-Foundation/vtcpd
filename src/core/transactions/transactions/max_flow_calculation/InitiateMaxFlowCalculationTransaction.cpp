@@ -5,7 +5,8 @@ InitiateMaxFlowCalculationTransaction::InitiateMaxFlowCalculationTransaction(
     ContractorsManager *contractorsManager,
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     TailManager *tailManager,
-    Logger &logger) :
+    Logger &logger,
+    HopsCount_t hopsCount) :
 
     BaseCollectTopologyTransaction(
         BaseTransaction::InitiateMaxFlowCalculationTransactionType,
@@ -14,6 +15,7 @@ InitiateMaxFlowCalculationTransaction::InitiateMaxFlowCalculationTransaction(
         equivalentsSubsystemsRouter,
         tailManager,
         logger),
+    mHopsCnt(hopsCount),
     mCommand(command),
     mResultStep(1),
     mGatewayResponseProcessed(false),
@@ -91,7 +93,8 @@ TransactionResult::SharedConst InitiateMaxFlowCalculationTransaction::sendReques
                                   mTopologyCacheManager,
                                   mMaxFlowCacheManager,
                                   mIamGateway,
-                                  mLog);
+                                  mLog,
+                                  mHopsCnt);
     mTopologyTrustLineManager->setPreventDeleting(true);
     launchSubsidiaryTransaction(kTransaction);
     bool isDirectPathOccurred = false;

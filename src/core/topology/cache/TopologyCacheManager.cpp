@@ -44,7 +44,7 @@ bool TopologyCacheManager::addIntoFirstLevelCache(
             mFirstLvCacheList.end(),
             mFirstLvCacheList,
             it->second);
-        mFirstLvCache[contractorID] = mFirstLvCacheList.begin();
+        mFirstLvCache[contractorID] = std::prev(mFirstLvCacheList.end());
         return true;
     }
     mFirstLvCache[contractorID] =
@@ -71,14 +71,17 @@ void TopologyCacheManager::updateCaches()
     debug() << "updateCaches\t" << "mFirstLvCache size: " << mFirstLvCache.size();
     debug() << "updateCaches\t" << "mFirstLvCacheList size: " << mFirstLvCacheList.size();
 #endif
-    for (auto &timeAndNodeAddress : msCache) {
-        if (utc_now() - timeAndNodeAddress.first > kResetSenderCacheDuration()) {
-            auto keyAddress = timeAndNodeAddress.second;
+    auto timeAndNodeAddress = msCache.begin();
+    while (timeAndNodeAddress != msCache.end()) {
+        auto tmpIt = timeAndNodeAddress;
+        timeAndNodeAddress++;
+        if (utc_now() - tmpIt->first > kResetSenderCacheDuration()) {
+            auto keyAddress = tmpIt->second;
 #ifdef  DEBUG_LOG_MAX_FLOW_CALCULATION
             debug() << "updateCaches delete cache\t" << keyAddress->fullAddress();
 #endif
             mCaches.erase(keyAddress->fullAddress());
-            msCache.erase(timeAndNodeAddress.first);
+            msCache.erase(tmpIt->first);
         } else {
             break;
         }

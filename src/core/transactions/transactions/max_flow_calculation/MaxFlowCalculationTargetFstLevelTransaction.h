@@ -30,6 +30,18 @@ protected:
     const string logHeader() const override;
 
 private:
+
+	void sendResultToInitiator();
+
+    void sendCachedResultToInitiator(
+        TopologyCache::Shared maxFlowCalculationCachePtr);
+
+    void sendGatewayResultToInitiator();
+
+    void sendCachedGatewayResultToInitiator(
+        TopologyCache::Shared maxFlowCalculationCachePtr);
+
+private:
     MaxFlowCalculationTargetFstLevelMessage::Shared mMessage;
     ContractorsManager *mContractorsManager;
     TrustLinesManager *mTrustLinesManager;

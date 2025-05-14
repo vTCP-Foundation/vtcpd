@@ -31,6 +31,9 @@ BasePaymentTransaction::BasePaymentTransaction(
     mTransactionIsVoted(false),
     mParticipantsVotesMessage(nullptr),
     mBlockNumberObtainingInProcess(false),
+    mSignedTransaction(nullptr),
+    mIsSuspendedOnFinalAmountsConfirmationStage(false),
+    mCntSuspendingOnFinalAmountsConfirmationStage(0),
     mPayload("")
 {
 }
@@ -68,6 +71,9 @@ BasePaymentTransaction::BasePaymentTransaction(
     mTransactionIsVoted(false),
     mParticipantsVotesMessage(nullptr),
     mBlockNumberObtainingInProcess(false),
+    mSignedTransaction(nullptr),
+    mIsSuspendedOnFinalAmountsConfirmationStage(false),
+    mCntSuspendingOnFinalAmountsConfirmationStage(0),
     mPayload("")
 {
 }
@@ -98,7 +104,10 @@ BasePaymentTransaction::BasePaymentTransaction(
     mResourcesManager(resourcesManager),
     mKeysStore(keystore),
     mSubsystemsController(subsystemsController),
-    mCountRecoveryAttempts(0)
+    mCountRecoveryAttempts(0),
+    mIsSuspendedOnFinalAmountsConfirmationStage(false),
+    mCntSuspendingOnFinalAmountsConfirmationStage(0),
+    mSignedTransaction(nullptr)
 {
     auto bytesBufferOffset = BaseTransaction::kOffsetToInheritedBytes();
     // mReservations count
@@ -280,7 +289,6 @@ TransactionResult::SharedConst BasePaymentTransaction::runVotesCheckingStage()
         return reject("Public keys are not appropriate. Reject.");
     }
 
-    lamport::Signature::Shared signedTransaction;
     try {
         debug() << "Serializing transaction";
         auto ioTransaction = mStorageHandler->beginTransaction();
@@ -295,11 +303,17 @@ TransactionResult::SharedConst BasePaymentTransaction::runVotesCheckingStage()
         auto serializedOwnVotesData = getSerializedParticipantsVotesData(
                                           make_shared<Contractor>(
                                               mContractorsManager->ownAddresses()));
-        signedTransaction = mKeysStore->signPaymentTransaction(
-                                ioTransaction,
-                                currentTransactionUUID(),
-                                serializedOwnVotesData.first,
-                                serializedOwnVotesData.second);
+        debug() << "Data prepared for signing";
+
+        mSignedTransaction = mKeysStore->signPaymentTransaction(
+                                 ioTransaction,
+                                 currentTransactionUUID(),
+                                 serializedOwnVotesData.first,
+                                 serializedOwnVotesData.second);
+        if (mSignedTransaction == nullptr) {
+            removeAllDataFromStorageConcerningTransaction();
+            return reject("Can't sign transaction. Reject");
+        }
         debug() << "Voted +";
         mTransactionIsVoted = true;
 
@@ -332,7 +346,7 @@ TransactionResult::SharedConst BasePaymentTransaction::runVotesCheckingStage()
         mEquivalent,
         mContractorsManager->ownAddresses(),
         currentTransactionUUID(),
-        signedTransaction);
+        mSignedTransaction);
 
     mStep = Stages::Common_VotesChecking;
     return resultWaitForMessageTypes(
@@ -350,7 +364,36 @@ TransactionResult::SharedConst BasePaymentTransaction::runVotesConsistencyChecki
 {
     debug() << "runVotesConsistencyCheckingStage";
 
-    if (!contextIsValid(Message::Payments_ParticipantsVotes)) {
+    if (contextIsValid(Message::Payments_ParticipantsPublicKeys, false)) {
+        warning() << "Receive ParticipantsPublicKeys again";
+        auto participantsPublicKeyMessage = popNextMessage<ParticipantsPublicKeysMessage>();
+        auto coordinator = make_shared<Contractor>(participantsPublicKeyMessage->senderAddresses);
+        debug() << "Votes message received from " << coordinator->mainAddress()->fullAddress();
+        if (coordinator != mPaymentParticipants[kCoordinatorPaymentNodeID]) {
+            warning() << "Wrong coordinator. Continue previous state";
+            return resultContinuePreviousState();
+        }
+
+        if (mSignedTransaction == nullptr) {
+            warning() << "There are no signed transaction for sending to coordinator";
+            return resultContinuePreviousState();
+        }
+
+        debug() << "Signed transaction transferred to coordinator";
+        sendMessage<ParticipantVoteMessage>(
+            coordinator->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID(),
+            mSignedTransaction);
+
+        return resultWaitForMessageTypes( {
+            Message::Payments_ParticipantsVotes,
+            Message::Payments_ParticipantsPublicKeys},
+        maxNetworkDelay(9));
+    }
+
+    if (! contextIsValid(Message::Payments_ParticipantsVotes)) {
         // In case if no votes are present - transaction can't be simply cancelled.
         // It must go through recovery stage to avoid inconsistency.
         return recover("No participants votes received.");
@@ -974,7 +1017,13 @@ TransactionResult::SharedConst BasePaymentTransaction::runCheckCoordinatorVotesS
     }
     if (kMessage->participantsSignatures().empty()) {
         debug() << "Coordinator don't know result of this transaction yet.";
-        return processNextNodeToCheckVotes();
+        // todo : this is only for centralized model
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        debug() << "rollback";
+        removeAllDataFromStorageConcerningTransaction(ioTransaction);
+        rollBack();
+        return resultDone();
+        //return processNextNodeToCheckVotes();
     }
 
     mParticipantsVotesMessage = kMessage;

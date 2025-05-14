@@ -5,13 +5,21 @@ EquivalentsCyclesSubsystemsRouter::EquivalentsCyclesSubsystemsRouter(
     SubsystemsController *subsystemsController,
     as::io_context &ioCtx,
     vector<SerializedEquivalent> equivalents,
+    CyclesRunningParameters cyclesRunningParameters,
     Logger &logger):
 
     mTransactionScheduler(transactionScheduler),
     mSubsystemsController(subsystemsController),
     mIOCtx(ioCtx),
+    mCyclesRunningParameters(cyclesRunningParameters),
     mLogger(logger)
 {
+    info() << "Cycles three nodes " << cyclesRunningParameters.mCyclesThreeNodesEnabled;
+    info() << "Cycles four nodes " << cyclesRunningParameters.mCyclesFourNodesEnabled;
+    info() << "Cycles five nodes " << cyclesRunningParameters.mCyclesFiveNodesEnabled
+           << " period " << cyclesRunningParameters.mCyclesFiveNodesIntervalSec;
+    info() << "Cycles six nodes " << cyclesRunningParameters.mCyclesSixNodesEnabled
+           << " period " << cyclesRunningParameters.mCyclesSixNodesIntervalSec;
     for (const auto &equivalent : equivalents) {
         info() << "Equivalent " << equivalent;
         mCyclesManagers.insert(
@@ -21,6 +29,7 @@ EquivalentsCyclesSubsystemsRouter::EquivalentsCyclesSubsystemsRouter(
                     equivalent,
                     mTransactionScheduler,
                     mIOCtx,
+                    cyclesRunningParameters,
                     mLogger,
                     mSubsystemsController)));
         info() << "Cycles Manager is successfully initialized";
@@ -33,6 +42,13 @@ EquivalentsCyclesSubsystemsRouter::EquivalentsCyclesSubsystemsRouter(
                     mLogger)));
         info() << "Routing Table Manager is successfully initialized";
     }
+
+    mGatewayNotificationAndRoutingTablesDelayedTask = make_unique<GatewayNotificationAndRoutingTablesDelayedTask>(
+            cyclesRunningParameters.isUpdateRoutingTables(),
+            cyclesRunningParameters.mRoutingTableUpdatingIntervalDays,
+            mIOService,
+            mLogger);
+    info() << "Gateway Notification and Routing Tables Delayed Task is successfully initialized";
 
     connectSignalsToSlots();
 }
@@ -75,6 +91,7 @@ void EquivalentsCyclesSubsystemsRouter::initNewEquivalent(
                 equivalent,
                 mTransactionScheduler,
                 mIOCtx,
+                mCyclesRunningParameters,
                 mLogger,
                 mSubsystemsController)));
     subscribeForBuildingFiveNodesCycles(
@@ -113,6 +130,8 @@ void EquivalentsCyclesSubsystemsRouter::connectSignalsToSlots()
         subscribeForClosingCycles(
             cyclesManager.second->closeCycleSignal);
     }
+    subscribeForGatewayNotification(
+        mGatewayNotificationAndRoutingTablesDelayedTask->gatewayNotificationSignal);
 }
 
 void EquivalentsCyclesSubsystemsRouter::subscribeForBuildingFiveNodesCycles(
@@ -146,6 +165,15 @@ void EquivalentsCyclesSubsystemsRouter::subscribeForClosingCycles(
             _2));
 }
 
+void EquivalentsCyclesSubsystemsRouter::subscribeForGatewayNotification(
+    GatewayNotificationAndRoutingTablesDelayedTask::GatewayNotificationSignal &signal)
+{
+    signal.connect(
+        boost::bind(
+            &EquivalentsCyclesSubsystemsRouter::onGatewayNotificationSlot,
+            this));
+}
+
 void EquivalentsCyclesSubsystemsRouter::onBuildCycleFiveNodesSlot(
     const SerializedEquivalent equivalent)
 {
@@ -165,6 +193,11 @@ void EquivalentsCyclesSubsystemsRouter::onCloseCycleSlot(
     closeCycleSignal(
         equivalent,
         cycle);
+}
+
+void EquivalentsCyclesSubsystemsRouter::onGatewayNotificationSlot()
+{
+    gatewayNotificationSignal();
 }
 
 string EquivalentsCyclesSubsystemsRouter::logHeader() const

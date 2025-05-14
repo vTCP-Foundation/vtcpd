@@ -3,11 +3,14 @@
 InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> &senderAddresses,
-    bool isSenderGateway) : SenderMessage(equivalent,
-                senderAddresses),
-    mIsSenderGateway(isSenderGateway)
-{
-}
+    bool isSenderGateway,
+    uint8_t hopsCnt):
+    SenderMessage(
+        equivalent,
+        senderAddresses),
+    mIsSenderGateway(isSenderGateway),
+    mHopsCnt(hopsCnt)
+{}
 
 InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
     BytesShared buffer) : SenderMessage(buffer)
@@ -17,12 +20,22 @@ InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
     memcpy(
         &mIsSenderGateway,
         buffer.get() + bytesBufferOffset,
-        sizeof(byte_t));
+        sizeof(byte));
+    bytesBufferOffset += sizeof(byte);
+    memcpy(
+        &mHopsCnt,
+        buffer.get() + bytesBufferOffset,
+        sizeof(uint8_t));
 }
 
 bool InitiateMaxFlowCalculationMessage::isSenderGateway() const
 {
     return mIsSenderGateway;
+}
+
+HopsCount_t InitiateMaxFlowCalculationMessage::HopsCount() const
+{
+    return mHopsCnt;
 }
 
 const Message::MessageType InitiateMaxFlowCalculationMessage::typeID() const
@@ -35,7 +48,7 @@ pair<BytesShared, size_t> InitiateMaxFlowCalculationMessage::serializeToBytes() 
     auto parentBytesAndCount = SenderMessage::serializeToBytes();
     size_t bytesCount =
         parentBytesAndCount.second +
-        sizeof(byte_t);
+        sizeof(byte);
 
     BytesShared dataBytesShared = tryCalloc(bytesCount);
     size_t dataBytesOffset = 0;
@@ -48,7 +61,12 @@ pair<BytesShared, size_t> InitiateMaxFlowCalculationMessage::serializeToBytes() 
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         &mIsSenderGateway,
-        sizeof(byte_t));
+        sizeof(byte));
+    dataBytesOffset += sizeof(byte);
+    memcpy(
+        dataBytesShared.get() + dataBytesOffset,
+        &mHopsCnt,
+        sizeof(uint8_t));
 
     return make_pair(
                dataBytesShared,

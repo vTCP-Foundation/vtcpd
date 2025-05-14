@@ -1,9 +1,12 @@
 #include "GatewayNotificationAndRoutingTablesDelayedTask.h"
 
 GatewayNotificationAndRoutingTablesDelayedTask::GatewayNotificationAndRoutingTablesDelayedTask(
+    bool enabled,
+    uint32_t updatingTimerPeriodDays,
     as::io_context &ioCtx,
     Logger &logger):
 
+    mUpdatingTimerPeriodDays(updatingTimerPeriodDays),
     mIOCtx(ioCtx),
     mLog(logger)
 {
@@ -13,31 +16,35 @@ GatewayNotificationAndRoutingTablesDelayedTask::GatewayNotificationAndRoutingTab
     // on decentralize network it is not necessary
     srand(randomInitializer());
     int timeStarted = 120 + rand() % (600);
-    info() << "timeStarted " << timeStarted;
+    info() << "enabled " << enabled
+           << " updatingTimerPeriodDays " << updatingTimerPeriodDays
+           << " timeStarted " << timeStarted;
 #ifdef TESTS
     timeStarted = 10;
 #endif
-    mNotificationTimer->expires_after(
-        chrono::seconds(
-            timeStarted));
-    mNotificationTimer->async_wait(
-        boost::bind(
-            &GatewayNotificationAndRoutingTablesDelayedTask::runSignalNotify,
-            this,
-            as::placeholders::error));
+    if (enabled) {
+        mNotificationTimer->expires_after(
+            chrono::seconds(
+                timeStarted));
+        mNotificationTimer->async_wait(
+            boost::bind(
+                &GatewayNotificationAndRoutingTablesDelayedTask::runSignalNotify,
+                this,
+                as::placeholders::error));
+    }
 }
 
 void GatewayNotificationAndRoutingTablesDelayedTask::runSignalNotify(
     const boost::system::error_code &errorCode)
 {
+    info() << "run gateway notification signal";
     if (errorCode) {
         warning() << errorCode.message().c_str();
     }
-    info() << "run gateway notification signal";
     mNotificationTimer->cancel();
     mNotificationTimer->expires_after(
         std::chrono::seconds(
-            kUpdatingTimerPeriodSeconds + rand() % (60 * 60 * 24)));
+            mUpdatingTimerPeriodDays * 24 * 60 * 60 + rand() % (60 * 60 * 24)));
 #ifdef TESTS
     mNotificationTimer->cancel();
     mNotificationTimer->expires_after(

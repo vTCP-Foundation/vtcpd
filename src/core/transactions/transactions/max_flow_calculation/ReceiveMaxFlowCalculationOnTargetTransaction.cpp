@@ -23,7 +23,10 @@ TransactionResult::SharedConst ReceiveMaxFlowCalculationOnTargetTransaction::run
     info() << "run\t" << "initiator: " << mMessage->senderAddresses.at(0)->fullAddress();
 #endif
     sendResultToInitiator();
-    sendMessagesOnFirstLevel();
+    if (mMessage->HopsCount() > 0) {
+        debug() << "ReceiveMaxFlowCalculationOnTargetTransaction: sendMessagesOnFirstLevel";
+        sendMessagesOnFirstLevel();
+    }
     return resultDone();
 }
 
@@ -67,11 +70,12 @@ void ReceiveMaxFlowCalculationOnTargetTransaction::sendResultToInitiator()
             mContractorsManager->ownAddresses(),
             outgoingFlows,
             incomingFlows);
-        mTopologyCacheManager->addCache(
+        // todo : add config if cache need
+        /*mTopologyCacheManager->addCache(
             mMessage->senderAddresses.at(0),
             make_shared<TopologyCache>(
                 outgoingFlows,
-                incomingFlows));
+                incomingFlows));*/
     }
 }
 
@@ -138,7 +142,8 @@ void ReceiveMaxFlowCalculationOnTargetTransaction::sendMessagesOnFirstLevel()
             mEquivalent,
             mContractorsManager->idOnContractorSide(nodeIDWithIncomingFlow),
             mMessage->senderAddresses,
-            mMessage->isSenderGateway());
+            mMessage->isSenderGateway(),
+			mMessage->HopsCount());
     }
 }
 

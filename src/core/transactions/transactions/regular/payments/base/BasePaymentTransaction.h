@@ -131,6 +131,7 @@ public:
     {
         Coordinator_Initialization = 1,
         Coordinator_ReceiverResourceProcessing,
+        Coordinator_ReceiverRequestProcessing,
         Coordinator_ReceiverResponseProcessing,
         Coordinator_AmountReservation,
         Coordinator_ShortPathAmountReservationResponseProcessing,
@@ -427,8 +428,9 @@ protected:
     static const auto kMaxPathLength = 7;
 
     static const uint32_t kWaitMillisecondsToTryRecoverAgain = 30000;
-    static const uint32_t kWaitMillisecondsToTryInitialRecoverAgain = 1800000;
-    static const uint8_t kMaxRecoveryAttempts = 3;
+    static const uint32_t kWaitMillisecondsToTryInitialRecoverAgain = 900000;
+    static const uint8_t kMaxRecoveryAttempts = 30;
+    static const uint8_t kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage = 3;
 
     // todo : make static
     const PaymentNodeID kCoordinatorPaymentNodeID = 0;
@@ -505,10 +507,15 @@ protected:
     map<string, pair<PaymentNodeID, lamport::KeyHash::Shared>> mParticipantsPublicKeysHashes;
     map<PaymentNodeID, lamport::PublicKey::Shared> mParticipantsPublicKeys;
     map<PaymentNodeID, lamport::Signature::Shared> mParticipantsSignatures;
+    lamport::Signature::Shared mSignedTransaction;
 
     // this fields are used by coordinators on final amount configuration clarification
     bool mAllNodesSentConfirmationOnFinalAmountsConfiguration;
     bool mAllNeighborsSentFinalReservations;
+
+    // suspending on final amounts confirmations
+    bool mIsSuspendedOnFinalAmountsConfirmationStage;
+    uint8_t mCntSuspendingOnFinalAmountsConfirmationStage;
 
     lamport::PublicKey::Shared mPublicKey;
 

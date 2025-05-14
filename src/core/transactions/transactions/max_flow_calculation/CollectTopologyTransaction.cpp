@@ -9,7 +9,8 @@ CollectTopologyTransaction::CollectTopologyTransaction(
     TopologyCacheManager *topologyCacheManager,
     MaxFlowCacheManager *maxFlowCacheManager,
     bool iAmGateway,
-    Logger &logger) :
+    Logger &logger,
+	HopsCount_t hopsCount) :
 
     BaseTransaction(
         BaseTransaction::CollectTopologyTransactionType,
@@ -21,7 +22,8 @@ CollectTopologyTransaction::CollectTopologyTransaction(
     mTopologyTrustLineManager(topologyTrustLineManager),
     mTopologyCacheManager(topologyCacheManager),
     mMaxFlowCacheManager(maxFlowCacheManager),
-    mIamGateway(iAmGateway)
+    mIamGateway(iAmGateway),
+    mHopsCnt(hopsCount)
 {}
 
 TransactionResult::SharedConst CollectTopologyTransaction::run()
@@ -40,7 +42,8 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
             if (mTrustLinesManager->isContractorGateway(targetID)) {
                 mTopologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
-                        +TopologyTrustLinesManager::kCurrentNodeID,
+                        //TopologyTrustLinesManager::kCurrentNodeID,
+						0,
                         targetID,
                         trustLineAmountShared));
                 continue;
@@ -48,7 +51,8 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
             if (isNodeListedInTransactionContractors(nodeAddressAndOutgoingFlow.first)) {
                 mTopologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
-                        +TopologyTrustLinesManager::kCurrentNodeID,
+                        //TopologyTrustLinesManager::kCurrentNodeID,
+						0,
                         targetID,
                         trustLineAmountShared));
             }
@@ -59,31 +63,64 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
             auto trustLineAmountShared = nodeAddressAndOutgoingFlow.second;
             mTopologyTrustLineManager->addTrustLine(
                 make_shared<TopologyTrustLine>(
-                    +TopologyTrustLinesManager::kCurrentNodeID,
+                    //TopologyTrustLinesManager::kCurrentNodeID,
+					0,
                     targetID,
                     trustLineAmountShared));
         }
     }
 
-    if (!mTopologyCacheManager->isInitiatorCached()) {
-        sendMessagesOnFirstLevel();
-        mTopologyCacheManager->setInitiatorCache();
+    if (mHopsCnt > 0) {
+        if (!mTopologyCacheManager->isInitiatorCached()) {
+            debug() << "CollectTopologyTransaction: sendMessagesOnFirstLevel";
+            sendMessagesOnFirstLevel();
+            mTopologyCacheManager->setInitiatorCache();
+        }
     }
     return resultDone();
 }
 
 void CollectTopologyTransaction::sendMessagesToContractors()
 {
+	// calc hops count for target;
+	//===============================================================
+	// [Hops count |  A  |  B   => calc B ]
+	// [ 0         |  0  |  0   => (mHopsCnt - 1) = -1 ~> 0 ]
+	// [ 1         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+	// [ 2         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+	// [ 3         |  1  |  1   => (mHopsCnt - 1)/2 = 1     ]
+	// [ 4         |  2  |  1   => (mHopsCnt - 1)/2 = 1     ]
+	// [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
+	//===============================================================
+
+	HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
+
+
     for (const auto &contractorAddress : mContractorAddresses)
         sendMessage<InitiateMaxFlowCalculationMessage>(
             contractorAddress,
             mEquivalent,
             mContractorsManager->ownAddresses(),
-            mIamGateway);
+            mIamGateway,
+            target_hops_count);
 }
 
 void CollectTopologyTransaction::sendMessagesOnFirstLevel()
 {
+	// calc hops count for source;
+	//===============================================================
+	// [Hops count |  A  |  B   => calc B ]
+	// [ 0         |  0  |  0   => (mHopsCnt - 1) = -1 ~> 0 ]
+	// [ 1         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+	// [ 2         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+	// [ 3         |  1  |  1   => (mHopsCnt - 1)/2 = 1     ]
+	// [ 4         |  2  |  1   => (mHopsCnt - 1)/2 = 1     ]
+	// [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
+	//===============================================================
+
+	HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
+	HopsCount_t source_hops_count = (this->mHopsCnt == 1 ? 1 : (this->mHopsCnt - 1 - target_hops_count));
+
     if (mIamGateway) {
         auto outgoingFlowIDs = mTrustLinesManager->firstLevelGatewayNeighborsWithOutgoingFlow().first;
         for (auto const &nodeIDOutgoingFlow : outgoingFlowIDs) {
@@ -94,7 +131,8 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
             sendMessage<MaxFlowCalculationSourceFstLevelMessage>(
                 nodeIDOutgoingFlow,
                 mEquivalent,
-                mContractorsManager->idOnContractorSide(nodeIDOutgoingFlow));
+                mContractorsManager->idOnContractorSide(nodeIDOutgoingFlow),
+				source_hops_count);
         }
     } else {
         auto outgoingFlowIDs = mTrustLinesManager->firstLevelNeighborsWithOutgoingFlow().first;
@@ -105,7 +143,8 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
                 sendMessage<MaxFlowCalculationSourceFstLevelMessage>(
                     *outgoingFlowIDIt,
                     mEquivalent,
-                    mContractorsManager->idOnContractorSide(*outgoingFlowIDIt));
+                    mContractorsManager->idOnContractorSide(*outgoingFlowIDIt),
+					source_hops_count);
                 outgoingFlowIDs.erase(outgoingFlowIDIt);
             } else {
                 outgoingFlowIDIt++;
@@ -120,7 +159,8 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
             sendMessage<MaxFlowCalculationSourceFstLevelMessage>(
                 nodeIDWithOutgoingFlow,
                 mEquivalent,
-                mContractorsManager->idOnContractorSide(nodeIDWithOutgoingFlow));
+                mContractorsManager->idOnContractorSide(nodeIDWithOutgoingFlow),
+				source_hops_count);
         }
     }
 }

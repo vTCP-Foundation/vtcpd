@@ -34,12 +34,15 @@ CoordinatorPaymentTransaction::CoordinatorPaymentTransaction(
     mEventsInterfaceManager(eventsInterfaceManager),
     mReservationsStage(0),
     mDirectPathIsAlreadyProcessed(false),
+    mCountPathsRecollecting(0),
     mCountReceiverInaccessible(0),
     mPreviousInaccessibleNodesCount(0),
     mPreviousRejectedTrustLinesCount(0),
     mRebuildingAttemptsCount(0),
+    mCountParticipantKeysResending(1),
     mNeighborsKeysProblem(false),
     mParticipantsKeysProblem(false),
+    mIsAuditPendingPathsOccurred(false),
     mIsPaymentTransactionsAllowedDueToObserving(isPaymentTransactionsAllowedDueToObserving)
 {
     mStep = Stages::Coordinator_Initialization;
@@ -57,6 +60,9 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::run()
 
             case Stages::Coordinator_ReceiverResourceProcessing:
                 return runPathsResourceProcessingStage();
+
+            case Stages::Coordinator_ReceiverRequestProcessing:
+                return runReceiverRequestProcessingStage();
 
             case Stages::Coordinator_ReceiverResponseProcessing:
                 return runReceiverResponseProcessingStage();
@@ -125,6 +131,19 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runPaymentInitiali
     // current node would not be able to pay such an amount.
     const auto kTotalOutgoingPossibilities = *(mTrustLinesManager->totalOutgoingAmount());
     if (kTotalOutgoingPossibilities < mCommand->amount()) {
+        const auto kTotalOutgoingAuditPendingAmount = *(mTrustLinesManager->totalPossibleOutgoingAmountConsiderToAuditPendingTLs());
+        info() << "totalPossibleOutgoingAmountConsiderToAuditPendingTLs " << kTotalOutgoingAuditPendingAmount;
+        if (kTotalOutgoingPossibilities + kTotalOutgoingAuditPendingAmount >= mCommand->amount()) {
+            info() << "Total outgoing possibilities (" << kTotalOutgoingPossibilities << ") less then operation amount, "
+                   << "but there are total outgoing audit pending possibilities (" << kTotalOutgoingAuditPendingAmount
+                   << "). Try to collect paths later.";
+            mCountPathsRecollecting++;
+            if (mCountPathsRecollecting > kMaxCountPathsRecollecting) {
+                warning() << "Count rebuilding attempts reaches maximal number. Canceling.";
+                return resultInsufficientFundsError();
+            }
+            return resultAwakeAfterMilliseconds(kAuditRetryingIntervalInMilliseconds);
+        }
         warning() << "Total outgoing possibilities (" << kTotalOutgoingPossibilities << ") less then operation amount";
         return resultInsufficientFundsError();
     }
@@ -163,13 +182,26 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runPathsResourcePr
     // If there is no one path to the receiver - transaction can't proceed.
     if (mPathsStats.empty()) {
         warning() << "There are no paths";
-        return resultNoPathsError();
+        mCountPathsRecollecting++;
+        if (mCountPathsRecollecting > kMaxCountPathsRecollecting) {
+            warning() << "Count rebuilding attempts reaches maximal number. Canceling.";
+            return resultNoPathsError();
+        }
+        mStep = Stages::Coordinator_Initialization;
+        return resultAwakeAfterMilliseconds(kPathsRecollectingIntervalInMilliseconds);
     }
 
     debug() << "Collected paths count: " << mPathsStats.size();
+    mCountPathsRecollecting = 0;
 
     // TODO: Ensure paths shuffling
 
+    mStep = Stages::Coordinator_ReceiverRequestProcessing;
+    return runReceiverRequestProcessingStage();
+}
+
+TransactionResult::SharedConst CoordinatorPaymentTransaction::runReceiverRequestProcessingStage()
+{
     // Sending message to the receiver note to approve the payment receiving.
     sendMessage<ReceiverInitPaymentRequestMessage>(
         mContractor->mainAddress(),
@@ -199,6 +231,18 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runReceiverRespons
     }
 
     const auto kMessage = popNextMessage<ReceiverInitPaymentResponseMessage>();
+    if (kMessage->state() == ReceiverInitPaymentResponseMessage::RejectedDueAuditPending) {
+        debug() << "Receiver responded that there are no enough incoming possibilities, "
+                   "but there are some AuditPending TLs. Try to init opeartion later.";
+        mCountPathsRecollecting++;
+        if (mCountPathsRecollecting > kMaxCountPathsRecollecting) {
+            warning() << "Count initializing attempts reaches maximal number. Canceling.";
+            return resultInsufficientFundsError();
+        }
+        mStep = Stages::Coordinator_ReceiverRequestProcessing;
+        return resultAwakeAfterMilliseconds(kAuditRetryingIntervalInMilliseconds);
+    }
+
     if (kMessage->state() != ReceiverInitPaymentResponseMessage::Accepted) {
         info() << "Receiver rejected payment operation. Canceling.";
         return resultInsufficientFundsError();
@@ -375,11 +419,22 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::tryReserveAmountDi
         return tryProcessNextPath();
     }
 
+    if (!mTrustLinesManager->trustLineIsActive(receiverID)) {
+        warning() << "Invalid TL state " << mTrustLinesManager->trustLineState(receiverID);
+        if (mTrustLinesManager->trustLineState(receiverID) == TrustLine::AuditPending ||
+                mTrustLinesManager->trustLineState(receiverID) == TrustLine::KeysSharing) {
+            mIsAuditPendingPathsOccurred = true;
+        }
+        pathStats->setUnusable();
+        return tryProcessNextPath();
+    }
+
     // todo maybe check in storage (keyChain)
     if (!mTrustLinesManager->trustLineOwnKeysPresent(receiverID)) {
         warning() << "There are no own keys on TL with receiver. Switching to another path.";
         pathStats->setUnusable();
         mNeighborsKeysProblem = true;
+        publicKeysSharingSignal(receiverID, mEquivalent);
         return tryProcessNextPath();
     }
 
@@ -530,6 +585,26 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::askNeighborToReser
         warning() << "There are no own keys on TL with neighbor. Switching to another path.";
         path->setUnusable();
         mNeighborsKeysProblem = true;
+        publicKeysSharingSignal(neighborID, mEquivalent);
+        // after signal keys will be shared and tx can pass
+        mIsAuditPendingPathsOccurred = true;
+        throw CallChainBreakException("Break call chain for preventing call loop");
+    }
+
+    if (!mTrustLinesManager->trustLineContractorKeysPresent(neighborID)) {
+        warning() << "There are no contractors keys on TL with neighbor. Switching to another path.";
+        path->setUnusable();
+        mNeighborsKeysProblem = true;
+        throw CallChainBreakException("Break call chain for preventing call loop");
+    }
+
+    if (!mTrustLinesManager->trustLineIsActive(neighborID)) {
+        warning() << "Invalid TL state " << mTrustLinesManager->trustLineState(neighborID);
+        if (mTrustLinesManager->trustLineState(neighborID) == TrustLine::AuditPending ||
+                mTrustLinesManager->trustLineState(neighborID) == TrustLine::KeysSharing) {
+            mIsAuditPendingPathsOccurred = true;
+        }
+        path->setUnusable();
         throw CallChainBreakException("Break call chain for preventing call loop");
     }
 
@@ -731,8 +806,9 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::processNeighborAmo
         return tryProcessNextPath();
     }
 
-    if (message->state() == IntermediateNodeReservationResponseMessage::RejectedDueContractorKeysAbsence) {
-        warning() << "Neighbor node doesn't approved reservation request due to contractor keys absence";
+    if (message->state() == IntermediateNodeReservationResponseMessage::RejectedDueContractorKeysAbsence ||
+            message->state() == IntermediateNodeReservationResponseMessage::RejectedDueOwnKeysAbsence) {
+        warning() << "Neighbor node doesn't approved reservation request due to keys absence";
         dropReservationsOnPath(
             currentAmountReservationPathStats(),
             mCurrentAmountReservingPathIdentifier);
@@ -740,12 +816,41 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::processNeighborAmo
             mContractorsManager->ownAddresses().at(0),
             neighborAddress);
         mNeighborsKeysProblem = true;
-        // todo maybe set mOwnKeysPresent into false and initiate KeysSharing TA
+        if (message->state() == IntermediateNodeReservationResponseMessage::RejectedDueContractorKeysAbsence) {
+            info() << "Keys sharing signal";
+            publicKeysSharingSignal(neighborID, mEquivalent);
+            mTrustLinesManager->setIsOwnKeysPresent(neighborID, false);
+        } else {
+            mTrustLinesManager->setIsContractorKeysPresent(neighborID, false);
+        }
+        return tryProcessNextPath();
+    }
+
+    if (message->state() == IntermediateNodeReservationResponseMessage::RejectedDueAuditPending) {
+        warning() << "Neighbor node doesn't approved reservation request due to audit pending";
+        dropReservationsOnPath(
+            currentAmountReservationPathStats(),
+            mCurrentAmountReservingPathIdentifier);
+        mRejectedTrustLines.emplace_back(
+            mContractorsManager->ownAddresses().at(0),
+            neighborAddress);
+        mIsAuditPendingPathsOccurred = true;
         return tryProcessNextPath();
     }
 
     if (message->state() != IntermediateNodeReservationResponseMessage::Accepted) {
         return reject("Unexpected message state. Protocol error. Transaction closed.");
+    }
+
+    if (message->amountReserved() == 0) {
+        warning() << "Neighbor node doesn't approved reservation request regarding to 0 amount";
+        dropReservationsOnPath(
+            currentAmountReservationPathStats(),
+            mCurrentAmountReservingPathIdentifier);
+        mRejectedTrustLines.emplace_back(
+            mContractorsManager->ownAddresses().at(0),
+            neighborAddress);
+        return tryProcessNextPath();
     }
 
     debug() << "Neighbor approved reservation request.";
@@ -844,7 +949,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::processNeighborFur
         return tryProcessNextPath();
     }
 
-    if (message->amountReserved() == 0 || message->state() == CoordinatorReservationResponseMessage::Rejected) {
+    if (message->state() == CoordinatorReservationResponseMessage::Rejected) {
         warning() << "Neighbor node doesn't accepted coordinator request.";
         dropReservationsOnPath(
             currentAmountReservationPathStats(),
@@ -886,8 +991,49 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::processNeighborFur
         return tryProcessNextPath();
     }
 
+    if (message->state() == CoordinatorReservationResponseMessage::RejectedDueAuditPending) {
+        warning() << "Neighbor node doesn't accepted coordinator request due to audit pending";
+        dropReservationsOnPath(
+            currentAmountReservationPathStats(),
+            mCurrentAmountReservingPathIdentifier);
+        mRejectedTrustLines.emplace_back(
+            mContractorsManager->ownAddresses().at(0),
+            neighborAddress);
+        mIsAuditPendingPathsOccurred = true;
+        // sending message to receiver that transaction continues
+        sendMessage<TTLProlongationResponseMessage>(
+            mContractor->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID(),
+            TTLProlongationResponseMessage::Continue);
+        return tryProcessNextPath();
+    }
+
     if (message->state() != CoordinatorReservationResponseMessage::Accepted) {
         return reject("Unexpected message state. Protocol error. Transaction closed.");
+    }
+
+    if (message->amountReserved() == 0) {
+        warning() << "Neighbor node doesn't accepted coordinator request regarding to 0 amount.";
+        dropReservationsOnPath(
+            currentAmountReservationPathStats(),
+            mCurrentAmountReservingPathIdentifier);
+        // processed trustLine was rejected, we add it to Rejected TrustLines
+        const auto kPathStats = currentAmountReservationPathStats();
+        const auto neighborAddressAndPos = kPathStats->currentIntermediateNodeAndPos();
+        const auto nextNeighborAddress = kPathStats->path()->intermediates()[neighborAddressAndPos.second + 1];
+        mRejectedTrustLines.emplace_back(
+            neighborAddressAndPos.first,
+            nextNeighborAddress);
+        // sending message to receiver that transaction continues
+        sendMessage<TTLProlongationResponseMessage>(
+            mContractor->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID(),
+            TTLProlongationResponseMessage::Continue);
+        return tryProcessNextPath();
     }
 
     auto path = currentAmountReservationPathStats();
@@ -1129,6 +1275,25 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::processRemoteNodeR
         return tryProcessNextPath();
     }
 
+    if (message->state() == CoordinatorReservationResponseMessage::RejectedDueAuditPending) {
+        warning() << "Remote node doesn't accepted coordinator request due to audit pending. Switching to another path.";
+        dropReservationsOnPath(
+            currentAmountReservationPathStats(),
+            mCurrentAmountReservingPathIdentifier);
+        mRejectedTrustLines.emplace_back(
+            remoteNodeAndPos.first,
+            nextAfterRemoteNode);
+        mIsAuditPendingPathsOccurred = true;
+        // sending message to receiver that transaction continues
+        sendMessage<TTLProlongationResponseMessage>(
+            mContractor->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID(),
+            TTLProlongationResponseMessage::Continue);
+        return tryProcessNextPath();
+    }
+
     if (message->state() != CoordinatorReservationResponseMessage::Accepted) {
         return reject("Unexpected message state. Protocol error. Transaction closed.");
     }
@@ -1222,11 +1387,34 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::tryProcessNextPath
                 // in case if amount on direct paths changed, we can process it again
                 mDirectPathIsAlreadyProcessed = false;
                 initAmountsReservationOnNextPath();
+                mIsAuditPendingPathsOccurred = false;
                 return runAmountReservationStage();
             }
             debug() << "New paths was not built";
         }
 
+        if (mIsAuditPendingPathsOccurred) {
+            debug() << "try to build new paths due to audit pending TLs";
+            auto countPathsBeforeBuilding = mPathsStats.size();
+            mRejectedTrustLines.clear();
+            buildPathsAgain();
+
+            if (mPathsStats.size() > countPathsBeforeBuilding) {
+                debug() << "New paths was built " << to_string(mPathsStats.size() - countPathsBeforeBuilding);
+                mPreviousInaccessibleNodesCount = mInaccessibleNodes.size();
+                mPreviousRejectedTrustLinesCount = mRejectedTrustLines.size();
+                // in case if amount on direct paths changed, we can process it again
+                mDirectPathIsAlreadyProcessed = false;
+                initAmountsReservationOnNextPath();
+                mIsAuditPendingPathsOccurred = false;
+                return resultWaitForMessageTypes( {
+                    Message::Payments_IntermediateNodeReservationResponse,
+                    Message::Payments_TTLProlongationRequest,
+                    Message::General_NoEquivalent},
+                kAuditRetryingIntervalInMilliseconds);
+            }
+            debug() << "New paths was not built";
+        }
         reject("No another paths are available. Canceling.");
         return resultInsufficientFundsError();
     }
@@ -1236,11 +1424,14 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
 {
     debug() << "sendFinalAmountsConfigurationToAllParticipants";
 
-    if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
-        return resultUnexpectedError();
+    // suspending process means that we already have block number resource
+    if (!mIsSuspendedOnFinalAmountsConfirmationStage) {
+        if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
+            return resultUnexpectedError();
+        }
+        auto blockNumberResource = popNextResource<BlockNumberRecourse>();
+        mMaximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
     }
-    auto blockNumberResource = popNextResource<BlockNumberRecourse>();
-    mMaximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
 
     // check if reservation to contractor present
     auto receiverID = mContractorsManager->contractorIDByAddress(mContractor->mainAddress());
@@ -1248,6 +1439,22 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
     if (contractorNodeReservations != mReservations.end()) {
         if (contractorNodeReservations->second.size() > 1) {
             return reject("Coordinator has more than one reservation to contractor");
+        }
+    }
+
+    for (auto const &reservation : mReservations) {
+        // if node have reservation on TL with keysSharing state it will suspend on some period
+        // waiting for keys sharing process finishing
+        if (mTrustLinesManager->trustLineState(reservation.first) == TrustLine::KeysSharing) {
+            info() << "reservation with " << reservation.first << " in KeysSharing state";
+            mIsSuspendedOnFinalAmountsConfirmationStage = true;
+            if (mCntSuspendingOnFinalAmountsConfirmationStage < kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage) {
+                mCntSuspendingOnFinalAmountsConfirmationStage++;
+                info() << "suspend " << mCntSuspendingOnFinalAmountsConfirmationStage << " time";
+                return resultAwakeAfterMilliseconds(maxNetworkDelay(2));
+            }
+            info() << "Suspending done max times. Continue";
+            break;
         }
     }
 
@@ -1589,7 +1796,8 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runDirectAmountRes
 
     // todo : check if sender is really receiver
 
-    if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueContractorKeysAbsence) {
+    if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueContractorKeysAbsence ||
+            kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueOwnKeysAbsence) {
         warning() << "Receiver node doesn't approved reservation request due to contractor keys absence. "
                   << "Switching to another path.";
         dropReservationsOnPath(
@@ -1599,7 +1807,23 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runDirectAmountRes
             mContractorsManager->ownAddresses().at(0),
             kMessage->senderAddresses.at(0));
         mNeighborsKeysProblem = true;
-        // todo maybe set mOwnKeysPresent into false and initiate KeysSharing TA
+        if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueContractorKeysAbsence) {
+            publicKeysSharingSignal(receiverID, mEquivalent);
+        }
+        mStep = Stages::Coordinator_AmountReservation;
+        return tryProcessNextPath();
+    }
+
+    if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueAuditPending) {
+        warning() << "Receiver node doesn't approved reservation request due to audit pending. "
+                  << "Switching to another path.";
+        dropReservationsOnPath(
+            pathStats,
+            mCurrentAmountReservingPathIdentifier);
+        mRejectedTrustLines.emplace_back(
+            mContractorsManager->ownAddresses().at(0),
+            kMessage->senderAddresses.at(0));
+        mIsAuditPendingPathsOccurred = true;
         mStep = Stages::Coordinator_AmountReservation;
         return tryProcessNextPath();
     }
@@ -1670,9 +1894,36 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runVotesConsistenc
     mSubsystemsController->testTerminateProcessOnVoteConsistencyStage();
 #endif
 
-    if (!contextIsValid(Message::Payments_ParticipantVote)) {
-        removeAllDataFromStorageConcerningTransaction();
-        return reject("Coordinator didn't receive all messages with votes");
+    if (! contextIsValid(Message::Payments_ParticipantVote)) {
+        warning() << "Coordinator didn't receive all messages with votes";
+
+        if (mCountParticipantKeysResending >= kMaxCountParticipantKeysResending) {
+            removeAllDataFromStorageConcerningTransaction();
+            return reject("Too many resending attempts");
+        }
+
+        info() << "Resend participants public keys " << mCountParticipantKeysResending << " times";
+        // resend message with all public keys to participants which don't send participant vote
+        for (const auto &paymentNodeIdAndAddress : mPaymentParticipants) {
+            if (paymentNodeIdAndAddress.first == kCoordinatorPaymentNodeID) {
+                continue;
+            }
+            if (mParticipantsSignatures.find(paymentNodeIdAndAddress.first) != mParticipantsSignatures.end()) {
+                continue;
+            }
+            info() << "Resend to " << paymentNodeIdAndAddress.second->mainAddress()->fullAddress();
+            sendMessage<ParticipantsPublicKeysMessage>(
+                paymentNodeIdAndAddress.second->mainAddress(),
+                mEquivalent,
+                mContractorsManager->ownAddresses(),
+                currentTransactionUUID(),
+                mParticipantsPublicKeys);
+        }
+        mCountParticipantKeysResending++;
+        return resultWaitForMessageTypes( {
+            Message::Payments_ParticipantVote,
+            Message::Payments_TTLProlongationRequest},
+        maxNetworkDelay(4));
     }
 
     const auto kMessage = popNextMessage<ParticipantVoteMessage>();

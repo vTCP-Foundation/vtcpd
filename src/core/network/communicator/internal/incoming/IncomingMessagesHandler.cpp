@@ -32,6 +32,18 @@ noexcept:
         mLog),
     mCleaningTimer(ioCtx)
 {
+#ifdef ENGINE_TYPE_DC
+    // Builds Data centers may have signifficantly larger read socket buffer.
+    // Large read socket buffer is needed to handle potentially huge amount of messages,
+    // that might arrive form the network during max flow calculation.
+    const uint32_t kMaxReadSocketSize = 1024*1024*30; // 30MB of data.
+#else
+
+    // Other platforms might be unable to handle extra large buffers,
+    // so the default on is used.
+    const uint32_t kMaxReadSocketSize = 1024*1024; // 1MB of data
+#endif
+
     boost::asio::socket_base::receive_buffer_size option(kMaxReadSocketSize);
     mSocket.set_option(option);
 
@@ -123,6 +135,7 @@ noexcept
                     stringstream ss;
                     ss << mRemoteEndpointBuffer.address().to_string() << ":" << mRemoteEndpointBuffer.port();
                     message->setSenderIncomingIP(ss.str());
+                    info() << "Incoming message " << message->typeID() << " from " << message->senderIncomingIP();
                     signalMessageParsed(message);
                 } else {
                     break;

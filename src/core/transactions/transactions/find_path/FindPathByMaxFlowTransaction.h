@@ -23,7 +23,8 @@ public:
         ResourcesManager *resourcesManager,
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         TailManager *tailManager,
-        Logger &logger);
+        Logger &logger,
+		HopsCount_t hopsCount);
 
 protected:
     const string logHeader() const override;
@@ -40,10 +41,10 @@ private:
 
 private:
     // ToDo: move to separate config file
-    static const uint32_t kTopologyCollectingMillisecondsTimeout = 3000;
+    static const uint32_t kTopologyCollectingMillisecondsTimeout = 300;
 
-    static const uint32_t kTopologyCollectingAgainMillisecondsTimeout = 500;
-    static const uint32_t kMaxTopologyCollectingMillisecondsTimeout = 6000;
+    static const uint32_t kTopologyCollectingAgainMillisecondsTimeout = 200;
+    static const uint32_t kMaxTopologyCollectingMillisecondsTimeout = 3000;
     static const uint16_t kCountRunningProcessCollectingTopologyStage =
         (kMaxTopologyCollectingMillisecondsTimeout - kTopologyCollectingMillisecondsTimeout) /
         kTopologyCollectingAgainMillisecondsTimeout;
@@ -56,6 +57,7 @@ private:
     ResourcesManager *mResourcesManager;
     size_t mCountProcessCollectingTopologyRun;
     bool mIamGateway;
+	HopsCount_t mHopsCnt;
 };
 
 

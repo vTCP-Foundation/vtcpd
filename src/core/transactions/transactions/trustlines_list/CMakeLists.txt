@@ -10,7 +10,9 @@ add_library(transactions__trustlines_list
     GetTrustLineByAddressTransaction.h
     GetTrustLineByAddressTransaction.cpp
     GetEquivalentListTransaction.h
-    GetEquivalentListTransaction.cpp)
+    GetEquivalentListTransaction.cpp
+	GetAllTrustLineListTransaction.h
+	GetAllTrustLineListTransaction.cpp)
 
 target_include_directories(transactions__trustlines_list
     PUBLIC

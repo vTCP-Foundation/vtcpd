@@ -217,6 +217,27 @@ void PaymentTransactionsHandler::deleteRecord(
     }
 }
 
+vector<TransactionUUID> PaymentTransactionsHandler::allTransactionsUUID()
+{
+    vector<TransactionUUID> result;
+    sqlite3_stmt *stmt;
+
+    string query = "SELECT uuid FROM " + mTableName;
+    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        throw IOError("TrustLineHandler::allTransactionsUUID: "
+                      "Bad query; sqlite error: " + to_string(rc));
+    }
+    while (sqlite3_step(stmt) == SQLITE_ROW ) {
+        TransactionUUID transactionUUID((uint8_t *)sqlite3_column_blob(stmt, 0));
+
+        result.emplace_back(transactionUUID);
+    }
+    sqlite3_reset(stmt);
+    sqlite3_finalize(stmt);
+    return result;
+}
+
 LoggerStream PaymentTransactionsHandler::info() const
 {
     return mLog.info(logHeader());

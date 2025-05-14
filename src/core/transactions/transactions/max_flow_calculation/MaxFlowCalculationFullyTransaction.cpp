@@ -5,7 +5,8 @@ MaxFlowCalculationFullyTransaction::MaxFlowCalculationFullyTransaction(
     ContractorsManager *contractorsManager,
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     TailManager *tailManager,
-    Logger &logger) :
+    Logger &logger,
+    HopsCount_t hopsCount) :
 
     BaseCollectTopologyTransaction(
         BaseTransaction::MaxFlowCalculationFullyTransactionType,
@@ -15,9 +16,9 @@ MaxFlowCalculationFullyTransaction::MaxFlowCalculationFullyTransaction(
         tailManager,
         logger),
     mCommand(command),
-    mIamGateway(equivalentsSubsystemsRouter->iAmGateway(command->equivalent()))
-{
-}
+    mIamGateway(equivalentsSubsystemsRouter->iAmGateway(command->equivalent())),
+    mHopsCnt(hopsCount)
+{}
 
 TransactionResult::SharedConst MaxFlowCalculationFullyTransaction::sendRequestForCollectingTopology()
 {
@@ -142,8 +143,10 @@ TrustLineAmount MaxFlowCalculationFullyTransaction::calculateMaxFlow(
 #endif
     DateTime startTime = utc_now();
 
-    mTopologyTrustLineManager->makeFullyUsedTLsFromGatewaysToAllNodesExceptOne(
-        contractorID);
+    // todo : this is under comment, becouse we don't know all gateways which can be come in topology
+    //  from other nodes (gateways)
+//    mTopologyTrustLineManager->makeFullyUsedTLsFromGatewaysToAllNodesExceptOne(
+//        contractorID);
 
     mCurrentContractor = contractorID;
     if (mFirstLevelTopology.empty()) {

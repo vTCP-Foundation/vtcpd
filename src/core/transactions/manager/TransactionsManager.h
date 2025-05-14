@@ -18,6 +18,7 @@
 #include "../transactions/trust_line_channel/SetChannelContractorAddressesTransaction.h"
 #include "../transactions/trust_line_channel/SetChannelContractorCryptoKeyTransaction.h"
 #include "../transactions/trust_line_channel/RegenerateChannelCryptoKeyTransaction.h"
+#include "../transactions/trust_line_channel/RemoveChannelTransaction.h"
 
 #include "../transactions/trust_lines/OpenTrustLineTransaction.h"
 #include "../transactions/trust_lines/AcceptTrustLineTransaction.h"
@@ -71,6 +72,7 @@
 #include "../transactions/trustlines_list/GetTrustLineByAddressTransaction.h"
 #include "../transactions/trustlines_list/GetTrustLineByIDTransaction.h"
 #include "../transactions/trustlines_list/GetEquivalentListTransaction.h"
+#include "../transactions/trustlines_list/GetAllTrustLineListTransaction.h"
 
 #include "../transactions/find_path/FindPathByMaxFlowTransaction.h"
 
@@ -119,9 +121,11 @@ public:
         FeaturesManager *featuresManager,
         EventsInterfaceManager *eventsInterfaceManager,
         TailManager *tailManager,
+        CyclesRunningParameters cyclesRunningParameters,
         Logger &logger,
         SubsystemsController *subsystemsController,
-        TrustLinesInfluenceController *trustLinesInfluenceController);
+        TrustLinesInfluenceController *trustLinesInfluenceController,
+		uint8_t hops_count);
 
     void processCommand(
         bool success,
@@ -194,6 +198,9 @@ protected: // Transactions
 
     void launchRegenerateChannelCryptoKeyTransaction(
         RegenerateChannelCryptoKeyCommand::Shared command);
+
+    void launchRemoveChannelTransaction(
+        RemoveChannelCommand::Shared command);
 
     /*
      * Trust lines transactions
@@ -347,6 +354,9 @@ protected: // Transactions
     void launchGetEquivalentListTransaction(
         EquivalentListCommand::Shared command);
 
+	void launchGetAllTrustLineTransaction(
+		GetAllTrustLineCommand::Shared command);
+
     /*
      * Transaction
      */
@@ -418,7 +428,7 @@ protected:
         BaseTransaction::ProcessPongMessageSignal &signal);
 
     void subscribeForGatewayNotificationSignal(
-        EquivalentsSubsystemsRouter::GatewayNotificationSignal &signal);
+        EquivalentsCyclesSubsystemsRouter::GatewayNotificationSignal &signal);
 
     void subscribeForTrustLineActionSignal(
         BasePaymentTransaction::TrustLineActionSignal &signal);
@@ -554,6 +564,8 @@ private:
     TailManager *mTailManager;
     Logger &mLog;
     bool isPaymentTransactionsAllowedDueToObserving;
+	uint8_t mHopsCnt;
+    CyclesRunningParameters mCyclesRunningParameters;
 
     SubsystemsController *mSubsystemsController;
     TrustLinesInfluenceController *mTrustLinesInfluenceController;

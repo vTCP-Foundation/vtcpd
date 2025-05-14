@@ -86,7 +86,13 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
         }
     } catch (NotFoundError &e) {
         warning() << "Attempt to use not existing TL";
-        return resultProtocolError();
+        return resultDone();
+    }
+
+    if (mTrustLines->trustLineState(mContractorID) == TrustLine::KeysSharing &&
+            !mTrustLines->trustLineOwnKeysPresent(mContractorID)) {
+        warning() << "Parallel PublicKeysSharingSourceTransaction runs. Current transaction will be closed";
+        return resultDone();
     }
 
     auto ioTransaction = mStorageHandler->beginTransaction();
@@ -120,6 +126,8 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
         throw e;
     }
 
+    mTrustLines->setTrustLineState(mContractorID, TrustLine::KeysSharing);
+
     sendMessage<PublicKeysSharingInitMessage>(
         mContractorID,
         mEquivalent,
@@ -146,8 +154,13 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runCommandPub
         return resultProtocolError();
     }
 
-    if (mTrustLines->trustLineState(mContractorID) == TrustLine::Archived) {
-        warning() << "Invalid TL state " << mTrustLines->trustLineState(mContractorID);
+    try {
+        if (mTrustLines->trustLineState(mContractorID) == TrustLine::Archived) {
+            warning() << "Invalid TL state " << mTrustLines->trustLineState(mContractorID);
+            return resultProtocolError();
+        }
+    } catch (NotFoundError &e) {
+        warning() << "Attempt to use not existing TL";
         return resultProtocolError();
     }
 
@@ -181,6 +194,8 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runCommandPub
         error() << "Can't generate public keys. Details: " << e.what();
         return resultUnexpectedError();
     }
+
+    mTrustLines->setTrustLineState(mContractorID, TrustLine::KeysSharing);
 
     sendMessage<PublicKeysSharingInitMessage>(
         mContractorID,
@@ -228,6 +243,7 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
             kWaitMillisecondsForResponse);
         }
         info() << "Transaction will be closed";
+        mTrustLines->setTrustLineState(mContractorID, TrustLine::Active);
         return resultDone();
     }
 
@@ -235,6 +251,7 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
     info() << "contractor " << message->idOnReceiverSide << " send confirmation.";
     if (message->idOnReceiverSide != mContractorID) {
         warning() << "Sender is not contractor of this transaction";
+        mTrustLines->setTrustLineState(mContractorID, TrustLine::Active);
         return resultContinuePreviousState();
     }
 
@@ -247,6 +264,7 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
     if (message->state() != ConfirmationMessage::OK) {
         warning() << "Contractor didn't accept public key. Response code: " << message->state();
         // todo run reset keys sharing TA
+        mTrustLines->setTrustLineState(mContractorID, TrustLine::Active);
         return resultDone();
     }
 
@@ -258,6 +276,7 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
     if (message->number() != mCurrentKeyNumber || *message->hashConfirmation() != *mCurrentPublicKey->hash()) {
         warning() << "Number " << message->number() << " or Hash is incorrect";
         // todo run reset keys sharing TA
+        mTrustLines->setTrustLineState(mContractorID, TrustLine::Active);
         return resultDone();
     }
 
@@ -300,7 +319,10 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
                                 mCurrentKeyNumber);
         if (mCurrentPublicKey == nullptr) {
             warning() << "There are no data for keyNumber " << mCurrentKeyNumber;
-            // todo run reset keys sharing TA
+            mTrustLines->setTrustLineState(mContractorID, TrustLine::Active);
+            // remove all unused keys for triggering new keys sharing TA in future
+            keyChain.removeUnusedOwnKeys(
+                ioTransaction);
             return resultDone();
         }
 

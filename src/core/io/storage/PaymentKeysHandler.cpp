@@ -112,7 +112,9 @@ void PaymentKeysHandler::saveOwnKey(
 PrivateKey *PaymentKeysHandler::getOwnPrivateKey(
     const TransactionUUID &transactionUUID)
 {
-    string query = "SELECT private_key FROM " + mTableName + " WHERE transaction_uuid = ?;";
+    info() << "getOwnPrivateKey";
+    string query = "SELECT private_key FROM " + mTableName
+                   + " WHERE transaction_uuid = ?;";
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
@@ -129,11 +131,21 @@ PrivateKey *PaymentKeysHandler::getOwnPrivateKey(
 
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
-        auto result = new PrivateKey((byte_t*)sqlite3_column_blob(stmt, 0));
+        info() << "Before private key deserializing";
+        auto bytesCnt = sqlite3_column_bytes(stmt, 0);
+        info() << "bytes cnt: " << bytesCnt;
+        auto privateKeyBytesPtr = (byte*)sqlite3_column_blob(stmt, 0);
+        info() << "privateKeyBytesPtr = " << reinterpret_cast<int64_t>(privateKeyBytesPtr);
+        if (privateKeyBytesPtr == nullptr) {
+            info() << "privateKeyBytesPtr is null";
+        }
+        auto result = new PrivateKey(privateKeyBytesPtr);
+        info() << "Private key deserialized. ";
         sqlite3_reset(stmt);
         sqlite3_finalize(stmt);
         return result;
     } else {
+        info() << "Private key was not found";
         sqlite3_reset(stmt);
         sqlite3_finalize(stmt);
         throw NotFoundError("PaymentKeysHandler::getOwnPrivateKey: "
@@ -170,6 +182,48 @@ void PaymentKeysHandler::deleteKeyByTransactionUUID(
                       "Run query; sqlite error: " +
                       to_string(rc));
     }
+}
+
+vector<TransactionUUID> PaymentKeysHandler::allTransactionUUIDs()
+{
+    vector<TransactionUUID> result;
+    sqlite3_stmt *stmt;
+
+    string query = "SELECT transaction_uuid FROM " + mTableName;
+    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        throw IOError("PaymentKeysHandler::allTransactionUUIDs: "
+                      "Bad query; sqlite error: " + to_string(rc));
+    }
+    while (sqlite3_step(stmt) == SQLITE_ROW ) {
+        TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt, 0));
+
+        result.emplace_back(transactionUUID);
+    }
+    sqlite3_reset(stmt);
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+vector<TransactionUUID> PaymentKeysHandler::allTransactionUUIDs()
+{
+    vector<TransactionUUID> result;
+    sqlite3_stmt *stmt;
+
+    string query = "SELECT transaction_uuid FROM " + mTableName;
+    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        throw IOError("PaymentKeysHandler::allTransactionUUIDs: "
+                      "Bad query; sqlite error: " + to_string(rc));
+    }
+    while (sqlite3_step(stmt) == SQLITE_ROW ) {
+        TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt, 0));
+
+        result.emplace_back(transactionUUID);
+    }
+    sqlite3_reset(stmt);
+    sqlite3_finalize(stmt);
+    return result;
 }
 
 LoggerStream PaymentKeysHandler::info() const

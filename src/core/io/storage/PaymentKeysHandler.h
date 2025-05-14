@@ -32,6 +32,8 @@ public:
     void deleteKeyByTransactionUUID(
         const TransactionUUID &transactionUUID);
 
+    vector<TransactionUUID> allTransactionUUIDs();
+
 private:
     LoggerStream info() const;
 

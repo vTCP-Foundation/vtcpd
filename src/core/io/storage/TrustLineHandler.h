@@ -7,8 +7,9 @@
 #include "../../common/multiprecision/MultiprecisionUtils.h"
 
 #include "../../../libs/sqlite3/sqlite3.h"
-
 #include <vector>
+
+
 
 class TrustLineHandler
 {
@@ -41,6 +42,9 @@ public:
     vector<SerializedEquivalent> equivalents();
 
     vector<TrustLineID> allIDs();
+
+    vector<TrustLine::Shared> allTrustLinesByContractor(
+        ContractorID contractorID);
 
 private:
     LoggerStream info() const;

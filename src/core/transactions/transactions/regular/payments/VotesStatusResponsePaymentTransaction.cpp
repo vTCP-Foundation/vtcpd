@@ -24,16 +24,22 @@ TransactionResult::SharedConst VotesStatusResponsePaymentTransaction::run()
     info() << "Requested node " << senderAddress->fullAddress();
     map<PaymentNodeID, lamport::Signature::Shared> emptySignatureMap;
     if (mIsRequestedTransactionCurrentlyInProcessing) {
+        // modified flow
+        // if requested transaction didn't finish yet,
+        // we don't send response, which means that requester should wait and ask again
+        info() << "Requested TA currently is in processing. Don't send response";
+
+        // normal flow
         // if requested transaction didn't finish yet,
         // we send empty message, which means that requester should wait and ask again
-        info() << "Requested TA currently is in processing. "
-                  "Send response with empty ParticipantsVotesMessage";
-        sendMessage<ParticipantsVotesMessage>(
-            senderAddress,
-            mEquivalent,
-            mContractorsManager->ownAddresses(),
-            mRequest->transactionUUID(),
-            emptySignatureMap);
+//        info() << "Requested TA currently is in processing. "
+//                "Send response with empty ParticipantsVotesMessage";
+//        sendMessage<ParticipantsVotesMessage>(
+//            senderAddress,
+//            mEquivalent,
+//            mContractorsManager->ownAddresses(),
+//            mRequest->transactionUUID(),
+//            emptySignatureMap);
         return resultDone();
     }
 
