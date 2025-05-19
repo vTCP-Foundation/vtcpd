@@ -187,6 +187,10 @@ public:
     bool contractorKeysPresent(
         IOTransaction::Shared ioTransaction);
 
+    bool allContractorKeysPresent(
+        IOTransaction::Shared ioTransaction,
+        KeysCount contractorKeysCount);
+
     bool ownKeysPresent(
         IOTransaction::Shared ioTransaction);
 

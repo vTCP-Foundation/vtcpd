@@ -64,9 +64,9 @@ private:
     static const uint16_t kStartingAddressPeriodSeconds = 5;
     static const uint16_t kUpdatingAddressPeriodSeconds = 60;
 
-    static const byte kResetCacheAddressHours = 0;
-    static const byte kResetCacheAddressMinutes = 0;
-    static const byte kResetCacheAddressSeconds = 10;
+    static const uint16_t kResetCacheAddressHours = 0;
+    static const uint16_t kResetCacheAddressMinutes = 0;
+    static const uint16_t kResetCacheAddressSeconds = 10;
 
     static Duration& kResetCacheAddressDuration()
     {

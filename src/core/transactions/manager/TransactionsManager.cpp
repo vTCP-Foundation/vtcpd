@@ -626,6 +626,21 @@ void TransactionsManager::launchGetChannelInfoByAddressesTransaction(
         false);
 }
 
+void TransactionsManager::launchRemoveChannelTransaction(
+    RemoveChannelCommand::Shared command)
+{
+    prepareAndSchedule(
+        make_shared<RemoveChannelTransaction>(
+            command,
+            mContractorsManager,
+            mStorageHandler,
+            mLog),
+        true,
+        false,
+        false);
+}
+
+
 void TransactionsManager::launchUpdateChannelAddressesTargetTransaction(
     UpdateChannelAddressesMessage::Shared message)
 {

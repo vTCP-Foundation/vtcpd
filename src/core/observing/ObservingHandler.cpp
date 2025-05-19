@@ -1,8 +1,5 @@
 #include "ObservingHandler.h"
 
-// todo: move to .h
-const BlockNumber ObservingHandler::kDefaultBlockNumber;
-
 ObservingHandler::ObservingHandler(
     vector<pair<string, string>> observersAddressesStr,
     IOCtx &ioCtx,

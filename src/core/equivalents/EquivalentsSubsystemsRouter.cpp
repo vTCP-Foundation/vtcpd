@@ -100,10 +100,12 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
     }
 
     mGatewayNotificationAndRoutingTablesDelayedTask = make_unique<GatewayNotificationAndRoutingTablesDelayedTask>(
+            true, // enabled
+            1,    // updatingTimerPeriodDays (placeholder, adjust as needed)
             mIOCtx,
             mLogger);
-    subscribeForGatewayNotification(
-        mGatewayNotificationAndRoutingTablesDelayedTask->gatewayNotificationSignal);
+    // subscribeForGatewayNotification(
+    //     mGatewayNotificationAndRoutingTablesDelayedTask->gatewayNotificationSignal);
     info() << "Gateway Notification and Routing Tables Delayed Task is successfully initialized";
 }
 

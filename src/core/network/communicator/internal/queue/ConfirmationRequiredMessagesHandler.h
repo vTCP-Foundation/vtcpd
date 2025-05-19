@@ -131,7 +131,7 @@ protected:
     void delayedRescheduleResendingAfterDeserialization();
 
 protected:
-    const uint16_t kMessagesDeserializationDelayedSecondsTime = 150;
+    static constexpr uint16_t kMessagesDeserializationDelayedSecondsTime = 150;
 
 protected:
     /**

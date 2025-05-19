@@ -51,12 +51,12 @@ public:
     void rescheduleNextActionSmallTime();
 
 private:
-    const uint16_t kClaimRequestPeriodSeconds = 60;
-    const uint16_t kClaimRequestSmallPeriodSeconds = 30;
+    static constexpr uint16_t kClaimRequestPeriodSeconds = 60;
+    static constexpr uint16_t kClaimRequestSmallPeriodSeconds = 30;
 
 #ifdef TESTS
-    static const uint16_t kClaimRequestPeriodSecondsTests = 20;
-    static const uint16_t kClaimRequestSmallPeriodSecondsTests = 10;
+    static constexpr uint16_t kClaimRequestPeriodSecondsTests = 20;
+    static constexpr uint16_t kClaimRequestSmallPeriodSecondsTests = 10;
 #endif
 
 private:

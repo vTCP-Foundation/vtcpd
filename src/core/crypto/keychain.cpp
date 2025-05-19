@@ -179,6 +179,16 @@ bool TrustLineKeychain::ownKeysPresent(IOTransaction::Shared ioTransaction)
     return ioTransaction->ownKeysHandler()->availableKeysCnt(mTrustLineID) > 0;
 }
 
+bool TrustLineKeychain::allContractorKeysReceive(
+    IOTransaction::Shared ioTransaction,
+    KeyNumber currentKeysSetSequenceNumber,
+    KeysCount contractorKeysCount)
+{
+    return ioTransaction->contractorKeysHandler()->sequenceKeysCnt(
+               mTrustLineID, currentKeysSetSequenceNumber) == contractorKeysCount;
+}
+
+
 bool TrustLineKeychain::allContractorKeysPresent(
     IOTransaction::Shared ioTransaction,
     KeysCount contractorKeysCount)
@@ -410,6 +420,15 @@ bool TrustLineKeychain::isAuditWasCancelled(IOTransaction::Shared ioTransaction,
     }
     return false;
 }
+
+bool TrustLineKeychain::isActualAuditFull(
+    IOTransaction::Shared ioTransaction)
+{
+    auto actualAudit = ioTransaction->auditHandler()->getActualAuditFull(
+                           mTrustLineID);
+    return actualAudit->contractorSignature() != nullptr;
+}
+
 
 pair<lamport::Signature::Shared, KeyNumber>
 TrustLineKeychain::getSignatureAndKeyNumberForPendingAudit(IOTransaction::Shared ioTransaction,
@@ -715,6 +734,31 @@ void TrustLineKeychain::removeOutdatedCryptoData(IOTransaction::Shared ioTransac
         currentOwnKeysSetSequenceNumber,
         currentContractorKeysSetSequenceNumber);
 }
+
+void TrustLineKeychain::removeOutdatedCryptoPaymentsData(
+    IOTransaction::Shared ioTransaction)
+{
+    auto paymentsTransactionsUUID = ioTransaction->paymentTransactionsHandler()->allTransactionsUUID();
+    for (const auto &transactionUUID : paymentsTransactionsUUID) {
+        if (!isReceiptsPresent(ioTransaction, transactionUUID)) {
+            ioTransaction->paymentParticipantsVotesHandler()->deleteRecords(transactionUUID);
+            ioTransaction->paymentTransactionsHandler()->deleteRecord(transactionUUID);
+            ioTransaction->paymentKeysHandler()->deleteKeyByTransactionUUID(transactionUUID);
+        }
+    }
+}
+
+void TrustLineKeychain::removeOutdatedPaymentsKeysData(
+    IOTransaction::Shared ioTransaction)
+{
+    auto paymentsTransactionsUUID = ioTransaction->paymentKeysHandler()->allTransactionUUIDs();
+    for (const auto &transactionUUID : paymentsTransactionsUUID) {
+        if (!ioTransaction->paymentTransactionsHandler()->isTransactionPresent(transactionUUID)) {
+            ioTransaction->paymentKeysHandler()->deleteKeyByTransactionUUID(transactionUUID);
+        }
+    }
+}
+
 
 bool TrustLineKeychain::isReceiptsPresent(IOTransaction::Shared ioTransaction,
         const TransactionUUID& transactionUUID) const

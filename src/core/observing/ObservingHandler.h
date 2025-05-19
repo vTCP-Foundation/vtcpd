@@ -117,23 +117,23 @@ public:
     mutable AllowPaymentTransactionsSignal mAllowPaymentTransactionsSignal;
 
 private:
-    const uint32_t kInitialObservingRequestShiftSeconds = 5;
-    const uint32_t kInitialObservingRequestNextSeconds = 30;
-    const BlockNumber kDefaultBlockNumber = 777;
+    static constexpr uint32_t kInitialObservingRequestShiftSeconds = 5;
+    static constexpr uint32_t kInitialObservingRequestNextSeconds = 30;
+    static constexpr BlockNumber kDefaultBlockNumber = 777;
 
     // 6 min for check one transaction state minimum 3 times
-    const uint32_t kTransactionCheckingSignalRepeatTimeSeconds = 360;
-    const uint32_t kTransactionCheckingSignalSmallRepeatTimeSeconds = 60;
+    static constexpr uint32_t kTransactionCheckingSignalRepeatTimeSeconds = 360;
+    static constexpr uint32_t kTransactionCheckingSignalSmallRepeatTimeSeconds = 60;
 
 #ifdef TESTS
-    static const uint32_t kTransactionCheckingSignalRepeatTimeSecondsTests = 60;
-    static const uint32_t kTransactionCheckingSignalSmallRepeatTimeSecondsTests = 10;
+    static constexpr uint32_t kTransactionCheckingSignalRepeatTimeSecondsTests = 60;
+    static constexpr uint32_t kTransactionCheckingSignalSmallRepeatTimeSecondsTests = 10;
 #endif
 
     // block number updating period
-    static const byte_t kBlockNumberUpdateHours = 1;
-    static const byte_t kBlockNumberUpdateMinutes = 0;
-    static const byte_t kBlockNumberUpdateSeconds = 0;
+    static constexpr byte_t kBlockNumberUpdateHours = 1;
+    static constexpr byte_t kBlockNumberUpdateMinutes = 0;
+    static constexpr byte_t kBlockNumberUpdateSeconds = 0;
     static Duration &kBlockNumberUpdateDuration()
     {
         static auto duration = Duration(
@@ -143,9 +143,9 @@ private:
         return duration;
     }
 
-    static const uint16_t kApproximateBlockNumberIncrementingPeriodSeconds = 60;
+    static constexpr uint16_t kApproximateBlockNumberIncrementingPeriodSeconds = 60;
 #ifdef TESTS
-    static const uint16_t kApproximateBlockNumberIncrementingPeriodSecondsTests = 20;
+    static constexpr uint16_t kApproximateBlockNumberIncrementingPeriodSecondsTests = 20;
 #endif
 
 private:

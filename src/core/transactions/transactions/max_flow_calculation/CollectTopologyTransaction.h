@@ -28,7 +28,7 @@ public:
         MaxFlowCacheManager *maxFlowCacheManager,
         bool iAmGateway,
         Logger &logger,
-		HopsCount_t hopsCount);
+        HopsCount_t hopsCount);
 
     TransactionResult::SharedConst run() override;
 

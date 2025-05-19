@@ -129,7 +129,6 @@ void OutgoingMessagesHandler::sendMessage(
     mLog.debug("OutgoingMessagesHandler::sendMessage")
         << "Send message to the node (" << address->fullAddress() << ") "
         << "Message type: " << message->typeID();
-#endif
 
     auto sendingData = message->serializeToBytes();
 

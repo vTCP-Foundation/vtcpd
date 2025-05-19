@@ -224,6 +224,74 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runInitializatio
     return resultOK();
 }
 
+TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runAuditPendingStage()
+{
+    info() << "runAuditPendingStage with " << mContractorID << " attempt " << mCountPendingAttempts;
+    if (!mSubsystemsController->isRunTrustLineTransactions()) {
+        debug() << "It is forbidden run trust line transactions";
+        return resultForbiddenRun();
+    }
+
+    if (!mContractorsManager->contractorPresent(mContractorID)) {
+        warning() << "There is no contractor with requested id";
+        return resultProtocolError();
+    }
+
+    try {
+        if (mTrustLines->trustLineState(mContractorID) != TrustLine::AuditPending) {
+            warning() << "Invalid TL state " << mTrustLines->trustLineState(mContractorID);
+            return resultProtocolError();
+        }
+
+    } catch (NotFoundError &e) {
+        warning() << "Attempt to change not existing TL";
+        return resultProtocolError();
+    }
+
+    // todo maybe check in storage (keyChain)
+    if (!mTrustLines->trustLineOwnKeysPresent(mContractorID)) {
+        warning() << "There are no own keys";
+        return resultKeysError();
+    }
+
+    // todo maybe check in storage (keyChain)
+    if (!mTrustLines->trustLineContractorKeysPresent(mContractorID)) {
+        warning() << "There are no contractor keys";
+        return resultContractorKeysError();
+    }
+
+    if (mTrustLines->isReservationsPresentOnTrustLine(mContractorID)) {
+        warning() << "There are some reservations on TL. Audit will be suspended";
+        auto incomingReservations = mTrustLines->reservationsFromContractor(mContractorID);
+        for (auto &incomingReservation : incomingReservations) {
+            info() << "Incoming reservation " << incomingReservation->transactionUUID()
+                   << " " << incomingReservation->amount();
+        }
+        auto outgoingReservations = mTrustLines->reservationsToContractor(mContractorID);
+        for (auto &outgoingReservation : outgoingReservations) {
+            info() << "Outgoing reservation " << outgoingReservation->transactionUUID()
+                   << " " << outgoingReservation->amount();
+        }
+        mCountPendingAttempts++;
+        if (mCountPendingAttempts > kMaxPendingAttempts) {
+            warning() << "Max pending attempts. TL will be conflicted";
+            auto ioTransaction = mStorageHandler->beginTransaction();
+            mTrustLines->setTrustLineState(
+                mContractorID,
+                TrustLine::ConflictResolving,
+                ioTransaction);
+            // todo run conflict resolving TA
+            return resultProtocolError();
+        }
+
+        return resultAwakeAfterMilliseconds(
+                   kPendingPeriodInMilliseconds);
+    }
+
+    return initializeAudit();
+}
+
+
 TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runResponseProcessingStage()
 {
     info() << "runResponseProcessingStage";

@@ -46,7 +46,7 @@ EquivalentsCyclesSubsystemsRouter::EquivalentsCyclesSubsystemsRouter(
     mGatewayNotificationAndRoutingTablesDelayedTask = make_unique<GatewayNotificationAndRoutingTablesDelayedTask>(
             cyclesRunningParameters.isUpdateRoutingTables(),
             cyclesRunningParameters.mRoutingTableUpdatingIntervalDays,
-            mIOService,
+            mIOCtx,
             mLogger);
     info() << "Gateway Notification and Routing Tables Delayed Task is successfully initialized";
 

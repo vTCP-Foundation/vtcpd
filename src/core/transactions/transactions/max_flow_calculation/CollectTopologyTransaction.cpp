@@ -10,7 +10,7 @@ CollectTopologyTransaction::CollectTopologyTransaction(
     MaxFlowCacheManager *maxFlowCacheManager,
     bool iAmGateway,
     Logger &logger,
-	HopsCount_t hopsCount) :
+    HopsCount_t hopsCount) :
 
     BaseTransaction(
         BaseTransaction::CollectTopologyTransactionType,
@@ -43,7 +43,7 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
                 mTopologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
                         //TopologyTrustLinesManager::kCurrentNodeID,
-						0,
+                        0,
                         targetID,
                         trustLineAmountShared));
                 continue;
@@ -52,7 +52,7 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
                 mTopologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
                         //TopologyTrustLinesManager::kCurrentNodeID,
-						0,
+                        0,
                         targetID,
                         trustLineAmountShared));
             }
@@ -64,7 +64,7 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
             mTopologyTrustLineManager->addTrustLine(
                 make_shared<TopologyTrustLine>(
                     //TopologyTrustLinesManager::kCurrentNodeID,
-					0,
+                    0,
                     targetID,
                     trustLineAmountShared));
         }
@@ -82,18 +82,18 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
 
 void CollectTopologyTransaction::sendMessagesToContractors()
 {
-	// calc hops count for target;
-	//===============================================================
-	// [Hops count |  A  |  B   => calc B ]
-	// [ 0         |  0  |  0   => (mHopsCnt - 1) = -1 ~> 0 ]
-	// [ 1         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
-	// [ 2         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
-	// [ 3         |  1  |  1   => (mHopsCnt - 1)/2 = 1     ]
-	// [ 4         |  2  |  1   => (mHopsCnt - 1)/2 = 1     ]
-	// [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
-	//===============================================================
+    // calc hops count for target;
+    //===============================================================
+    // [Hops count |  A  |  B   => calc B ]
+    // [ 0         |  0  |  0   => (mHopsCnt - 1) = -1 ~> 0 ]
+    // [ 1         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+    // [ 2         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+    // [ 3         |  1  |  1   => (mHopsCnt - 1)/2 = 1     ]
+    // [ 4         |  2  |  1   => (mHopsCnt - 1)/2 = 1     ]
+    // [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
+    //===============================================================
 
-	HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
+    HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
 
 
     for (const auto &contractorAddress : mContractorAddresses)
@@ -107,19 +107,19 @@ void CollectTopologyTransaction::sendMessagesToContractors()
 
 void CollectTopologyTransaction::sendMessagesOnFirstLevel()
 {
-	// calc hops count for source;
-	//===============================================================
-	// [Hops count |  A  |  B   => calc B ]
-	// [ 0         |  0  |  0   => (mHopsCnt - 1) = -1 ~> 0 ]
-	// [ 1         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
-	// [ 2         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
-	// [ 3         |  1  |  1   => (mHopsCnt - 1)/2 = 1     ]
-	// [ 4         |  2  |  1   => (mHopsCnt - 1)/2 = 1     ]
-	// [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
-	//===============================================================
+    // calc hops count for source;
+    //===============================================================
+    // [Hops count |  A  |  B   => calc B ]
+    // [ 0         |  0  |  0   => (mHopsCnt - 1) = -1 ~> 0 ]
+    // [ 1         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+    // [ 2         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+    // [ 3         |  1  |  1   => (mHopsCnt - 1)/2 = 1     ]
+    // [ 4         |  2  |  1   => (mHopsCnt - 1)/2 = 1     ]
+    // [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
+    //===============================================================
 
-	HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
-	HopsCount_t source_hops_count = (this->mHopsCnt == 1 ? 1 : (this->mHopsCnt - 1 - target_hops_count));
+    HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
+    HopsCount_t source_hops_count = (this->mHopsCnt == 1 ? 1 : (this->mHopsCnt - 1 - target_hops_count));
 
     if (mIamGateway) {
         auto outgoingFlowIDs = mTrustLinesManager->firstLevelGatewayNeighborsWithOutgoingFlow().first;
@@ -132,7 +132,7 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
                 nodeIDOutgoingFlow,
                 mEquivalent,
                 mContractorsManager->idOnContractorSide(nodeIDOutgoingFlow),
-				source_hops_count);
+                source_hops_count);
         }
     } else {
         auto outgoingFlowIDs = mTrustLinesManager->firstLevelNeighborsWithOutgoingFlow().first;
@@ -144,7 +144,7 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
                     *outgoingFlowIDIt,
                     mEquivalent,
                     mContractorsManager->idOnContractorSide(*outgoingFlowIDIt),
-					source_hops_count);
+                    source_hops_count);
                 outgoingFlowIDs.erase(outgoingFlowIDIt);
             } else {
                 outgoingFlowIDIt++;
@@ -160,7 +160,7 @@ void CollectTopologyTransaction::sendMessagesOnFirstLevel()
                 nodeIDWithOutgoingFlow,
                 mEquivalent,
                 mContractorsManager->idOnContractorSide(nodeIDWithOutgoingFlow),
-				source_hops_count);
+                source_hops_count);
         }
     }
 }

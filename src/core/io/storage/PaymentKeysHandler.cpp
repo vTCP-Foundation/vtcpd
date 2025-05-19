@@ -139,7 +139,7 @@ PrivateKey *PaymentKeysHandler::getOwnPrivateKey(
         if (privateKeyBytesPtr == nullptr) {
             info() << "privateKeyBytesPtr is null";
         }
-        auto result = new PrivateKey(privateKeyBytesPtr);
+        auto result = new PrivateKey(reinterpret_cast<byte_t*>(privateKeyBytesPtr));
         info() << "Private key deserialized. ";
         sqlite3_reset(stmt);
         sqlite3_finalize(stmt);
@@ -182,27 +182,6 @@ void PaymentKeysHandler::deleteKeyByTransactionUUID(
                       "Run query; sqlite error: " +
                       to_string(rc));
     }
-}
-
-vector<TransactionUUID> PaymentKeysHandler::allTransactionUUIDs()
-{
-    vector<TransactionUUID> result;
-    sqlite3_stmt *stmt;
-
-    string query = "SELECT transaction_uuid FROM " + mTableName;
-    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("PaymentKeysHandler::allTransactionUUIDs: "
-                      "Bad query; sqlite error: " + to_string(rc));
-    }
-    while (sqlite3_step(stmt) == SQLITE_ROW ) {
-        TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt, 0));
-
-        result.emplace_back(transactionUUID);
-    }
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
-    return result;
 }
 
 vector<TransactionUUID> PaymentKeysHandler::allTransactionUUIDs()

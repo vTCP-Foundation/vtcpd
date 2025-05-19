@@ -5,6 +5,7 @@
 #include "../delayed_tasks/TopologyCacheUpdateDelayedTask.h"
 #include "../paths/PathsManager.h"
 #include "../interface/events_interface/interface/EventsInterfaceManager.h"
+#include "../delayed_tasks/GatewayNotificationAndRoutingTablesDelayedTask.h"
 
 #include <map>
 
@@ -87,6 +88,7 @@ private:
     map<SerializedEquivalent, unique_ptr<MaxFlowCacheManager>> mMaxFlowCacheManagers;
     map<SerializedEquivalent, unique_ptr<PathsManager>> mPathsManagers;
     vector<SerializedEquivalent> mEquivalentsIAmGateway;
+    unique_ptr<GatewayNotificationAndRoutingTablesDelayedTask> mGatewayNotificationAndRoutingTablesDelayedTask;
 
     set<ContractorID> mContractorsShouldBePinged;
 };
