@@ -12,6 +12,7 @@
 #include <boost/noncopyable.hpp>
 #include <vector>
 #include <utility>
+#include <optional>
 
 namespace crypto {
 using namespace std;
@@ -73,7 +74,23 @@ public:
         IOTransaction::Shared ioTransaction,
         const TransactionUUID &transactionUUID);
 
-    lamport::Signature::Shared signPaymentTransaction(
+    /**
+     * @brief Signs payment transaction.
+     *
+     * @param ioTransaction is database transaction.
+     * @param transactionUUID is UUID of the transaction to be signed.
+     * @param dataForSign is data to be signed.
+     * @param dataForSignBytesCount is count of bytes in data to be signed.
+     *
+     * @returns Lamport signature if signing was successful, otherwise returns std::nullopt
+     * (e.g. if no private key is found for the transaction).
+     *
+     * @throws "IOError" in case of an error during database access.
+     * @throws "RuntimeError" in case of any other internal error (e.g., memory allocation failure).
+     *
+     * Writes corresponding log record before exception throwing if an error is caught internally.
+     */
+    std::optional<lamport::Signature::Shared> signPaymentTransaction(
         IOTransaction::Shared ioTransaction,
         const TransactionUUID &transactionUUID,
         BytesShared dataForSign,
@@ -85,6 +102,8 @@ private:
     LoggerStream debug() const;
 
     LoggerStream warning() const;
+
+    LoggerStream error() const;
 
     const string logHeader() const;
 

@@ -55,22 +55,21 @@ lamport::PublicKey::Shared Keystore::generateAndSaveKeyPairForPaymentTransaction
     return pubKey;
 }
 
-lamport::Signature::Shared Keystore::signPaymentTransaction(IOTransaction::Shared ioTransaction,
+std::optional<lamport::Signature::Shared> Keystore::signPaymentTransaction(IOTransaction::Shared ioTransaction,
         const TransactionUUID& transactionUUID,
         BytesShared dataForSign,
         size_t dataForSignBytesCount)
 {
     try {
-        auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey(
-                              transactionUUID);
+        auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey(transactionUUID);
         return make_shared<Signature>(
                    dataForSign.get(),
                    dataForSignBytesCount,
                    privateKey);
-    } catch (NotFoundError &e) {
-        warning() << "Can't get key for transaction " << transactionUUID.stringUUID()
-                  << ". Details: " << e.what();
-        return nullptr;
+    } catch (const NotFoundError &e) {
+        error() << "Can't get private key for the transaction " << transactionUUID.stringUUID()
+                << ". Details: " << e.what();
+        return std::nullopt;
     }
 }
 
@@ -87,6 +86,11 @@ LoggerStream Keystore::debug() const
 LoggerStream Keystore::warning() const
 {
     return mLogger.warning(logHeader());
+}
+
+LoggerStream Keystore::error() const
+{
+    return mLogger.error(logHeader());
 }
 
 const string Keystore::logHeader() const

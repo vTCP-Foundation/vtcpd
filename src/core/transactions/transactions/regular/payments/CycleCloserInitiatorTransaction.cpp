@@ -1141,15 +1141,19 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runVotesConsiste
                                           mContractorsManager->selfContractor());
         {
             auto ioTransaction = mStorageHandler->beginTransaction();
-            auto ownSignature = mKeysStore->signPaymentTransaction(
-                                    ioTransaction,
-                                    currentTransactionUUID(),
-                                    serializedOwnVotesData.first,
-                                    serializedOwnVotesData.second);
+            auto signature = mKeysStore->signPaymentTransaction(
+                                 ioTransaction,
+                                 currentTransactionUUID(),
+                                 serializedOwnVotesData.first,
+                                 serializedOwnVotesData.second);
+            if (!signature.has_value()) {
+                error() << "Can't sign the transaction. See logs for the details.";
+                return reject("Can't sign the transaction. See logs for the details.");
+            }
             mParticipantsSignatures.insert(
                 make_pair(
                     kCoordinatorPaymentNodeID,
-                    ownSignature));
+                    signature.value()));
 
             ioTransaction->paymentTransactionsHandler()->saveRecord(
                 mTransactionUUID,

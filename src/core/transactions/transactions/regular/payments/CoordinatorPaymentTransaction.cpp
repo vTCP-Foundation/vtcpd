@@ -1964,15 +1964,21 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runVotesConsistenc
                                           mContractorsManager->selfContractor());
         {
             auto ioTransaction = mStorageHandler->beginTransaction();
-            auto ownSign = mKeysStore->signPaymentTransaction(
-                               ioTransaction,
-                               currentTransactionUUID(),
-                               serializedOwnVotesData.first,
-                               serializedOwnVotesData.second);
+            auto signature = mKeysStore->signPaymentTransaction(
+                                 ioTransaction,
+                                 currentTransactionUUID(),
+                                 serializedOwnVotesData.first,
+                                 serializedOwnVotesData.second);
+
+            if (!signature.has_value()) {
+                error() << "Can't sign the payment transaction. See logs for the details";
+                return resultUnexpectedError();
+            }
+
             mParticipantsSignatures.insert(
                 make_pair(
                     kCoordinatorPaymentNodeID,
-                    ownSign));
+                    signature.value()));
 
             ioTransaction->paymentTransactionsHandler()->saveRecord(
                 mTransactionUUID,
