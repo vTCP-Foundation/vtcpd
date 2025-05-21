@@ -62,10 +62,15 @@ std::optional<lamport::Signature::Shared> Keystore::signPaymentTransaction(IOTra
 {
     try {
         auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey(transactionUUID);
-        return make_shared<Signature>(
-                   dataForSign.get(),
-                   dataForSignBytesCount,
-                   privateKey);
+        auto signature = make_shared<Signature>(
+                             dataForSign.get(),
+                             dataForSignBytesCount,
+                             privateKey);
+
+        // Signature constructor copies the private key into internal memory,
+        // so the original private key must be freed.
+        delete privateKey;
+        return signature;
     } catch (const NotFoundError &e) {
         error() << "Can't get private key for the transaction " << transactionUUID.stringUUID()
                 << ". Details: " << e.what();
