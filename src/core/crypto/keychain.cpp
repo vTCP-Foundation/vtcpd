@@ -632,7 +632,12 @@ lamport::KeyHash::Shared TrustLineKeychain::ownPublicKeysHash(
     }
     auto keyHashBuffer = (byte_t*)malloc(lamport::KeyHash::kBytesSize);
     crypto_generichash_final(&state, keyHashBuffer, lamport::KeyHash::kBytesSize);
-    return make_shared<lamport::KeyHash>(keyHashBuffer);
+    auto result = make_shared<lamport::KeyHash>(keyHashBuffer);
+
+    // KeyHash constructor copies the buffer into internal memory,
+    // so the original buffer must be freed.
+    free(keyHashBuffer);
+    return result;
 }
 
 lamport::KeyHash::Shared TrustLineKeychain::contractorPublicKeysHash(
@@ -649,7 +654,12 @@ lamport::KeyHash::Shared TrustLineKeychain::contractorPublicKeysHash(
     }
     auto keyHashBuffer = (byte_t*)malloc(lamport::KeyHash::kBytesSize);
     crypto_generichash_final(&state, keyHashBuffer, lamport::KeyHash::kBytesSize);
-    return make_shared<lamport::KeyHash>(keyHashBuffer);
+    auto result = make_shared<lamport::KeyHash>(keyHashBuffer);
+
+    // KeyHash constructor copies the buffer into internal memory,
+    // so the original buffer must be freed.
+    free(keyHashBuffer);
+    return result;
 }
 
 pair<bool, bool> TrustLineKeychain::checkKeysSetAppropriate(IOTransaction::Shared ioTransaction,
