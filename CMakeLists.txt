@@ -68,6 +68,11 @@ target_compile_definitions(project_options INTERFACE
 target_compile_options(project_options INTERFACE
     $<$<CONFIG:Release>:-O2 -Os -s -fdata-sections -fmerge-all-constants>
     $<$<CONFIG:Debug>:-g -O0>
+    # Add GCC specific sanitizer compile flags for Debug builds if ENABLE_GCC_SANITIZERS is ON
+    $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_GCC_SANITIZERS}>,$<CXX_COMPILER_ID:GNU>>:
+        -fno-omit-frame-pointer
+        -fsanitize=address,undefined
+    >
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra>
 )
 
@@ -92,6 +97,8 @@ if(BUILD_TESTING)
     enable_testing()
     add_subdirectory(src/tests)
 endif()
+
+option(ENABLE_GCC_SANITIZERS "Enable GCC runtime memory sanitizers (ASan, UBSan) for Debug builds" ON)
 
 # Core libraries
 add_library(core_libs INTERFACE)
@@ -173,6 +180,13 @@ target_link_libraries(vtcpd PRIVATE
     # Libs
     libsqlite3
     sodium
+)
+
+# Add GCC specific sanitizer link flags for Debug builds for the main executable if ENABLE_GCC_SANITIZERS is ON
+target_link_options(vtcpd PRIVATE
+    $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_GCC_SANITIZERS}>,$<CXX_COMPILER_ID:GNU>>:
+        -fsanitize=address,undefined
+    >
 )
 
 # Installation

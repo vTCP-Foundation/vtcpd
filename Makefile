@@ -4,7 +4,7 @@
 # Builds debug version of vtcpd binary (suitable for internal testing).
 build-debug:
 	mkdir -p build-debug
-	cd build-debug && cmake -B ./ -S .. -DCMAKE_BUILD_TYPE=Debug && cmake --build . -j 8
+	cd build-debug && cmake -B ./ -S .. -DCMAKE_BUILD_TYPE=Debug -DENABLE_GCC_SANITIZERS=ON && cmake --build . -j 8
 
 
 # Builds release version of vtcpd binary.
