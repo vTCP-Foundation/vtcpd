@@ -31,6 +31,12 @@ public:
 public:
     KeyHash() = default;
 
+    /**
+     * Constructs KeyHash by copying data from the provided buffer
+     * Note: The class copies the data into internal memory and does not take ownership
+     * of the buffer passed. The caller remains responsible for freeing the buffer.
+     * @param buffer Pointer to bytes to copy from. Must be at least kBytesSize bytes long.
+     */
     KeyHash(
         byte_t* buffer);
 
@@ -47,7 +53,7 @@ public:
         const KeyHash &kh2);
 
 public:
-    static const size_t kBytesSize = 32;
+    static constexpr size_t kBytesSize = 32;
 
 private:
     byte_t mData[kBytesSize];

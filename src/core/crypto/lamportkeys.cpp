@@ -1,11 +1,12 @@
 #include "lamportkeys.h"
+#include <cstring>
 
 namespace crypto {
 namespace lamport {
 
 const size_t BaseKey::keySize()
 {
-    // public and private keys has 16KB
+    // Public and private keys has 16KB
     return 16 * 1024;
 }
 
@@ -98,7 +99,12 @@ const KeyHash::Shared PublicKey::hash() const
         keySize(),
         nullptr,
         0);
-    return make_shared<KeyHash>(keyHashBuffer);
+    auto result = make_shared<KeyHash>(keyHashBuffer);
+
+    // KeyHash constructor copies the buffer into internal memory,
+    // so the original buffer must be freed.
+    free(keyHashBuffer);
+    return result;
 }
 
 KeyHash::KeyHash(
@@ -126,20 +132,12 @@ const string KeyHash::toString() const
 
 bool operator==(const KeyHash &kh1, const KeyHash &kh2)
 {
-    for (int i = KeyHash::kBytesSize - 1; i >= 0; --i) {
-        if (kh1.mData[i] != kh2.mData[i])
-            return false;
-    }
-    return true;
+    return memcmp(kh1.mData, kh2.mData, KeyHash::kBytesSize) == 0;
 }
 
 bool operator!=(const KeyHash &kh1, const KeyHash &kh2)
 {
-    for (int i = KeyHash::kBytesSize - 1; i >= 0; --i) {
-        if (kh1.mData[i] != kh2.mData[i])
-            return true;
-    }
-    return false;
+    return !(kh1 == kh2);
 }
 
 }
