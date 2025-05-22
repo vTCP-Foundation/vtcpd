@@ -27,6 +27,7 @@ inline BytesShared tryMalloc(
     if (bytesShared == nullptr) {
         throw std::bad_alloc();
     }
+    memset(bytesShared.get(), 0, bytesCount);
 
     return bytesShared;
 }

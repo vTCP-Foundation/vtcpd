@@ -6,6 +6,7 @@ BaseTransaction::BaseTransaction(
     Logger &log) :
 
     mType(type),
+    mTransactionUUID(),
     mLog(log),
     mTimeStarted(utc_now())
 {
@@ -58,8 +59,9 @@ BaseTransaction::BaseTransaction(
     Logger &log) :
 
     mType(type),
-    mLog(log),
-    mEquivalent(equivalent)
+    mTransactionUUID(),
+    mEquivalent(equivalent),
+    mLog(log)
 {
     mStep = 1;
 }

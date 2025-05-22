@@ -82,7 +82,17 @@ void ContractorKeysHandler::saveKey(
                       "Bad query; sqlite error: " +
                       to_string(rc));
     }
-    rc = sqlite3_bind_blob(stmt, 1, publicKey->hash()->data(), (int)KeyHash::kBytesSize, SQLITE_STATIC);
+    // Store the result of publicKey->hash() in a local shared_ptr (keyHashShared).
+    // This is to ensure that the underlying KeyHash object and its data remain valid
+    // for the duration of the sqlite3_bind_blob call, especially if SQLITE_STATIC
+    // were to be used (though SQLITE_TRANSIENT is now used for robustness).
+    auto keyHashShared = publicKey->hash();
+
+    // Bind the hash of the public key.
+    // SQLITE_TRANSIENT is used to ensure that SQLite makes its own copy of the blob data.
+    // This prevents a use-after-free error that could occur if the data pointed to by
+    // keyHashShared->data() became invalid before sqlite3_step is called.
+    rc = sqlite3_bind_blob(stmt, 1, keyHashShared->data(), (int)KeyHash::kBytesSize, SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) {
         throw IOError("ContractorKeysHandler::saveKey: "
                       "Bad binding of Hash; sqlite error: " +

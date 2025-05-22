@@ -6,6 +6,7 @@
 #include <sodium.h>
 #include <memory>
 
+
 namespace crypto {
 namespace lamport {
 
@@ -16,11 +17,17 @@ class BaseKey : boost::noncopyable
     friend class Signature;
 
 public:
-    static const size_t keySize();
+    /**
+     * @return Generic size of the key in bytes.
+     */
+    static constexpr size_t keySize()
+    {
+        return 16 * 1024;
+    }
 
 protected:
-    static const size_t kRandomNumbersCount = 256 * 2;
-    static const size_t kRandomNumberSize = 256 / 8;
+    static constexpr size_t kRandomNumbersSlotsCount = 256 * 2;
+    static constexpr size_t kRandomNumberSlotSize = 256 / 8;
 };
 
 class KeyHash

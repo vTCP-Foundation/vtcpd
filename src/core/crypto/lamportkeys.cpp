@@ -4,21 +4,16 @@
 namespace crypto {
 namespace lamport {
 
-const size_t BaseKey::keySize()
-{
-    // Public and private keys has 16KB
-    return 16 * 1024;
-}
 
-PrivateKey::PrivateKey() : mData(memory::SecureSegment(kRandomNumbersCount * kRandomNumberSize)),
+PrivateKey::PrivateKey() : mData(memory::SecureSegment(kRandomNumbersSlotsCount * kRandomNumberSlotSize)),
     mIsCropped(false)
 {
     auto guard = mData.unlockAndInitGuard();
 
     auto offset = static_cast<byte_t*>(guard.address());
-    for (size_t i = 0; i < kRandomNumbersCount; ++i) {
-        randombytes_buf(offset, kRandomNumberSize);
-        offset += kRandomNumberSize;
+    for (size_t i = 0; i < kRandomNumbersSlotsCount; ++i) {
+        randombytes_buf(offset, kRandomNumberSlotSize);
+        offset += kRandomNumberSlotSize;
     }
 }
 
@@ -41,7 +36,7 @@ PublicKey::Shared PrivateKey::derivePublicKey()
     auto generatedKey = make_shared<PublicKey>();
 
     // Numbers buffers memory allocation.
-    generatedKey->mData = static_cast<byte_t*>(malloc(kRandomNumbersCount * kRandomNumberSize));
+    generatedKey->mData = static_cast<byte_t*>(malloc(kRandomNumbersSlotsCount * kRandomNumberSlotSize));
     if (generatedKey->mData == nullptr) {
         return nullptr;
     }
@@ -50,10 +45,10 @@ PublicKey::Shared PrivateKey::derivePublicKey()
     auto source = static_cast<byte_t*>(guard.address());
     auto destination = static_cast<byte_t*>(generatedKey->mData);
 
-    for (size_t i = 0; i < kRandomNumbersCount; ++i) {
-        crypto_generichash(destination, kRandomNumberSize, source, kRandomNumberSize, nullptr, 0);
-        source += kRandomNumberSize;
-        destination += kRandomNumberSize;
+    for (size_t i = 0; i < kRandomNumbersSlotsCount; ++i) {
+        crypto_generichash(destination, kRandomNumberSlotSize, source, kRandomNumberSlotSize, nullptr, 0);
+        source += kRandomNumberSlotSize;
+        destination += kRandomNumberSlotSize;
     }
 
     return generatedKey;

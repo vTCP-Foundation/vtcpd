@@ -125,6 +125,9 @@ protected:
     using InlineBoolRecord = OptimizedPrimitiveTypeInlineRecord<bool>;
 
 public:
+    BytesSerializer();
+    ~BytesSerializer();
+
     void enqueue(
         const void* src,
         const size_t bytesCount) noexcept(false);
@@ -171,7 +174,11 @@ public:
     noexcept(false);
 
 protected:
-    vector<BaseSerializationRecord *> mRecords;
+    void enqueue(
+        BaseSerializationRecord* record) noexcept(false);
+
+protected:
+    mutable vector<BaseSerializationRecord *> mRecords;
 };
 
 #endif // VTCPD_BYTESSERIALIZER_H
