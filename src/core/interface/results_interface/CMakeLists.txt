@@ -19,5 +19,6 @@ target_compile_features(interface__results
 
 target_link_libraries(interface__results
     PUBLIC
+        core_libs
         common
         exceptions)
