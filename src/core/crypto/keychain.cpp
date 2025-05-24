@@ -227,7 +227,7 @@ pair<lamport::Signature::Shared, KeyNumber> TrustLineKeychain::sign(
 {
     dataGuard(data, size);
 
-    pair<PrivateKey*, KeyNumber> privateKeyAndNumber;
+    pair<unique_ptr<PrivateKey>, KeyNumber> privateKeyAndNumber;
     try {
         privateKeyAndNumber = ioTransaction->ownKeysHandler()->nextAvailableKey(mTrustLineID);
         // todo: decrypt private key.
@@ -240,7 +240,7 @@ pair<lamport::Signature::Shared, KeyNumber> TrustLineKeychain::sign(
         throw e;
     }
 
-    auto signature = make_shared<lamport::Signature>(data.get(), size, privateKeyAndNumber.first);
+    auto signature = make_shared<lamport::Signature>(data.get(), size, privateKeyAndNumber.first.get());
 
     return make_pair(signature, privateKeyAndNumber.second);
 }

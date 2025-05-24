@@ -184,7 +184,7 @@ const KeyNumber OwnKeysHandler::maxKeySetSequenceNumber(
     }
 }
 
-pair<PrivateKey *, KeyNumber> OwnKeysHandler::nextAvailableKey(
+pair<unique_ptr<PrivateKey>, KeyNumber> OwnKeysHandler::nextAvailableKey(
     const TrustLineID trustLineID)
 {
     string query = "SELECT private_key, number FROM " + mTableName + " WHERE trust_line_id = ? AND is_valid = 1 ORDER BY number ASC LIMIT 1;";
@@ -209,7 +209,7 @@ pair<PrivateKey *, KeyNumber> OwnKeysHandler::nextAvailableKey(
         sqlite3_reset(stmt);
         sqlite3_finalize(stmt);
         return make_pair(
-                   privateKey,
+                   unique_ptr<PrivateKey>(privateKey),
                    number);
     } else {
         sqlite3_reset(stmt);

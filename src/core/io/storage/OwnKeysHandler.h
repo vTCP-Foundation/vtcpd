@@ -32,7 +32,7 @@ public:
     const KeyNumber maxKeySetSequenceNumber(
         const TrustLineID trustLineID);
 
-    pair<PrivateKey*, KeyNumber> nextAvailableKey(
+    pair<unique_ptr<PrivateKey>, KeyNumber> nextAvailableKey(
         const TrustLineID trustLineID);
 
     void invalidKey(
