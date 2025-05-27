@@ -6,16 +6,43 @@
 #include "../paths/PathsManager.h"
 #include "../interface/events_interface/interface/EventsInterfaceManager.h"
 #include "../delayed_tasks/GatewayNotificationAndRoutingTablesDelayedTask.h"
+#include "../common/exceptions/ValueError.h"
+#include "../common/exceptions/IOError.h"
+#include "../common/exceptions/NotFoundError.h"
 
 #include <map>
+#include <memory>
+#include <algorithm>
+#include <utility>
 
 namespace as = boost::asio;
 namespace signals = boost::signals2;
 
+/**
+ * Routes and manages subsystems for different equivalents in the network.
+ *
+ * Provides centralized management of trust lines, topology cache, max flow cache,
+ * and paths managers for each equivalent. Ensures proper initialization and
+ * resource management for all equivalent-specific subsystems.
+ */
 class EquivalentsSubsystemsRouter
 {
 
 public:
+    /**
+     * Constructs router and initializes all subsystems for existing equivalents.
+     *
+     * @param storageHandler Database storage handler (must not be null)
+     * @param keystore Cryptographic key storage (must not be null)
+     * @param contractorsManager Network contractors manager (must not be null)
+     * @param eventsInterfaceManager Event publishing interface (must not be null)
+     * @param ioCtx Boost.Asio IO context for async operations
+     * @param equivalentsIAmGateway List of equivalents where this node acts as gateway
+     * @param logger Logger instance for debugging and error reporting
+     *
+     * @throws ValueError if any required parameter is null or invalid
+     * @throws IOError if database operations or subsystem initialization fails
+     */
     EquivalentsSubsystemsRouter(
         StorageHandler *storageHandler,
         Keystore *keystore,
@@ -25,36 +52,100 @@ public:
         vector<SerializedEquivalent> &equivalentsIAmGateway,
         Logger &logger);
 
+    /**
+     * Returns list of all managed equivalents.
+     */
     vector<SerializedEquivalent> equivalents() const;
 
+    /**
+     * Checks if this node acts as gateway for specified equivalent.
+     *
+     * @param equivalent Target equivalent ID
+     * @return true if node is gateway for this equivalent
+     * @throws NotFoundError if equivalent not found
+     */
     bool iAmGateway(
         const SerializedEquivalent equivalent) const;
 
+    /**
+     * Returns trust lines manager for specified equivalent.
+     *
+     * @param equivalent Target equivalent ID
+     * @return Pointer to trust lines manager
+     * @throws NotFoundError if equivalent not found
+     */
     TrustLinesManager* trustLinesManager(
         const SerializedEquivalent equivalent) const;
 
+    /**
+     * Returns topology trust lines manager for specified equivalent.
+     *
+     * @param equivalent Target equivalent ID
+     * @return Pointer to topology trust lines manager
+     * @throws NotFoundError if equivalent not found
+     */
     TopologyTrustLinesManager* topologyTrustLineManager(
         const SerializedEquivalent equivalent) const;
 
+    /**
+     * Returns topology cache manager for specified equivalent.
+     *
+     * @param equivalent Target equivalent ID
+     * @return Pointer to topology cache manager
+     * @throws NotFoundError if equivalent not found
+     */
     TopologyCacheManager* topologyCacheManager(
         const SerializedEquivalent equivalent) const;
 
+    /**
+     * Returns max flow cache manager for specified equivalent.
+     *
+     * @param equivalent Target equivalent ID
+     * @return Pointer to max flow cache manager
+     * @throws NotFoundError if equivalent not found
+     */
     MaxFlowCacheManager* maxFlowCacheManager(
         const SerializedEquivalent equivalent) const;
 
+    /**
+     * Returns paths manager for specified equivalent.
+     *
+     * @param equivalent Target equivalent ID
+     * @return Pointer to paths manager
+     * @throws NotFoundError if equivalent not found
+     */
     PathsManager* pathsManager(
         const SerializedEquivalent equivalent) const;
 
+    /**
+     * Initializes all subsystems for new equivalent with proper error handling.
+     *
+     * @param equivalent New equivalent ID to initialize
+     * @throws ValueError if equivalent already exists or is invalid
+     * @throws IOError if subsystem initialization fails
+     */
     void initNewEquivalent(
         const SerializedEquivalent equivalent);
 
+    /**
+     * Returns set of contractors that should be pinged.
+     */
     set<ContractorID> contractorsShouldBePinged() const;
 
+    /**
+     * Clears the list of contractors that should be pinged.
+     */
     void clearContractorsShouldBePinged();
 
+    /**
+     * Sends topology events for all managed equivalents with error handling.
+     */
     void sendTopologyEvent() const;
 
 #ifdef TESTS
+    /**
+     * Sets this node as gateway for all equivalents (testing only).
+     */
     void setMeAsGateway();
 #endif
 

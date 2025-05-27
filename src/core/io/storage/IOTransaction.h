@@ -5,7 +5,6 @@
 #include "TrustLineHandler.h"
 #include "HistoryStorage.h"
 #include "TransactionsHandler.h"
-
 #include "OwnKeysHandler.h"
 #include "ContractorKeysHandler.h"
 #include "AuditHandler.h"
@@ -14,13 +13,12 @@
 #include "PaymentKeysHandler.h"
 #include "PaymentParticipantsVotesHandler.h"
 #include "PaymentTransactionsHandler.h"
-
 #include "ContractorsHandler.h"
 #include "AddressHandler.h"
-
 #include "FeaturesHandler.h"
 
-#include "../../../libs/sqlite3/sqlite3.h"
+
+#include <sqlite3.h>
 
 class IOTransaction
 {

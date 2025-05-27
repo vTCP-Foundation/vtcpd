@@ -17,96 +17,164 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
     mIOCtx(ioCtx),
     mLogger(logger)
 {
-    {
-        auto ioTransaction = storageHandler->beginTransaction();
-        mEquivalents = ioTransaction->trustLinesHandler()->equivalents();
-    }
-    for (const auto &equivalent : mEquivalents) {
-        info() << "Equivalent " << equivalent;
-
-        mIAmGateways.insert(
-            make_pair(
-                equivalent,
-                find(
-                    equivalentsIAmGateway.begin(),
-                    equivalentsIAmGateway.end(),
-                    equivalent) != equivalentsIAmGateway.end()));
-
-        mTrustLinesManagers.insert(
-            make_pair(
-                equivalent,
-                make_unique<TrustLinesManager>(
-                    equivalent,
-                    mStorageHandler,
-                    mKeysStore,
-                    mContractorsManager,
-                    mLogger)));
-        info() << "Trust Lines Manager is successfully initialized";
-
-        mTopologyTrustLinesManagers.insert(
-            make_pair(
-                equivalent,
-                make_unique<TopologyTrustLinesManager>(
-                    equivalent,
-                    contractorsManager->selfContractor()->mainAddress(),
-                    mIAmGateways[equivalent],
-                    mLogger)));
-        info() << "Topology Trust Lines Manager is successfully initialized";
-
-        mTopologyCacheManagers.insert(
-            make_pair(
-                equivalent,
-                make_unique<TopologyCacheManager>(
-                    equivalent,
-                    mLogger)));
-        info() << "Topology Cache Manager is successfully initialized";
-
-        mMaxFlowCacheManagers.insert(
-            make_pair(
-                equivalent,
-                make_unique<MaxFlowCacheManager>(
-                    equivalent,
-                    mLogger)));
-        info() << "Max Flow Cache Manager is successfully initialized";
-
-        mTopologyCacheUpdateDelayedTasks.insert(
-            make_pair(
-                equivalent,
-                make_unique<TopologyCacheUpdateDelayedTask>(
-                    equivalent,
-                    mIOCtx,
-                    mTopologyCacheManagers[equivalent].get(),
-                    mTopologyTrustLinesManagers[equivalent].get(),
-                    mMaxFlowCacheManagers[equivalent].get(),
-                    mLogger)));
-        info() << "Topology Cache Update Delayed Task is successfully initialized";
-
-        mPathsManagers.insert(
-            make_pair(
-                equivalent,
-                make_unique<PathsManager>(
-                    equivalent,
-                    mTrustLinesManagers[equivalent].get(),
-                    mTopologyTrustLinesManagers[equivalent].get(),
-                    mLogger)));
-        info() << "Paths Manager is successfully initialized";
+    // Validate input parameters
+    if (storageHandler == nullptr) {
+        throw ValueError("EquivalentsSubsystemsRouter::constructor: Storage handler cannot be null.");
     }
 
-    for (const auto &trustLinesManager : mTrustLinesManagers) {
-        for (const auto &contractorID : trustLinesManager.second->contractorsShouldBePinged()) {
-            mContractorsShouldBePinged.insert(contractorID);
+    if (keystore == nullptr) {
+        throw ValueError("EquivalentsSubsystemsRouter::constructor: Keystore cannot be null.");
+    }
+
+    if (contractorsManager == nullptr) {
+        throw ValueError("EquivalentsSubsystemsRouter::constructor: Contractors manager cannot be null.");
+    }
+
+    if (eventsInterfaceManager == nullptr) {
+        throw ValueError("EquivalentsSubsystemsRouter::constructor: Events interface manager cannot be null.");
+    }
+
+    try {
+        // Load equivalents from storage with proper transaction handling
+        {
+            auto ioTransaction = storageHandler->beginTransaction();
+            if (!ioTransaction) {
+                throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to begin storage transaction.");
+            }
+            mEquivalents = ioTransaction->trustLinesHandler()->equivalents();
         }
-        trustLinesManager.second->clearContractorsShouldBePinged();
-    }
 
-    mGatewayNotificationAndRoutingTablesDelayedTask = make_unique<GatewayNotificationAndRoutingTablesDelayedTask>(
-            true, // enabled
-            1,    // updatingTimerPeriodDays (placeholder, adjust as needed)
-            mIOCtx,
-            mLogger);
-    // subscribeForGatewayNotification(
-    //     mGatewayNotificationAndRoutingTablesDelayedTask->gatewayNotificationSignal);
-    info() << "Gateway Notification and Routing Tables Delayed Task is successfully initialized";
+        // Initialize subsystems for each equivalent
+        for (const auto &equivalent : mEquivalents) {
+            info() << "Initializing subsystems for equivalent: " << equivalent;
+
+            // Validate equivalent value
+            if (equivalent < 0) {
+                throw ValueError("EquivalentsSubsystemsRouter::constructor: Invalid equivalent value: " + to_string(equivalent));
+            }
+
+            try {
+                // Check if this equivalent is a gateway
+                bool isGateway = find(
+                                     equivalentsIAmGateway.begin(),
+                                     equivalentsIAmGateway.end(),
+                                     equivalent) != equivalentsIAmGateway.end();
+
+                mIAmGateways.insert(make_pair(equivalent, isGateway));
+                debug() << "Gateway status for equivalent " << equivalent << ": " << (isGateway ? "true" : "false");
+
+                // Initialize TrustLinesManager
+                auto trustLinesManager = make_unique<TrustLinesManager>(
+                                             equivalent,
+                                             mStorageHandler,
+                                             mKeysStore,
+                                             mContractorsManager,
+                                             mLogger);
+                if (!trustLinesManager) {
+                    throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to create TrustLinesManager for equivalent " + to_string(equivalent));
+                }
+                mTrustLinesManagers.insert(make_pair(equivalent, std::move(trustLinesManager)));
+                info() << "TrustLinesManager successfully initialized for equivalent: " << equivalent;
+
+                // Initialize TopologyTrustLinesManager
+                auto topologyTrustLinesManager = make_unique<TopologyTrustLinesManager>(
+                                                     equivalent,
+                                                     contractorsManager->selfContractor()->mainAddress(),
+                                                     mIAmGateways[equivalent],
+                                                     mLogger);
+                if (!topologyTrustLinesManager) {
+                    throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to create TopologyTrustLinesManager for equivalent " + to_string(equivalent));
+                }
+                mTopologyTrustLinesManagers.insert(make_pair(equivalent, std::move(topologyTrustLinesManager)));
+                info() << "TopologyTrustLinesManager successfully initialized for equivalent: " << equivalent;
+
+                // Initialize TopologyCacheManager
+                auto topologyCacheManager = make_unique<TopologyCacheManager>(
+                                                equivalent,
+                                                mLogger);
+                if (!topologyCacheManager) {
+                    throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to create TopologyCacheManager for equivalent " + to_string(equivalent));
+                }
+                mTopologyCacheManagers.insert(make_pair(equivalent, std::move(topologyCacheManager)));
+                info() << "TopologyCacheManager successfully initialized for equivalent: " << equivalent;
+
+                // Initialize MaxFlowCacheManager
+                auto maxFlowCacheManager = make_unique<MaxFlowCacheManager>(
+                                               equivalent,
+                                               mLogger);
+                if (!maxFlowCacheManager) {
+                    throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to create MaxFlowCacheManager for equivalent " + to_string(equivalent));
+                }
+                mMaxFlowCacheManagers.insert(make_pair(equivalent, std::move(maxFlowCacheManager)));
+                info() << "MaxFlowCacheManager successfully initialized for equivalent: " << equivalent;
+
+                // Initialize TopologyCacheUpdateDelayedTask
+                auto topologyCacheUpdateTask = make_unique<TopologyCacheUpdateDelayedTask>(
+                                                   equivalent,
+                                                   mIOCtx,
+                                                   mTopologyCacheManagers[equivalent].get(),
+                                                   mTopologyTrustLinesManagers[equivalent].get(),
+                                                   mMaxFlowCacheManagers[equivalent].get(),
+                                                   mLogger);
+                if (!topologyCacheUpdateTask) {
+                    throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to create TopologyCacheUpdateDelayedTask for equivalent " + to_string(equivalent));
+                }
+                mTopologyCacheUpdateDelayedTasks.insert(make_pair(equivalent, std::move(topologyCacheUpdateTask)));
+                info() << "TopologyCacheUpdateDelayedTask successfully initialized for equivalent: " << equivalent;
+
+                // Initialize PathsManager
+                auto pathsManager = make_unique<PathsManager>(
+                                        equivalent,
+                                        mTrustLinesManagers[equivalent].get(),
+                                        mTopologyTrustLinesManagers[equivalent].get(),
+                                        mLogger);
+                if (!pathsManager) {
+                    throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to create PathsManager for equivalent " + to_string(equivalent));
+                }
+                mPathsManagers.insert(make_pair(equivalent, std::move(pathsManager)));
+                info() << "PathsManager successfully initialized for equivalent: " << equivalent;
+
+            } catch (const std::exception &e) {
+                throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to initialize subsystems for equivalent " +
+                              to_string(equivalent) + ". Details: " + e.what());
+            }
+        }
+
+        // Collect contractors that should be pinged
+        for (const auto &trustLinesManagerPair : mTrustLinesManagers) {
+            try {
+                for (const auto &contractorID : trustLinesManagerPair.second->contractorsShouldBePinged()) {
+                    mContractorsShouldBePinged.insert(contractorID);
+                }
+                trustLinesManagerPair.second->clearContractorsShouldBePinged();
+            } catch (const std::exception &e) {
+                warning() << "Failed to collect contractors to ping for equivalent " << trustLinesManagerPair.first
+                          << ". Details: " << e.what();
+            }
+        }
+
+        // Initialize GatewayNotificationAndRoutingTablesDelayedTask
+        mGatewayNotificationAndRoutingTablesDelayedTask = make_unique<GatewayNotificationAndRoutingTablesDelayedTask>(
+                true, // enabled
+                1,    // updatingTimerPeriodDays
+                mIOCtx,
+                mLogger);
+        if (!mGatewayNotificationAndRoutingTablesDelayedTask) {
+            throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to create GatewayNotificationAndRoutingTablesDelayedTask.");
+        }
+        info() << "GatewayNotificationAndRoutingTablesDelayedTask successfully initialized";
+
+        info() << "EquivalentsSubsystemsRouter successfully initialized with " << mEquivalents.size() << " equivalents";
+
+    } catch (const std::bad_alloc &e) {
+        throw IOError("EquivalentsSubsystemsRouter::constructor: Memory allocation failed. Details: " + string(e.what()));
+    } catch (const ValueError &e) {
+        throw; // Re-throw ValueError as-is
+    } catch (const IOError &e) {
+        throw; // Re-throw IOError as-is
+    } catch (const std::exception &e) {
+        throw IOError("EquivalentsSubsystemsRouter::constructor: Unexpected error during initialization. Details: " + string(e.what()));
+    }
 }
 
 vector<SerializedEquivalent> EquivalentsSubsystemsRouter::equivalents() const
@@ -118,9 +186,7 @@ bool EquivalentsSubsystemsRouter::iAmGateway(
     const SerializedEquivalent equivalent) const
 {
     if (mIAmGateways.count(equivalent) == 0) {
-        throw NotFoundError(
-            "EquivalentsSubsystemsRouter::iAmGateway: "
-            "wrong equivalent " + to_string(equivalent));
+        throw NotFoundError("EquivalentsSubsystemsRouter::iAmGateway: Equivalent not found. Equivalent=" + to_string(equivalent));
     }
     return mIAmGateways.at(equivalent);
 }
@@ -129,9 +195,7 @@ TrustLinesManager* EquivalentsSubsystemsRouter::trustLinesManager(
     const SerializedEquivalent equivalent) const
 {
     if (mTrustLinesManagers.count(equivalent) == 0) {
-        throw NotFoundError(
-            "EquivalentsSubsystemsRouter::trustLinesManager: "
-            "wrong equivalent " + to_string(equivalent));
+        throw NotFoundError("EquivalentsSubsystemsRouter::trustLinesManager: TrustLinesManager not found. Equivalent=" + to_string(equivalent));
     }
     return mTrustLinesManagers.at(equivalent).get();
 }
@@ -140,9 +204,7 @@ TopologyTrustLinesManager* EquivalentsSubsystemsRouter::topologyTrustLineManager
     const SerializedEquivalent equivalent) const
 {
     if (mTopologyTrustLinesManagers.count(equivalent) == 0) {
-        throw NotFoundError(
-            "EquivalentsSubsystemsRouter::topologyTrustLineManager: "
-            "wrong equivalent " + to_string(equivalent));
+        throw NotFoundError("EquivalentsSubsystemsRouter::topologyTrustLineManager: TopologyTrustLinesManager not found. Equivalent=" + to_string(equivalent));
     }
     return mTopologyTrustLinesManagers.at(equivalent).get();
 }
@@ -151,9 +213,7 @@ TopologyCacheManager* EquivalentsSubsystemsRouter::topologyCacheManager(
     const SerializedEquivalent equivalent) const
 {
     if (mTopologyCacheManagers.count(equivalent) == 0) {
-        throw NotFoundError(
-            "EquivalentsSubsystemsRouter::topologyCacheManager: "
-            "wrong equivalent " + to_string(equivalent));
+        throw NotFoundError("EquivalentsSubsystemsRouter::topologyCacheManager: TopologyCacheManager not found. Equivalent=" + to_string(equivalent));
     }
     return mTopologyCacheManagers.at(equivalent).get();
 }
@@ -162,9 +222,7 @@ MaxFlowCacheManager* EquivalentsSubsystemsRouter::maxFlowCacheManager(
     const SerializedEquivalent equivalent) const
 {
     if (mMaxFlowCacheManagers.count(equivalent) == 0) {
-        throw NotFoundError(
-            "EquivalentsSubsystemsRouter::maxFlowCacheManager: "
-            "wrong equivalent " + to_string(equivalent));
+        throw NotFoundError("EquivalentsSubsystemsRouter::maxFlowCacheManager: MaxFlowCacheManager not found. Equivalent=" + to_string(equivalent));
     }
     return mMaxFlowCacheManagers.at(equivalent).get();
 }
@@ -173,9 +231,7 @@ PathsManager* EquivalentsSubsystemsRouter::pathsManager(
     const SerializedEquivalent equivalent) const
 {
     if (mPathsManagers.count(equivalent) == 0) {
-        throw NotFoundError(
-            "EquivalentsSubsystemsRouter::pathsManager: "
-            "wrong equivalent " + to_string(equivalent));
+        throw NotFoundError("EquivalentsSubsystemsRouter::pathsManager: PathsManager not found. Equivalent=" + to_string(equivalent));
     }
     return mPathsManagers.at(equivalent).get();
 }
@@ -183,80 +239,131 @@ PathsManager* EquivalentsSubsystemsRouter::pathsManager(
 void EquivalentsSubsystemsRouter::initNewEquivalent(
     const SerializedEquivalent equivalent)
 {
-    if (mTrustLinesManagers.count(equivalent) != 0) {
-        throw ValueError(
-            "EquivalentsSubsystemsRouter::initNewEquivalent: "
-            "try init equivalent " + to_string(equivalent) + " which is already exists");
+    // Validate equivalent value
+    if (equivalent < 0) {
+        throw ValueError("EquivalentsSubsystemsRouter::initNewEquivalent: Invalid equivalent value: " + to_string(equivalent));
     }
 
-    mIAmGateways.insert(
-        make_pair(
-            equivalent,
-            find(
-                mEquivalentsIAmGateway.begin(),
-                mEquivalentsIAmGateway.end(),
-                equivalent) != mEquivalentsIAmGateway.end()));
+    if (mTrustLinesManagers.count(equivalent) != 0) {
+        throw ValueError("EquivalentsSubsystemsRouter::initNewEquivalent: Equivalent already exists. Equivalent=" + to_string(equivalent));
+    }
 
-    mTrustLinesManagers.insert(
-        make_pair(
-            equivalent,
-            make_unique<TrustLinesManager>(
-                equivalent,
-                mStorageHandler,
-                mKeysStore,
-                mContractorsManager,
-                mLogger)));
-    info() << "Trust Lines Manager is successfully initialized";
+    try {
+        info() << "Initializing new equivalent: " << equivalent;
 
-    mTopologyTrustLinesManagers.insert(
-        make_pair(
-            equivalent,
-            make_unique<TopologyTrustLinesManager>(
-                equivalent,
-                mContractorsManager->selfContractor()->mainAddress(),
-                false,
-                mLogger)));
-    info() << "Topology Trust Lines Manager is successfully initialized";
+        // Check if this equivalent is a gateway
+        bool isGateway = find(
+                             mEquivalentsIAmGateway.begin(),
+                             mEquivalentsIAmGateway.end(),
+                             equivalent) != mEquivalentsIAmGateway.end();
 
-    mTopologyCacheManagers.insert(
-        make_pair(
-            equivalent,
-            make_unique<TopologyCacheManager>(
-                equivalent,
-                mLogger)));
-    info() << "Topology Cache Manager is successfully initialized";
+        mIAmGateways.insert(make_pair(equivalent, isGateway));
+        debug() << "Gateway status for new equivalent " << equivalent << ": " << (isGateway ? "true" : "false");
 
-    mMaxFlowCacheManagers.insert(
-        make_pair(
-            equivalent,
-            make_unique<MaxFlowCacheManager>(
-                equivalent,
-                mLogger)));
-    info() << "Max Flow Cache Manager is successfully initialized";
+        // Initialize TrustLinesManager
+        auto trustLinesManager = make_unique<TrustLinesManager>(
+                                     equivalent,
+                                     mStorageHandler,
+                                     mKeysStore,
+                                     mContractorsManager,
+                                     mLogger);
+        if (!trustLinesManager) {
+            throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Failed to create TrustLinesManager for equivalent " + to_string(equivalent));
+        }
+        mTrustLinesManagers.insert(make_pair(equivalent, std::move(trustLinesManager)));
+        info() << "TrustLinesManager successfully initialized for new equivalent: " << equivalent;
 
-    mTopologyCacheUpdateDelayedTasks.insert(
-        make_pair(
-            equivalent,
-            make_unique<TopologyCacheUpdateDelayedTask>(
-                equivalent,
-                mIOCtx,
-                mTopologyCacheManagers[equivalent].get(),
-                mTopologyTrustLinesManagers[equivalent].get(),
-                mMaxFlowCacheManagers[equivalent].get(),
-                mLogger)));
-    info() << "Topology Cache Update Delayed Task is successfully initialized";
+        // Initialize TopologyTrustLinesManager (note: not gateway for new equivalents)
+        auto topologyTrustLinesManager = make_unique<TopologyTrustLinesManager>(
+                                             equivalent,
+                                             mContractorsManager->selfContractor()->mainAddress(),
+                                             false, // New equivalents start as non-gateway
+                                             mLogger);
+        if (!topologyTrustLinesManager) {
+            throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Failed to create TopologyTrustLinesManager for equivalent " + to_string(equivalent));
+        }
+        mTopologyTrustLinesManagers.insert(make_pair(equivalent, std::move(topologyTrustLinesManager)));
+        info() << "TopologyTrustLinesManager successfully initialized for new equivalent: " << equivalent;
 
-    mPathsManagers.insert(
-        make_pair(
-            equivalent,
-            make_unique<PathsManager>(
-                equivalent,
-                mTrustLinesManagers[equivalent].get(),
-                mTopologyTrustLinesManagers[equivalent].get(),
-                mLogger)));
-    info() << "Paths Manager is successfully initialized";
+        // Initialize TopologyCacheManager
+        auto topologyCacheManager = make_unique<TopologyCacheManager>(
+                                        equivalent,
+                                        mLogger);
+        if (!topologyCacheManager) {
+            throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Failed to create TopologyCacheManager for equivalent " + to_string(equivalent));
+        }
+        mTopologyCacheManagers.insert(make_pair(equivalent, std::move(topologyCacheManager)));
+        info() << "TopologyCacheManager successfully initialized for new equivalent: " << equivalent;
 
-    mEquivalents.push_back(equivalent);
+        // Initialize MaxFlowCacheManager
+        auto maxFlowCacheManager = make_unique<MaxFlowCacheManager>(
+                                       equivalent,
+                                       mLogger);
+        if (!maxFlowCacheManager) {
+            throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Failed to create MaxFlowCacheManager for equivalent " + to_string(equivalent));
+        }
+        mMaxFlowCacheManagers.insert(make_pair(equivalent, std::move(maxFlowCacheManager)));
+        info() << "MaxFlowCacheManager successfully initialized for new equivalent: " << equivalent;
+
+        // Initialize TopologyCacheUpdateDelayedTask
+        auto topologyCacheUpdateTask = make_unique<TopologyCacheUpdateDelayedTask>(
+                                           equivalent,
+                                           mIOCtx,
+                                           mTopologyCacheManagers[equivalent].get(),
+                                           mTopologyTrustLinesManagers[equivalent].get(),
+                                           mMaxFlowCacheManagers[equivalent].get(),
+                                           mLogger);
+        if (!topologyCacheUpdateTask) {
+            throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Failed to create TopologyCacheUpdateDelayedTask for equivalent " + to_string(equivalent));
+        }
+        mTopologyCacheUpdateDelayedTasks.insert(make_pair(equivalent, std::move(topologyCacheUpdateTask)));
+        info() << "TopologyCacheUpdateDelayedTask successfully initialized for new equivalent: " << equivalent;
+
+        // Initialize PathsManager
+        auto pathsManager = make_unique<PathsManager>(
+                                equivalent,
+                                mTrustLinesManagers[equivalent].get(),
+                                mTopologyTrustLinesManagers[equivalent].get(),
+                                mLogger);
+        if (!pathsManager) {
+            throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Failed to create PathsManager for equivalent " + to_string(equivalent));
+        }
+        mPathsManagers.insert(make_pair(equivalent, std::move(pathsManager)));
+        info() << "PathsManager successfully initialized for new equivalent: " << equivalent;
+
+        // Add to equivalents list
+        mEquivalents.push_back(equivalent);
+        info() << "New equivalent " << equivalent << " successfully initialized and added to router";
+
+    } catch (const std::bad_alloc &e) {
+        // Clean up any partially created objects
+        mIAmGateways.erase(equivalent);
+        mTrustLinesManagers.erase(equivalent);
+        mTopologyTrustLinesManagers.erase(equivalent);
+        mTopologyCacheManagers.erase(equivalent);
+        mMaxFlowCacheManagers.erase(equivalent);
+        mTopologyCacheUpdateDelayedTasks.erase(equivalent);
+        mPathsManagers.erase(equivalent);
+
+        throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Memory allocation failed for equivalent " +
+                      to_string(equivalent) + ". Details: " + e.what());
+    } catch (const ValueError &e) {
+        throw; // Re-throw ValueError as-is
+    } catch (const IOError &e) {
+        throw; // Re-throw IOError as-is
+    } catch (const std::exception &e) {
+        // Clean up any partially created objects
+        mIAmGateways.erase(equivalent);
+        mTrustLinesManagers.erase(equivalent);
+        mTopologyTrustLinesManagers.erase(equivalent);
+        mTopologyCacheManagers.erase(equivalent);
+        mMaxFlowCacheManagers.erase(equivalent);
+        mTopologyCacheUpdateDelayedTasks.erase(equivalent);
+        mPathsManagers.erase(equivalent);
+
+        throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Failed to initialize equivalent " +
+                      to_string(equivalent) + ". Details: " + e.what());
+    }
 }
 
 set<ContractorID> EquivalentsSubsystemsRouter::contractorsShouldBePinged() const
@@ -267,65 +374,103 @@ set<ContractorID> EquivalentsSubsystemsRouter::contractorsShouldBePinged() const
 void EquivalentsSubsystemsRouter::clearContractorsShouldBePinged()
 {
     mContractorsShouldBePinged.clear();
+    debug() << "Contractors should be pinged list cleared";
 }
 
 void EquivalentsSubsystemsRouter::sendTopologyEvent() const
 {
-    debug() << "sendTopologyEvent";
-    for (const auto &trustLineManager : mTrustLinesManagers) {
-        auto neighbors = trustLineManager.second->firstLevelNeighborsAddresses();
-        auto neighborIt = neighbors.begin();
-        auto previousBegin = neighborIt;
-        while (neighborIt != neighbors.end()) {
-            if (neighborIt - previousBegin >= kTopologyEventPortionSize) {
-                vector<BaseAddress::Shared> portionNeighbors;
-                copy(previousBegin, neighborIt, back_inserter(portionNeighbors));
+    debug() << "Sending topology events for all equivalents";
+
+    try {
+        if (mTrustLinesManagers.empty()) {
+            // Send empty topology event when no trust lines managers exist
+            try {
+                vector<BaseAddress::Shared> emptyVector;
+                mEventsInterfaceManager->writeEvent(
+                    Event::topologyEvent(
+                        mContractorsManager->selfContractor()->mainAddress(),
+                        emptyVector,
+                        0));
+                debug() << "Empty topology event sent successfully";
+            } catch (const std::exception &e) {
+                warning() << "Failed to send empty topology event. Details: " << e.what();
+            }
+            return;
+        }
+
+        for (const auto &trustLineManagerPair : mTrustLinesManagers) {
+            const auto &equivalent = trustLineManagerPair.first;
+            const auto &trustLineManager = trustLineManagerPair.second;
+
+            try {
+                auto neighbors = trustLineManager->firstLevelNeighborsAddresses();
+                debug() << "Processing topology event for equivalent " << equivalent
+                        << " with " << neighbors.size() << " neighbors";
+
+                auto neighborIt = neighbors.begin();
+                auto previousBegin = neighborIt;
+
+                // Send neighbors in portions to avoid overwhelming the event system
+                while (neighborIt != neighbors.end()) {
+                    if (neighborIt - previousBegin >= kTopologyEventPortionSize) {
+                        vector<BaseAddress::Shared> portionNeighbors;
+                        copy(previousBegin, neighborIt, back_inserter(portionNeighbors));
+
+                        try {
+                            mEventsInterfaceManager->writeEvent(
+                                Event::topologyEvent(
+                                    mContractorsManager->selfContractor()->mainAddress(),
+                                    portionNeighbors,
+                                    equivalent));
+                            debug() << "Topology event portion sent for equivalent " << equivalent
+                                    << " with " << portionNeighbors.size() << " neighbors";
+                        } catch (const std::exception &e) {
+                            warning() << "Failed to send topology event portion for equivalent " << equivalent
+                                      << ". Details: " << e.what();
+                        }
+                        previousBegin = neighborIt;
+                    } else {
+                        neighborIt++;
+                    }
+                }
+
+                // Send remaining neighbors
+                vector<BaseAddress::Shared> remainingNeighbors;
+                copy(previousBegin, neighborIt, back_inserter(remainingNeighbors));
+
                 try {
                     mEventsInterfaceManager->writeEvent(
                         Event::topologyEvent(
                             mContractorsManager->selfContractor()->mainAddress(),
-                            portionNeighbors,
-                            trustLineManager.first));
-                } catch (std::exception &e) {
-                    warning() << "Can't write topology event " << e.what();
+                            remainingNeighbors,
+                            equivalent));
+                    debug() << "Final topology event portion sent for equivalent " << equivalent
+                            << " with " << remainingNeighbors.size() << " neighbors";
+                } catch (const std::exception &e) {
+                    warning() << "Failed to send final topology event portion for equivalent " << equivalent
+                              << ". Details: " << e.what();
                 }
-                previousBegin = neighborIt;
-            } else {
-                neighborIt++;
+
+            } catch (const std::exception &e) {
+                warning() << "Failed to process topology event for equivalent " << equivalent
+                          << ". Details: " << e.what();
             }
         }
-        vector<BaseAddress::Shared> portionNeighbors;
-        copy(previousBegin, neighborIt, back_inserter(portionNeighbors));
-        try {
-            mEventsInterfaceManager->writeEvent(
-                Event::topologyEvent(
-                    mContractorsManager->selfContractor()->mainAddress(),
-                    portionNeighbors,
-                    trustLineManager.first));
-        } catch (std::exception &e) {
-            warning() << "Can't write topology event " << e.what();
-        }
-    }
-    if (mTrustLinesManagers.empty()) {
-        try {
-            vector<BaseAddress::Shared> emptyVector;
-            mEventsInterfaceManager->writeEvent(
-                Event::topologyEvent(
-                    mContractorsManager->selfContractor()->mainAddress(),
-                    emptyVector,
-                    0));
-        } catch (std::exception &e) {
-            warning() << "Can't write topology event " << e.what();
-        }
+
+        debug() << "Topology event processing completed for " << mTrustLinesManagers.size() << " equivalents";
+
+    } catch (const std::exception &e) {
+        error() << "Critical error in sendTopologyEvent. Details: " << e.what();
     }
 }
 
 #ifdef TESTS
 void EquivalentsSubsystemsRouter::setMeAsGateway()
 {
-    for (auto iAmGateway : mIAmGateways) {
-        iAmGateway.second = true;
+    for (auto &iAmGatewayPair : mIAmGateways) {
+        iAmGatewayPair.second = true;
     }
+    debug() << "All equivalents set as gateways for testing";
 }
 #endif
 

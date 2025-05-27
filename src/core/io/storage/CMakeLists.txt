@@ -66,5 +66,5 @@ target_compile_features(io__storage
 
 target_link_libraries(io__storage
     PUBLIC
-        libsqlite3
+        SQLite::SQLite3
         contractors)

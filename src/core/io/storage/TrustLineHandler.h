@@ -6,7 +6,7 @@
 #include "../../common/exceptions/IOError.h"
 #include "../../common/multiprecision/MultiprecisionUtils.h"
 
-#include "../../../libs/sqlite3/sqlite3.h"
+#include <sqlite3.h>
 #include <vector>
 
 
