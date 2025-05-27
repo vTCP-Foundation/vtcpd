@@ -36,7 +36,7 @@ public:
     typedef shared_ptr<KeyHash> Shared;
 
 public:
-    KeyHash() = default;
+    KeyHash() : mData{} {}
 
     /**
      * Constructs KeyHash by copying data from the provided buffer
@@ -74,7 +74,7 @@ class PublicKey : public BaseKey
 public:
     typedef shared_ptr<PublicKey> Shared;
 
-    PublicKey() = default;
+    PublicKey() : mData(nullptr) {}
 
     PublicKey(
         byte_t* data);

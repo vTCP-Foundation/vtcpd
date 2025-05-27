@@ -42,7 +42,8 @@ GNSAddress::GNSAddress(
 }
 
 GNSAddress::GNSAddress(
-    byte_t* buffer)
+    byte_t* buffer) :
+    mPort(0)
 {
     size_t bytesBufferOffset = sizeof(SerializedType);
 

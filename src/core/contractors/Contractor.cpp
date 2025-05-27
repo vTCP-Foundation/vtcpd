@@ -5,9 +5,10 @@ Contractor::Contractor(
     vector<BaseAddress::Shared> &addresses,
     const MsgEncryptor::KeyTrio::Shared &cryptoKey) :
     mID(id),
+    mOwnIdOnContractorSide(0),
     mCryptoKey(cryptoKey),
-    mAddresses(addresses),
-    mIsConfirmed(false)
+    mIsConfirmed(false),
+    mAddresses(addresses)
 {
 }
 
@@ -25,12 +26,18 @@ Contractor::Contractor(
 
 Contractor::Contractor(
     vector<BaseAddress::Shared> addresses) :
+    mID(0),
+    mOwnIdOnContractorSide(0),
+    mIsConfirmed(false),
     mAddresses(addresses)
 {
 }
 
 Contractor::Contractor(
-    byte_t* buffer)
+    byte_t* buffer) :
+    mID(0),
+    mOwnIdOnContractorSide(0),
+    mIsConfirmed(false)
 {
     size_t bufferDataOffset = 0;
 
