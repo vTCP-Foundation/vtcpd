@@ -1,5 +1,6 @@
 #include "OutgoingNodesHandler.h"
-
+#include <thread> // For std::this_thread::get_id
+#include <iostream> // For std::cout (basic logging, replace with your logger if available)
 
 OutgoingNodesHandler::OutgoingNodesHandler(
     IOCtx &ioCtx,
@@ -15,22 +16,31 @@ noexcept:
     rescheduleCleaning();
 }
 
-OutgoingRemoteBaseNode *OutgoingNodesHandler::handler(
+OutgoingRemoteBaseNode* OutgoingNodesHandler::handler(
     const IPv4WithPortAddress::Shared address)
 noexcept
 {
-    // check if there is present OutgoingRemoteAddressNode with requested address
-    // and if yes get it contractorID and if no create new one.
-    if (0 == mNodes.count(address->fullAddress())) {
-        mNodes[address->fullAddress()] = make_unique<OutgoingRemoteBaseNode>(
-                                             mSocket,
-                                             mIOCtx,
-                                             address,
-                                             mLog);
+    if (!address) {
+        return nullptr;
     }
 
-    mLastAccessDateTimesNode[address->fullAddress()] = utc_now();
-    return mNodes[address->fullAddress()].get();
+    const auto fullAddress = address->fullAddress();
+
+    if (mNodes.count(fullAddress) == 0) {
+        try {
+            mNodes[fullAddress] = make_unique<OutgoingRemoteBaseNode>(
+                                      mSocket,
+                                      mIOCtx,
+                                      address,
+                                      mLog);
+        } catch (const std::exception& e) {
+            debug() << "Error creating outgoing remote base node: " << e.what();
+            return nullptr;
+        }
+    }
+
+    mLastAccessDateTimesNode[fullAddress] = utc_now();
+    return mNodes[fullAddress].get();
 }
 
 OutgoingRemoteBaseNode *OutgoingNodesHandler::providerHandler(
@@ -66,12 +76,13 @@ noexcept
 void OutgoingNodesHandler::rescheduleCleaning()
 noexcept
 {
-    mCleaningTimer.expires_after(kHandlersTTL());
-    mCleaningTimer.async_wait([this] (const boost::system::error_code&) {
-        this->removeOutdatedNodeHandlers();
-        this->removeOutdatedProviderHandlers();
-        this->rescheduleCleaning();
-    });
+    // todo: Temporary disable garbage collector
+    // mCleaningTimer.expires_after(kHandlersTTL());
+    // mCleaningTimer.async_wait([this] (const boost::system::error_code&) {
+    //     this->removeOutdatedNodeHandlers();
+    //     this->removeOutdatedProviderHandlers();
+    //     this->rescheduleCleaning();
+    // });
 }
 
 void OutgoingNodesHandler::removeOutdatedNodeHandlers()

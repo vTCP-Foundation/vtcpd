@@ -394,19 +394,13 @@ void OutgoingMessagesHandler::clearUndeliveredMessages(
 #ifdef DEBUG_LOG_PROVIDING_HANDLER
     mLog.debug("OutgoingMessagesHandler::clearUndeliveredMessages") << "mPostponedMessages size " << mPostponedMessages.size();
 #endif
-    auto postponedMessageIt = mPostponedMessages.begin();
+
     auto now = utc_now();
-    while (postponedMessageIt != mPostponedMessages.end()) {
-        if (postponedMessageIt->second.second <= now) {
-#ifdef DEBUG_LOG_PROVIDING_HANDLER
-            mLog.debug("OutgoingMessagesHandler::clearUndeliveredMessages") << "erase "
-                << postponedMessageIt->first << " " << postponedMessageIt->second.second;
-#endif
-            mPostponedMessages.erase(
-                postponedMessageIt);
-            postponedMessageIt = mPostponedMessages.begin();
+    for (auto it = mPostponedMessages.begin(); it != mPostponedMessages.end();) {
+        if (it->second.second <= now) {
+            it = mPostponedMessages.erase(it);
         } else {
-            postponedMessageIt++;
+            ++it;
         }
     }
 #ifdef DEBUG_LOG_PROVIDING_HANDLER

@@ -2,14 +2,14 @@
 
 InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
     const SerializedEquivalent equivalent,
-    vector<BaseAddress::Shared> &senderAddresses,
+    vector<BaseAddress::Shared>& senderAddresses,
     bool isSenderGateway,
-    uint8_t hopsCnt):
+    uint8_t hopsCount):
     SenderMessage(
         equivalent,
         senderAddresses),
     mIsSenderGateway(isSenderGateway),
-    mHopsCnt(hopsCnt)
+    mHopsCount(hopsCount)
 {}
 
 InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
@@ -22,8 +22,9 @@ InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
         buffer.get() + bytesBufferOffset,
         sizeof(byte));
     bytesBufferOffset += sizeof(byte);
+
     memcpy(
-        &mHopsCnt,
+        &mHopsCount,
         buffer.get() + bytesBufferOffset,
         sizeof(uint8_t));
 }
@@ -33,9 +34,9 @@ bool InitiateMaxFlowCalculationMessage::isSenderGateway() const
     return mIsSenderGateway;
 }
 
-HopsCount_t InitiateMaxFlowCalculationMessage::HopsCount() const
+uint8_t InitiateMaxFlowCalculationMessage::getHopsCount() const
 {
-    return mHopsCnt;
+    return mHopsCount;
 }
 
 const Message::MessageType InitiateMaxFlowCalculationMessage::typeID() const
@@ -48,27 +49,31 @@ pair<BytesShared, size_t> InitiateMaxFlowCalculationMessage::serializeToBytes() 
     auto parentBytesAndCount = SenderMessage::serializeToBytes();
     size_t bytesCount =
         parentBytesAndCount.second +
-        sizeof(byte);
+        sizeof(mIsSenderGateway) +
+        sizeof(mHopsCount);
 
     BytesShared dataBytesShared = tryCalloc(bytesCount);
     size_t dataBytesOffset = 0;
-    //----------------------------------------------------
+
+    // Marshal parent message bytes
     memcpy(
         dataBytesShared.get(),
         parentBytesAndCount.first.get(),
         parentBytesAndCount.second);
     dataBytesOffset += parentBytesAndCount.second;
+
+    // Marshal mIsSenderGateway
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         &mIsSenderGateway,
-        sizeof(byte));
-    dataBytesOffset += sizeof(byte);
+        sizeof(mIsSenderGateway));
+    dataBytesOffset += sizeof(mIsSenderGateway);
+
+    // Marshal mHopsCount
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
-        &mHopsCnt,
-        sizeof(uint8_t));
+        &mHopsCount,
+        sizeof(mHopsCount));
 
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    return make_pair(dataBytesShared, bytesCount);
 }

@@ -227,7 +227,7 @@ pair<lamport::Signature::Shared, KeyNumber> TrustLineKeychain::sign(
 {
     dataGuard(data, size);
 
-    pair<PrivateKey*, KeyNumber> privateKeyAndNumber;
+    pair<std::unique_ptr<PrivateKey>, KeyNumber> privateKeyAndNumber;
     try {
         privateKeyAndNumber = ioTransaction->ownKeysHandler()->nextAvailableKey(mTrustLineID);
         // todo: decrypt private key.
@@ -240,8 +240,7 @@ pair<lamport::Signature::Shared, KeyNumber> TrustLineKeychain::sign(
         throw e;
     }
 
-    auto signature = make_shared<lamport::Signature>(data.get(), size, privateKeyAndNumber.first);
-
+    auto signature = make_shared<lamport::Signature>(data.get(), size, privateKeyAndNumber.first.get());
     return make_pair(signature, privateKeyAndNumber.second);
 }
 
@@ -573,10 +572,10 @@ void TrustLineKeychain::acceptAudit(IOTransaction::Shared ioTransaction,
             auditRecord->incomingAmount(),
             auditRecord->balance() * (-1));
 
-    ioTransaction->ownKeysHandler()->invalidKeyByHash(
+    ioTransaction->ownKeysHandler()->invalidateKeyByHash(
         mTrustLineID, auditRecord->contractorKeyHash(), auditRecord->contractorSignature());
 
-    ioTransaction->contractorKeysHandler()->invalidKeyByHash(
+    ioTransaction->contractorKeysHandler()->invalidateKeyByHash(
         mTrustLineID, auditRecord->ownKeyHash());
 }
 
@@ -591,7 +590,7 @@ void TrustLineKeychain::acceptReceipts(IOTransaction::Shared ioTransaction,
                 contractorIncomingReceipt->keyHash(),
                 contractorIncomingReceipt->amount());
 
-        ioTransaction->ownKeysHandler()->invalidKeyByHash(mTrustLineID,
+        ioTransaction->ownKeysHandler()->invalidateKeyByHash(mTrustLineID,
                 contractorIncomingReceipt->keyHash(),
                 contractorIncomingReceipt->signature());
     }
@@ -604,7 +603,7 @@ void TrustLineKeychain::acceptReceipts(IOTransaction::Shared ioTransaction,
                 contractorOutgoingReceipt->amount(),
                 contractorOutgoingReceipt->signature());
 
-        ioTransaction->contractorKeysHandler()->invalidKeyByHash(
+        ioTransaction->contractorKeysHandler()->invalidateKeyByHash(
             mTrustLineID, contractorOutgoingReceipt->keyHash());
     }
 }

@@ -101,7 +101,7 @@ protected:
 
     template <class CollectedMessageType>
     pair<bool, Message::Shared> messageCollected(
-        CollectedMessageType message) const;
+        BytesShared buffer) const;
 
 protected:
     static string logHeader()

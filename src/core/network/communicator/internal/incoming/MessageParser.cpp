@@ -296,12 +296,12 @@ pair<bool, Message::Shared> MessagesParser::messageInvalidOrIncomplete()
 
 template <class CollectedMessageType>
 pair<bool, Message::Shared> MessagesParser::messageCollected(
-    CollectedMessageType message) const
+    BytesShared buffer) const
 {
     return make_pair(
                true,
                static_pointer_cast<Message>(
-                   make_shared<CollectedMessageType>(message)));
+                   make_shared<CollectedMessageType>(buffer)));
 }
 
 string MessagesParser::logHeader()

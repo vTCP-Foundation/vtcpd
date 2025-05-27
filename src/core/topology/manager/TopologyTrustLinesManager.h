@@ -75,9 +75,9 @@ public:
     static const ContractorID kCurrentNodeID = 0;
 
 private:
-    static const byte_t kResetTrustLinesHours = 0;
-    static const byte_t kResetTrustLinesMinutes = 12;
-    static const byte_t kResetTrustLinesSeconds = 0;
+    static const uint8_t kResetTrustLinesHours = 0;
+    static const uint8_t kResetTrustLinesMinutes = 12;
+    static const uint8_t kResetTrustLinesSeconds = 0;
 
     static Duration &kResetTrustLinesDuration()
     {
@@ -88,9 +88,9 @@ private:
         return duration;
     }
 
-    static const byte_t kClearTrustLinesHours = 0;
-    static const byte_t kClearTrustLinesMinutes = 30;
-    static const byte_t kClearTrustLinesSeconds = 0;
+    static const uint8_t kClearTrustLinesHours = 0;
+    static const uint8_t kClearTrustLinesMinutes = 30;
+    static const uint8_t kClearTrustLinesSeconds = 0;
 
     static Duration &kClearTrustLinesDuration()
     {

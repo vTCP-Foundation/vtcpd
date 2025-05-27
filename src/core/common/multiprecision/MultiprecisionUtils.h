@@ -32,7 +32,7 @@ inline vector<byte_t> trustLineAmountToBytes(const TrustLineAmount& amount)
 
     size_t unusedBytesCount = kTrustLineAmountBytesCount - rawExportedBytesBuffer.size();
     for (size_t i = 0; i < unusedBytesCount; ++i) {
-        resultBytesBuffer.push_back(0);
+        resultBytesBuffer.push_back(static_cast<byte_t>(0));
     }
 
     size_t usedBytesCount = rawExportedBytesBuffer.size();
@@ -60,7 +60,7 @@ inline vector<byte_t> trustLineBalanceToBytes(const TrustLineBalance& balance)
 
     size_t unusedBytesCount = kTrustLineAmountBytesCount - rawExportedBytesBuffer.size();
     for (size_t i = 0; i < unusedBytesCount; ++i) {
-        resultBytesBuffer.push_back(0);
+        resultBytesBuffer.push_back(static_cast<byte_t>(0));
     }
 
     size_t usedBytesCount = rawExportedBytesBuffer.size();

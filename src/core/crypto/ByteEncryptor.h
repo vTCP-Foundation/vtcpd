@@ -5,6 +5,9 @@
 #include "../common/Types.h"
 #include "../common/memory/MemoryUtils.h"
 
+#include <iomanip>
+
+
 class ByteEncryptor
 {
 public:
