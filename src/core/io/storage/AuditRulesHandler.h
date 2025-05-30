@@ -8,7 +8,7 @@
 #include "../../common/exceptions/NotFoundError.h"
 #include "../../trust_lines/audit_rules/BaseAuditRule.h"
 
-#include "../../../libs/sqlite3/sqlite3.h"
+#include <sqlite3.h>
 
 class AuditRulesHandler
 {

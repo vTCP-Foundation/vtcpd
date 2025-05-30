@@ -41,6 +41,9 @@ find_package(Boost CONFIG REQUIRED
         thread 
         date_time
 )
+find_package(SQLite3 REQUIRED)
+message(STATUS "Boost version: ${Boost_VERSION_STRING}")
+
 
 # Debug compile definitions
 set(DEBUG_DEFINITIONS
@@ -98,7 +101,7 @@ if(BUILD_TESTING)
     add_subdirectory(src/tests)
 endif()
 
-option(ENABLE_GCC_SANITIZERS "Enable GCC runtime memory sanitizers (ASan, UBSan) for Debug builds" ON)
+option(ENABLE_GCC_SANITIZERS "Enable GCC runtime memory sanitizers (ASan, UBSan) for Debug builds" OFF)
 
 # Core libraries
 add_library(core_libs INTERFACE)
@@ -139,7 +142,6 @@ foreach(COMPONENT
 endforeach()
 
 # External libraries
-add_subdirectory(src/libs/sqlite3)
 
 # Main executable
 add_executable(vtcpd
@@ -178,7 +180,7 @@ target_link_libraries(vtcpd PRIVATE
     providing
 
     # Libs
-    libsqlite3
+    SQLite::SQLite3
     sodium
 )
 

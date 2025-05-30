@@ -32,7 +32,7 @@ public:
 
     virtual BytesShared serializeToBytes() const
     {
-        SerializedProtocolVersion kProtocolVersion = ProtocolVersion::Latest;
+        SerializedProtocolVersion kProtocolVersion = static_cast<SerializedProtocolVersion>(ProtocolVersion::Latest);
         const SerializedType kMessageType = typeID();
         const auto kMessageSize = (MessageSize)serializedSize();
         auto buffer = tryMalloc(kMessageSize);

@@ -23,7 +23,7 @@ TransactionResult::SharedConst ReceiveMaxFlowCalculationOnTargetTransaction::run
     info() << "run\t" << "initiator: " << mMessage->senderAddresses.at(0)->fullAddress();
 #endif
     sendResultToInitiator();
-    if (mMessage->HopsCount() > 0) {
+    if (mMessage->getHopsCount() > 0) {
         debug() << "ReceiveMaxFlowCalculationOnTargetTransaction: sendMessagesOnFirstLevel";
         sendMessagesOnFirstLevel();
     }
@@ -143,7 +143,7 @@ void ReceiveMaxFlowCalculationOnTargetTransaction::sendMessagesOnFirstLevel()
             mContractorsManager->idOnContractorSide(nodeIDWithIncomingFlow),
             mMessage->senderAddresses,
             mMessage->isSenderGateway(),
-			mMessage->HopsCount());
+            mMessage->getHopsCount());
     }
 }
 

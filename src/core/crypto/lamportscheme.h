@@ -46,7 +46,7 @@ protected:
 
 public:
     static const size_t kSize =
-        PrivateKey::kRandomNumberSize * PrivateKey::kRandomNumbersCount / 2;
+        PrivateKey::kRandomNumberSlotSize * PrivateKey::kRandomNumbersSlotsCount / 2;
 
 protected:
     unsigned char* mData;

@@ -55,6 +55,22 @@ noexcept
     return mBytes.get();
 }
 
+BytesSerializer::BytesSerializer() : mRecords() {}
+
+BytesSerializer::~BytesSerializer()
+{
+    for (auto record : mRecords) {
+        delete record;
+    }
+    mRecords.clear();
+}
+
+void BytesSerializer::enqueue(
+    BaseSerializationRecord* record)
+{
+    mRecords.push_back(record);
+}
+
 /**
  * Enqueues the address of the "src" for the serialization in the future.
  *
@@ -268,30 +284,43 @@ void BytesSerializer::merge(
 const pair<BytesShared, size_t> BytesSerializer::collect() const
 noexcept(false)
 {
-    if (mRecords.size() == 0)
-        throw NotFoundError(
-            "BytesSerializer::collect: "
-            "there are no sources for collecting.");
-
-    size_t totalBytesCount = 0;
-    for (const auto kRecord : mRecords) {
-        totalBytesCount += kRecord->bytesCount();
+    size_t totalBytesToAllocate = 0;
+    for (auto record : mRecords) {
+        if (record != nullptr) {
+            totalBytesToAllocate += record->bytesCount();
+        }
     }
 
-    auto buffer = tryMalloc(totalBytesCount);
-    auto currentBufferOffset = buffer.get();
-    for (const auto kRecord : mRecords) {
-        memcpy(
-            currentBufferOffset,
-            kRecord->pointer(),
-            kRecord->bytesCount());
+    if (totalBytesToAllocate == 0) {
+        for (auto record : mRecords) {
+            delete record;
+        }
+        mRecords.clear();
+        return make_pair(nullptr, 0);
+    }
 
-        currentBufferOffset += kRecord->bytesCount();
+    BytesShared data = tryMalloc(totalBytesToAllocate);
+    size_t dataOffset = 0;
+    size_t sumOfRecordBytesCopied = 0;
 
-        delete kRecord;
+    for (auto record : mRecords) {
+        if (record != nullptr && record->pointer() != nullptr && record->bytesCount() > 0) {
+            memcpy(
+                data.get() + dataOffset,
+                record->pointer(),
+                record->bytesCount());
+            dataOffset += record->bytesCount();
+            sumOfRecordBytesCopied += record->bytesCount();
+        }
+        delete record;
+    }
+    mRecords.clear();
+
+    if (totalBytesToAllocate != sumOfRecordBytesCopied) {
+        throw runtime_error("BytesSerializer: Mismatch in allocated vs copied bytes.");
     }
 
     return make_pair(
-               buffer,
-               totalBytesCount);
+               data,
+               totalBytesToAllocate);
 }

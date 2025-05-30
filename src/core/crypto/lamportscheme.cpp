@@ -20,7 +20,7 @@ Signature::Signature(
         return;
     }
 
-    const auto hashSize = PrivateKey::kRandomNumberSize;
+    const auto hashSize = PrivateKey::kRandomNumberSlotSize;
 
     byte_t messageHash[hashSize];
     crypto_generichash(messageHash, hashSize, data, dataSize, nullptr, 0);
@@ -90,7 +90,7 @@ bool Signature::check(
     }
 
     // Collecting pub key signature.
-    const auto hashSize = PublicKey::kRandomNumberSize;
+    const auto hashSize = PublicKey::kRandomNumberSlotSize;
     byte_t messageHash[hashSize];
     crypto_generichash(messageHash, hashSize, data, dataSize, nullptr, 0);
     collectSignature(pubKey->mData, pubKeySignature, messageHash);
@@ -99,10 +99,10 @@ bool Signature::check(
     auto originalSignatureOffset = mData;
     auto hashedSignatureOffset = hashedSignature;
 
-    for (size_t i = 0; i < PublicKey::kRandomNumbersCount / 2; ++i) {
+    for (size_t i = 0; i < PublicKey::kRandomNumbersSlotsCount / 2; ++i) {
         crypto_generichash(hashedSignatureOffset, hashSize, originalSignatureOffset, hashSize, nullptr, 0);
-        originalSignatureOffset += PublicKey::kRandomNumberSize;
-        hashedSignatureOffset += PublicKey::kRandomNumberSize;
+        originalSignatureOffset += PublicKey::kRandomNumberSlotSize;
+        hashedSignatureOffset += PublicKey::kRandomNumberSlotSize;
     }
 
     // Comparing results.
@@ -123,18 +123,18 @@ void Signature::collectSignature(
     auto signatureOffset = signature;
     auto numbersPairOffset = key;
 
-    for (size_t i = 0; i < PrivateKey::kRandomNumberSize; ++i) {
+    for (size_t i = 0; i < PrivateKey::kRandomNumberSlotSize; ++i) {
         std::bitset<bitsInByte> byteOfMessageHash(messageHash[i]);
 
         for (size_t b = 0; b < bitsInByte; ++b) {
-            auto source = numbersPairOffset + PrivateKey::kRandomNumberSize;
+            auto source = numbersPairOffset + PrivateKey::kRandomNumberSlotSize;
             if (byteOfMessageHash.test(b)) {
                 source = numbersPairOffset;
             }
 
-            memcpy(signatureOffset, source, PrivateKey::kRandomNumberSize);
-            numbersPairOffset += PrivateKey::kRandomNumberSize * 2;
-            signatureOffset += PrivateKey::kRandomNumberSize;
+            memcpy(signatureOffset, source, PrivateKey::kRandomNumberSlotSize);
+            numbersPairOffset += PrivateKey::kRandomNumberSlotSize * 2;
+            signatureOffset += PrivateKey::kRandomNumberSlotSize;
         }
     }
 }

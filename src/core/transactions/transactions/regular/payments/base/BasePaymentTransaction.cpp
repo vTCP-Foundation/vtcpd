@@ -305,15 +305,17 @@ TransactionResult::SharedConst BasePaymentTransaction::runVotesCheckingStage()
                                               mContractorsManager->ownAddresses()));
         debug() << "Data prepared for signing";
 
-        mSignedTransaction = mKeysStore->signPaymentTransaction(
-                                 ioTransaction,
-                                 currentTransactionUUID(),
-                                 serializedOwnVotesData.first,
-                                 serializedOwnVotesData.second);
-        if (mSignedTransaction == nullptr) {
+        auto signature = mKeysStore->signPaymentTransaction(
+                             ioTransaction,
+                             currentTransactionUUID(),
+                             serializedOwnVotesData.first,
+                             serializedOwnVotesData.second);
+        if (!signature.has_value()) {
             removeAllDataFromStorageConcerningTransaction();
-            return reject("Can't sign transaction. Reject");
+            return reject("Can't sign the transaction. See logs for the details.");
         }
+
+        mSignedTransaction = signature.value();
         debug() << "Voted +";
         mTransactionIsVoted = true;
 
@@ -321,7 +323,7 @@ TransactionResult::SharedConst BasePaymentTransaction::runVotesCheckingStage()
             mTransactionUUID,
             mMaximalClaimingBlockNumber);
     } catch (IOError &e) {
-        error() << "Can't sign payment transaction. Details " << e.what();
+        error() << "Can't sign the transaction. See logs for the details.";
         removeAllDataFromStorageConcerningTransaction();
         sendMessage<ParticipantVoteMessage>(
             coordinator->mainAddress(),

@@ -3,6 +3,7 @@
 
 #include "../base/max_flow_calculation/MaxFlowCalculationMessage.h"
 
+
 class MaxFlowCalculationTargetFstLevelMessage :
     public MaxFlowCalculationMessage
 {
@@ -16,22 +17,22 @@ public:
         ContractorID idOnReceiverSide,
         vector<BaseAddress::Shared> targetAddresses,
         bool isTargetGateway,
-		HopsCount_t hopsCount);
+        HopsCount_t hopsCount);
 
     MaxFlowCalculationTargetFstLevelMessage(
         BytesShared buffer);
 
+    const MessageType typeID() const override;
+
     bool isTargetGateway() const;
 
-    const MessageType typeID() const override;
+    const uint8_t getHopsCount() const;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
-	uint8_t getHopsCount() const;
-
 private:
     bool mIsTargetGateway;
-	HopsCount_t mHopsCnt;
+    uint8_t mHopsCnt;
 };
 
 #endif //VTCPD_MAXFLOWCALCULATIONTARGETFSTLEVELMESSAGE_H

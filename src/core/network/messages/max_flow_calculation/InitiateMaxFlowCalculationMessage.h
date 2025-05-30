@@ -3,37 +3,58 @@
 
 #include "../SenderMessage.h"
 
-
-class InitiateMaxFlowCalculationMessage :
-    public SenderMessage
+/**
+ * @brief Message to initiate max flow calculation between nodes
+ */
+class InitiateMaxFlowCalculationMessage : public SenderMessage
 {
-
 public:
-    typedef shared_ptr<InitiateMaxFlowCalculationMessage> Shared;
+    using Shared = std::shared_ptr<InitiateMaxFlowCalculationMessage>;
 
-public:
+    /**
+     * @brief Construct a new message
+     * @param equivalent Serialized equivalent data
+     * @param senderAddresses Vector of sender addresses
+     * @param isSenderGateway Whether the sender is a gateway
+     * @param hopsCount Number of hops for the calculation
+     */
     InitiateMaxFlowCalculationMessage(
         const SerializedEquivalent equivalent,
-        vector<BaseAddress::Shared> &senderAddresses,
+        vector<BaseAddress::Shared>& senderAddresses,
         bool isSenderGateway,
-        uint8_t hopsCnt);
+        uint8_t hopsCount);
 
-    InitiateMaxFlowCalculationMessage(
-        BytesShared buffer);
+    /**
+     * @brief Construct from serialized bytes
+     * @param buffer Serialized message data
+     */
+    explicit InitiateMaxFlowCalculationMessage(BytesShared buffer);
 
+    /**
+     * @return true if sender is gateway, false otherwise
+     */
     bool isSenderGateway() const;
 
-    HopsCount_t HopsCount() const;
+    /**
+     * @return Number of hops for max flow calculation
+     */
+    uint8_t getHopsCount() const;
 
+    /**
+     * @brief Get the message type identifier
+     * @return Message type enum value
+     */
     const MessageType typeID() const override;
 
+    /**
+     * @brief Serialize message to bytes
+     * @return Pair of byte buffer and size
+     */
     pair<BytesShared, size_t> serializeToBytes() const override;
 
 private:
-    // count hops of topology collection from receiver side
-    HopsCount_t mHopsCnt;
-    bool mIsSenderGateway;
+    uint8_t mHopsCount;      // Number of hops for calculation
+    bool mIsSenderGateway;   // Whether sender is a gateway node
 };
-
 
 #endif //VTCPD_INITIATEMAXFLOWCALCULATIONMESSAGE_H

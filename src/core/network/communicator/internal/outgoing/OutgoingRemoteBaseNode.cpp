@@ -1,4 +1,5 @@
 #include "OutgoingRemoteBaseNode.h"
+#include <iostream> // For std::cout, replace with your logger if available and appropriate
 
 OutgoingRemoteBaseNode::OutgoingRemoteBaseNode(
     UDPSocket &socket,
@@ -8,15 +9,24 @@ OutgoingRemoteBaseNode::OutgoingRemoteBaseNode(
 
     mIOCtx(ioCtx),
     mSocket(socket),
-    mRemoteAddress(remoteAddress),
     mLog(logger),
+    mRemoteAddress(remoteAddress),
+    mPacketsQueue(),
     mNextAvailableChannelIndex(0),
     mCyclesStats(std::chrono::steady_clock::now(), 0),
     mSendingDelayTimer(mIOCtx)
 {
 }
 
-OutgoingRemoteBaseNode::~OutgoingRemoteBaseNode() {}
+OutgoingRemoteBaseNode::~OutgoingRemoteBaseNode()
+{
+    // Clean up any remaining packets in the queue to prevent memory leaks
+    while (!mPacketsQueue.empty()) {
+        const auto packetDataAndSize = mPacketsQueue.front();
+        free(packetDataAndSize.first);  // Revert to free for consistency
+        mPacketsQueue.pop();
+    }
+}
 
 PacketHeader::ChannelIndex OutgoingRemoteBaseNode::nextChannelIndex() noexcept
 {
@@ -90,6 +100,7 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
     size_t messageContentBytesProcessed = 0;
     size_t messageCrc32ChecksumBytesProcessed = 0;
     Packet::Index packetIndex = 0;
+
     if (kTotalPacketsCount > 1) {
         for (; packetIndex < kTotalPacketsCount - 1; ++packetIndex) {
 
@@ -125,6 +136,7 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
             size_t usefulBytesCount = Packet::kMaxSize - PacketHeader::kSize;
             size_t messageLeftover = std::min(usefulBytesCount,
                                               messageBytesCount - messageContentBytesProcessed);
+
             memcpy(
                 buffer + PacketHeader::kDataOffset,
                 messageData + messageContentBytesProcessed,
@@ -134,12 +146,12 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
 
             size_t bytesLeftover = usefulBytesCount - messageLeftover;
             size_t checksumPartial = std::min(bytesLeftover, (size_t)sizeof(crcChecksum));
+
             memcpy(
                 buffer + PacketHeader::kDataOffset + messageLeftover,
                 &crcChecksum,
                 checksumPartial);
             messageCrc32ChecksumBytesProcessed += checksumPartial;
-            messageContentBytesProcessed += checksumPartial;
 
             const auto packetMaxSize = Packet::kMaxSize;
             mPacketsQueue.push(
@@ -155,7 +167,10 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
             messageContentBytesProcessed) +
         PacketHeader::kSize;
 
-    byte_t* buffer = static_cast<byte_t*>(malloc(kLastPacketSize));
+    // Round up to next 8-byte boundary to prevent alignment issues
+    size_t alignedSize = (kLastPacketSize + 7) & ~7;
+
+    byte_t* buffer = static_cast<byte_t*>(malloc(alignedSize));
     if (buffer == nullptr) {
         throw bad_alloc();
     }
@@ -180,9 +195,10 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
         &packetIndex,
         sizeof(packetIndex));
 
-    size_t usefulBytesCount = Packet::kMaxSize - PacketHeader::kSize;
+    size_t usefulBytesCount = kLastPacketSize - PacketHeader::kSize;
     size_t messageLeftover = std::min(usefulBytesCount,
-                                      messageBytesCount - std::min(messageBytesCount, messageContentBytesProcessed));
+                                      messageBytesCount - messageContentBytesProcessed);
+
     memcpy(
         buffer + PacketHeader::kDataOffset,
         messageData + messageContentBytesProcessed,
@@ -192,6 +208,7 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
 
     // Copying CRC32 checksum
     auto checksumLeftover = (size_t)(sizeof(crcChecksum) - messageCrc32ChecksumBytesProcessed);
+
     memcpy(
         buffer + PacketHeader::kDataOffset + messageLeftover,
         (uint8_t*)&crcChecksum + messageCrc32ChecksumBytesProcessed,
@@ -268,7 +285,7 @@ void OutgoingRemoteBaseNode::beginPacketsSending()
             }
 
             // Removing packet from the memory
-            free(packetDataAndSize.first);
+            free(packetDataAndSize.first);  // Revert to free for consistency
             mPacketsQueue.pop();
             if (!mPacketsQueue.empty()) {
                 beginPacketsSending();
@@ -279,13 +296,13 @@ void OutgoingRemoteBaseNode::beginPacketsSending()
 
 #ifdef DEBUG_LOG_NETWORK_COMMUNICATOR
         const PacketHeader::ChannelIndex channelIndex =
-            *(new (packetDataAndSize.first + PacketHeader::kChannelIndexOffset) PacketHeader::ChannelIndex);
+            *(reinterpret_cast<PacketHeader::ChannelIndex*>(packetDataAndSize.first + PacketHeader::kChannelIndexOffset));
 
         const PacketHeader::PacketIndex packetIndex =
-            *(new (packetDataAndSize.first + PacketHeader::kPacketIndexOffset) PacketHeader::PacketIndex) + 1;
+            *(reinterpret_cast<PacketHeader::PacketIndex*>(packetDataAndSize.first + PacketHeader::kPacketIndexOffset)) + 1;
 
         const PacketHeader::TotalPacketsCount totalPacketsCount =
-            *(new (packetDataAndSize.first + PacketHeader::kPacketsCountOffset) PacketHeader::TotalPacketsCount);
+            *(reinterpret_cast<PacketHeader::TotalPacketsCount*>(packetDataAndSize.first + PacketHeader::kPacketsCountOffset));
 
         this->debug() << setw(4) << bytesTransferred << "B TX [ => ] "
                       << endpoint.address() << ":" << endpoint.port() << "; "
@@ -295,7 +312,7 @@ void OutgoingRemoteBaseNode::beginPacketsSending()
 #endif
 
         // Removing packet from the memory
-        free(packetDataAndSize.first);
+        free(packetDataAndSize.first);  // Revert to free for consistency
         mPacketsQueue.pop();
 
         mCyclesStats.first = std::chrono::steady_clock::now();

@@ -35,6 +35,7 @@ StorageHandler::StorageHandler(
                       "Bad query; sqlite error: " + to_string(rc));
     }
     rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
     if (rc == SQLITE_DONE) {
     } else {
         throw IOError("StorageHandler::enabling foreign keys: "
@@ -45,6 +46,8 @@ StorageHandler::StorageHandler(
 StorageHandler::~StorageHandler()
 {
     if (mDBConnection != nullptr) {
+        // Release any cached memory before closing the connection
+        sqlite3_db_release_memory(mDBConnection);
         sqlite3_close_v2(mDBConnection);
     }
 }

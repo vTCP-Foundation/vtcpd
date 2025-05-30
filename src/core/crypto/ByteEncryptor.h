@@ -5,6 +5,9 @@
 #include "../common/Types.h"
 #include "../common/memory/MemoryUtils.h"
 
+#include <iomanip>
+
+
 class ByteEncryptor
 {
 public:
@@ -13,15 +16,24 @@ public:
     {
         typedef std::shared_ptr<PublicKey> Shared;
         static const size_t kBytesSize = crypto_box_PUBLICKEYBYTES;
-        PublicKey() = default;
+        PublicKey()
+        {
+            // Zeroing the key in default constructor to avoid any potential security issues.
+            memset(key, 0, kBytesSize);
+        }
         explicit PublicKey(const string &str);
         byte_t key[kBytesSize];
     };
+
     struct SecretKey
     {
         typedef std::shared_ptr<SecretKey> Shared;
         static const size_t kBytesSize = crypto_box_SECRETKEYBYTES;
-        SecretKey() = default;
+        SecretKey()
+        {
+            // Zeroing the key in default constructor to avoid any potential security issues.
+            memset(key, 0, kBytesSize);
+        }
         explicit SecretKey(const string &str);
         byte_t key[kBytesSize];
     };

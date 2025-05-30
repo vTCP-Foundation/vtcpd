@@ -11,6 +11,7 @@ SenderMessage::SenderMessage(
 SenderMessage::SenderMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> &senderAddresses) : EquivalentMessage(equivalent),
+    idOnReceiverSide(0),
     senderAddresses(senderAddresses)
 {
 }

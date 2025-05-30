@@ -55,22 +55,26 @@ lamport::PublicKey::Shared Keystore::generateAndSaveKeyPairForPaymentTransaction
     return pubKey;
 }
 
-lamport::Signature::Shared Keystore::signPaymentTransaction(IOTransaction::Shared ioTransaction,
+std::optional<lamport::Signature::Shared> Keystore::signPaymentTransaction(IOTransaction::Shared ioTransaction,
         const TransactionUUID& transactionUUID,
         BytesShared dataForSign,
         size_t dataForSignBytesCount)
 {
     try {
-        auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey(
-                              transactionUUID);
-        return make_shared<Signature>(
-                   dataForSign.get(),
-                   dataForSignBytesCount,
-                   privateKey);
-    } catch (NotFoundError &e) {
-        warning() << "Can't get key for transaction " << transactionUUID.stringUUID()
-                  << ". Details: " << e.what();
-        return nullptr;
+        auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey(transactionUUID);
+        auto signature = make_shared<Signature>(
+                             dataForSign.get(),
+                             dataForSignBytesCount,
+                             privateKey);
+
+        // Signature constructor copies the private key into internal memory,
+        // so the original private key must be freed.
+        delete privateKey;
+        return signature;
+    } catch (const NotFoundError &e) {
+        error() << "Can't get private key for the transaction " << transactionUUID.stringUUID()
+                << ". Details: " << e.what();
+        return std::nullopt;
     }
 }
 
@@ -87,6 +91,11 @@ LoggerStream Keystore::debug() const
 LoggerStream Keystore::warning() const
 {
     return mLogger.warning(logHeader());
+}
+
+LoggerStream Keystore::error() const
+{
+    return mLogger.error(logHeader());
 }
 
 const string Keystore::logHeader() const
@@ -218,7 +227,7 @@ pair<lamport::Signature::Shared, KeyNumber> TrustLineKeychain::sign(
 {
     dataGuard(data, size);
 
-    pair<PrivateKey*, KeyNumber> privateKeyAndNumber;
+    pair<std::unique_ptr<PrivateKey>, KeyNumber> privateKeyAndNumber;
     try {
         privateKeyAndNumber = ioTransaction->ownKeysHandler()->nextAvailableKey(mTrustLineID);
         // todo: decrypt private key.
@@ -231,8 +240,7 @@ pair<lamport::Signature::Shared, KeyNumber> TrustLineKeychain::sign(
         throw e;
     }
 
-    auto signature = make_shared<lamport::Signature>(data.get(), size, privateKeyAndNumber.first);
-
+    auto signature = make_shared<lamport::Signature>(data.get(), size, privateKeyAndNumber.first.get());
     return make_pair(signature, privateKeyAndNumber.second);
 }
 
@@ -564,10 +572,10 @@ void TrustLineKeychain::acceptAudit(IOTransaction::Shared ioTransaction,
             auditRecord->incomingAmount(),
             auditRecord->balance() * (-1));
 
-    ioTransaction->ownKeysHandler()->invalidKeyByHash(
+    ioTransaction->ownKeysHandler()->invalidateKeyByHash(
         mTrustLineID, auditRecord->contractorKeyHash(), auditRecord->contractorSignature());
 
-    ioTransaction->contractorKeysHandler()->invalidKeyByHash(
+    ioTransaction->contractorKeysHandler()->invalidateKeyByHash(
         mTrustLineID, auditRecord->ownKeyHash());
 }
 
@@ -582,7 +590,7 @@ void TrustLineKeychain::acceptReceipts(IOTransaction::Shared ioTransaction,
                 contractorIncomingReceipt->keyHash(),
                 contractorIncomingReceipt->amount());
 
-        ioTransaction->ownKeysHandler()->invalidKeyByHash(mTrustLineID,
+        ioTransaction->ownKeysHandler()->invalidateKeyByHash(mTrustLineID,
                 contractorIncomingReceipt->keyHash(),
                 contractorIncomingReceipt->signature());
     }
@@ -595,7 +603,7 @@ void TrustLineKeychain::acceptReceipts(IOTransaction::Shared ioTransaction,
                 contractorOutgoingReceipt->amount(),
                 contractorOutgoingReceipt->signature());
 
-        ioTransaction->contractorKeysHandler()->invalidKeyByHash(
+        ioTransaction->contractorKeysHandler()->invalidateKeyByHash(
             mTrustLineID, contractorOutgoingReceipt->keyHash());
     }
 }
@@ -628,7 +636,12 @@ lamport::KeyHash::Shared TrustLineKeychain::ownPublicKeysHash(
     }
     auto keyHashBuffer = (byte_t*)malloc(lamport::KeyHash::kBytesSize);
     crypto_generichash_final(&state, keyHashBuffer, lamport::KeyHash::kBytesSize);
-    return make_shared<lamport::KeyHash>(keyHashBuffer);
+    auto result = make_shared<lamport::KeyHash>(keyHashBuffer);
+
+    // KeyHash constructor copies the buffer into internal memory,
+    // so the original buffer must be freed.
+    free(keyHashBuffer);
+    return result;
 }
 
 lamport::KeyHash::Shared TrustLineKeychain::contractorPublicKeysHash(
@@ -645,7 +658,12 @@ lamport::KeyHash::Shared TrustLineKeychain::contractorPublicKeysHash(
     }
     auto keyHashBuffer = (byte_t*)malloc(lamport::KeyHash::kBytesSize);
     crypto_generichash_final(&state, keyHashBuffer, lamport::KeyHash::kBytesSize);
-    return make_shared<lamport::KeyHash>(keyHashBuffer);
+    auto result = make_shared<lamport::KeyHash>(keyHashBuffer);
+
+    // KeyHash constructor copies the buffer into internal memory,
+    // so the original buffer must be freed.
+    free(keyHashBuffer);
+    return result;
 }
 
 pair<bool, bool> TrustLineKeychain::checkKeysSetAppropriate(IOTransaction::Shared ioTransaction,

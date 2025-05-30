@@ -52,7 +52,10 @@ add_library(io__storage
     AddressHandler.h
     AddressHandler.cpp
     FeaturesHandler.h
-    FeaturesHandler.cpp)
+    FeaturesHandler.cpp
+    SQLiteStatementRAII.h
+    SQLiteStatementRAII.cpp
+    )
 
 target_include_directories(io__storage
     PUBLIC
@@ -66,5 +69,5 @@ target_compile_features(io__storage
 
 target_link_libraries(io__storage
     PUBLIC
-        libsqlite3
+        SQLite::SQLite3
         contractors)

@@ -1,23 +1,19 @@
 #include "lamportkeys.h"
+#include <cstring>
 
 namespace crypto {
 namespace lamport {
 
-const size_t BaseKey::keySize()
-{
-    // public and private keys has 16KB
-    return 16 * 1024;
-}
 
-PrivateKey::PrivateKey() : mData(memory::SecureSegment(kRandomNumbersCount * kRandomNumberSize)),
+PrivateKey::PrivateKey() : mData(memory::SecureSegment(kRandomNumbersSlotsCount * kRandomNumberSlotSize)),
     mIsCropped(false)
 {
     auto guard = mData.unlockAndInitGuard();
 
     auto offset = static_cast<byte_t*>(guard.address());
-    for (size_t i = 0; i < kRandomNumbersCount; ++i) {
-        randombytes_buf(offset, kRandomNumberSize);
-        offset += kRandomNumberSize;
+    for (size_t i = 0; i < kRandomNumbersSlotsCount; ++i) {
+        randombytes_buf(offset, kRandomNumberSlotSize);
+        offset += kRandomNumberSlotSize;
     }
 }
 
@@ -40,7 +36,7 @@ PublicKey::Shared PrivateKey::derivePublicKey()
     auto generatedKey = make_shared<PublicKey>();
 
     // Numbers buffers memory allocation.
-    generatedKey->mData = static_cast<byte_t*>(malloc(kRandomNumbersCount * kRandomNumberSize));
+    generatedKey->mData = static_cast<byte_t*>(malloc(kRandomNumbersSlotsCount * kRandomNumberSlotSize));
     if (generatedKey->mData == nullptr) {
         return nullptr;
     }
@@ -49,10 +45,10 @@ PublicKey::Shared PrivateKey::derivePublicKey()
     auto source = static_cast<byte_t*>(guard.address());
     auto destination = static_cast<byte_t*>(generatedKey->mData);
 
-    for (size_t i = 0; i < kRandomNumbersCount; ++i) {
-        crypto_generichash(destination, kRandomNumberSize, source, kRandomNumberSize, nullptr, 0);
-        source += kRandomNumberSize;
-        destination += kRandomNumberSize;
+    for (size_t i = 0; i < kRandomNumbersSlotsCount; ++i) {
+        crypto_generichash(destination, kRandomNumberSlotSize, source, kRandomNumberSlotSize, nullptr, 0);
+        source += kRandomNumberSlotSize;
+        destination += kRandomNumberSlotSize;
     }
 
     return generatedKey;
@@ -98,7 +94,12 @@ const KeyHash::Shared PublicKey::hash() const
         keySize(),
         nullptr,
         0);
-    return make_shared<KeyHash>(keyHashBuffer);
+    auto result = make_shared<KeyHash>(keyHashBuffer);
+
+    // KeyHash constructor copies the buffer into internal memory,
+    // so the original buffer must be freed.
+    free(keyHashBuffer);
+    return result;
 }
 
 KeyHash::KeyHash(
@@ -126,20 +127,12 @@ const string KeyHash::toString() const
 
 bool operator==(const KeyHash &kh1, const KeyHash &kh2)
 {
-    for (int i = KeyHash::kBytesSize - 1; i >= 0; --i) {
-        if (kh1.mData[i] != kh2.mData[i])
-            return false;
-    }
-    return true;
+    return memcmp(kh1.mData, kh2.mData, KeyHash::kBytesSize) == 0;
 }
 
 bool operator!=(const KeyHash &kh1, const KeyHash &kh2)
 {
-    for (int i = KeyHash::kBytesSize - 1; i >= 0; --i) {
-        if (kh1.mData[i] != kh2.mData[i])
-            return true;
-    }
-    return false;
+    return !(kh1 == kh2);
 }
 
 }

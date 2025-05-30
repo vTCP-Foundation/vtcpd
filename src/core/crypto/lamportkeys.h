@@ -6,6 +6,7 @@
 #include <sodium.h>
 #include <memory>
 
+
 namespace crypto {
 namespace lamport {
 
@@ -16,11 +17,17 @@ class BaseKey : boost::noncopyable
     friend class Signature;
 
 public:
-    static const size_t keySize();
+    /**
+     * @return Generic size of the key in bytes.
+     */
+    static constexpr size_t keySize()
+    {
+        return 16 * 1024;
+    }
 
 protected:
-    static const size_t kRandomNumbersCount = 256 * 2;
-    static const size_t kRandomNumberSize = 256 / 8;
+    static constexpr size_t kRandomNumbersSlotsCount = 256 * 2;
+    static constexpr size_t kRandomNumberSlotSize = 256 / 8;
 };
 
 class KeyHash
@@ -29,8 +36,14 @@ public:
     typedef shared_ptr<KeyHash> Shared;
 
 public:
-    KeyHash() = default;
+    KeyHash() : mData{} {}
 
+    /**
+     * Constructs KeyHash by copying data from the provided buffer
+     * Note: The class copies the data into internal memory and does not take ownership
+     * of the buffer passed. The caller remains responsible for freeing the buffer.
+     * @param buffer Pointer to bytes to copy from. Must be at least kBytesSize bytes long.
+     */
     KeyHash(
         byte_t* buffer);
 
@@ -47,7 +60,7 @@ public:
         const KeyHash &kh2);
 
 public:
-    static const size_t kBytesSize = 32;
+    static constexpr size_t kBytesSize = 32;
 
 private:
     byte_t mData[kBytesSize];
@@ -61,7 +74,7 @@ class PublicKey : public BaseKey
 public:
     typedef shared_ptr<PublicKey> Shared;
 
-    PublicKey() = default;
+    PublicKey() : mData(nullptr) {}
 
     PublicKey(
         byte_t* data);
