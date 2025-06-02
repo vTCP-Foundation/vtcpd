@@ -238,9 +238,13 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
             }
             mCountSendingAttempts++;
             info() << "Send message " << mCountSendingAttempts << " times";
+            auto waitMillisecondsForResponse = kWaitMillisecondsForResponse;
+            for (int i = 0; i < mCountSendingAttempts; i++) {
+                waitMillisecondsForResponse *= 2;
+            }
             return resultWaitForMessageTypes(
             {Message::TrustLines_HashConfirmation},
-            kWaitMillisecondsForResponse);
+            waitMillisecondsForResponse);
         }
         info() << "Transaction will be closed";
         mTrustLines->setTrustLineState(mContractorID, TrustLine::Active);

@@ -67,12 +67,13 @@ public:
         const TransactionUUID &transactionUUID);
 
     /**
-     * Removes transaction from database.
+     * Removes transaction from database if it exists. 
+     * Coordinator does not save transactions, but it deletes them from storage 
+     * because this logic realized in BasePaymentTransaction.
      * @param transactionUUID Transaction identifier
-     * @throws NotFoundError if transaction not found
      * @throws IOError if database operation fails
      */
-    void deleteRecord(
+    void deleteRecordIfExists(
         const TransactionUUID &transactionUUID);
 
     /**

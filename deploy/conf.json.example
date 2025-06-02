@@ -1,12 +1,43 @@
-{
+  {
     "addresses":[
       {
         "type":"ipv4",
         "address":"10.135.255.90:2033"
+      },
+      {
+        "type":"gns",
+        "address":"user@geo.pay"
       }
     ],
     "equivalents_registry_address":"eth",
     "max_hops_count": 2,
+    "providers":[
+      {
+        "name":"geo.pay",
+        "key":"111111",
+        "participant_id":2,
+        "addresses":[
+          {
+            "type":"ipv4",
+            "address":"127.0.0.1:2010"
+          },
+          {
+            "type":"ipv4",
+            "address":"127.0.0.1:2011"
+          }
+        ]
+      }
+    ],
+    "gateway": ["1", "5"],
+    "cycles_clearing": {
+      "three_nodes_enabled": true,
+      "four_nodes_enabled": true,
+      "five_nodes_enabled": true,
+      "five_nodes_interval_sec": 600,
+      "six_nodes_enabled": true,
+      "six_nodes_interval_sec": 1200,
+      "routing_tables_interval_days": 3
+    }
     "observers": [
       {
         "type": "ipv4", 

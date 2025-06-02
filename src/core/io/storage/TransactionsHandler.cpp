@@ -99,7 +99,7 @@ void TransactionsHandler::saveRecord(
 #endif
 }
 
-void TransactionsHandler::deleteRecord(
+void TransactionsHandler::deleteRecordIfExists(
     const TransactionUUID &transactionUUID)
 {
     string query = "DELETE FROM " + mTableName + " WHERE transaction_uuid = ?;";
@@ -115,10 +115,6 @@ void TransactionsHandler::deleteRecord(
     if (rc != SQLITE_DONE) {
         throw IOError("TransactionsHandler::deleteRecord: Failed to execute DELETE. "
                       "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    if (sqlite3_changes(mDataBase) == 0) {
-        throw NotFoundError("TransactionsHandler::deleteRecord: No transaction found with the specified UUID.");
     }
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
