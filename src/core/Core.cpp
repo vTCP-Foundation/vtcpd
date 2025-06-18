@@ -984,7 +984,7 @@ void Core::writePIDFile()
 
 void Core::updateProcessName()
 {
-    const string kProcessName(string("GEO:") + mContractorsManager->selfContractor()->mainAddress()->fullAddress());
+    const string kProcessName(string("vtcpd:") + mContractorsManager->selfContractor()->mainAddress()->fullAddress());
     prctl(PR_SET_NAME, kProcessName.c_str());
     strcpy(mCommandDescriptionPtr, kProcessName.c_str());
 }

@@ -140,14 +140,22 @@ void TrustLine::setAuditNumber(
  */
 ConstSharedTrustLineAmount TrustLine::availableOutgoingAmount() const
 {
-    if (mBalance < kZeroBalance() && absoluteBalanceAmount(mBalance) > mIncomingTrustAmount) {
-        return make_shared<const TrustLineAmount>(0);
+    if (mBalance >= kZeroBalance()) {
+        // If balance is positive or zero, return incoming trust amount + balance
+        return make_shared<const TrustLineAmount>(
+                   mIncomingTrustAmount + TrustLineAmount(mBalance));
+    } else {
+        // If balance is negative
+        TrustLineAmount absBalance = TrustLineAmount(-mBalance);
+        if (absBalance <= mIncomingTrustAmount) {
+            // If absolute balance is less than or equal to incoming trust amount
+            return make_shared<const TrustLineAmount>(
+                       mIncomingTrustAmount - absBalance);
+        } else {
+            // If absolute balance is greater than incoming trust amount
+            return make_shared<const TrustLineAmount>(0);
+        }
     }
-    // Convert balance to unsigned before addition if it's positive, otherwise use 0
-    TrustLineAmount balanceAmount = (mBalance >= kZeroBalance()) ?
-                                    TrustLineAmount(mBalance) : TrustLineAmount(0);
-    return make_shared<const TrustLineAmount>(
-               mIncomingTrustAmount + balanceAmount);
 }
 
 /*!
@@ -155,14 +163,21 @@ ConstSharedTrustLineAmount TrustLine::availableOutgoingAmount() const
  */
 ConstSharedTrustLineAmount TrustLine::availableIncomingAmount() const
 {
-    if (mBalance > kZeroBalance() && absoluteBalanceAmount(mBalance) > mOutgoingTrustAmount) {
-        return make_shared<const TrustLineAmount>(0);
+    if (mBalance >= kZeroBalance()) {
+        if (mBalance <= mOutgoingTrustAmount) {
+            // If balance is less than or equal to outgoing trust amount
+            return make_shared<const TrustLineAmount>(
+                       mOutgoingTrustAmount - TrustLineAmount(mBalance));
+        } else {
+            // If balance is greater than outgoing trust amount
+            return make_shared<const TrustLineAmount>(0);
+        }
+    } else {
+        // If balance is negative
+        TrustLineAmount absBalance = TrustLineAmount(-mBalance);
+        return make_shared<const TrustLineAmount>(
+                       mOutgoingTrustAmount + absBalance);
     }
-    // Convert balance to unsigned before subtraction
-    TrustLineAmount balanceAmount = (mBalance >= kZeroBalance()) ?
-                                    TrustLineAmount(mBalance) : TrustLineAmount(0);
-    return make_shared<const TrustLineAmount>(
-               mOutgoingTrustAmount - balanceAmount);
 }
 
 ConstSharedTrustLineAmount TrustLine::usedAmountByContractor() const

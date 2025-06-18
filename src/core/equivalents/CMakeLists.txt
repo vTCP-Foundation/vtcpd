@@ -18,7 +18,8 @@ target_compile_features(equivalents
 
 target_link_libraries(equivalents
     PUBLIC
-        trust_lines
+        core_libs
+        trust_lines 
         topology
         cycles
         paths

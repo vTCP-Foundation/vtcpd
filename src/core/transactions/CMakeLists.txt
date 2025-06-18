@@ -48,6 +48,7 @@ target_link_libraries(transactions
         transactions__gateway_notification
         transactions__general
         transactions__channels
+        core_libs
         common
         exceptions
         equivalents)

@@ -30,6 +30,7 @@ target_compile_features(transactions__payments
 
 target_link_libraries(transactions__payments
     PUBLIC
+        core_libs
         transactions__base
         network__messages
         paths)
