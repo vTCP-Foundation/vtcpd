@@ -913,7 +913,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
                 return reject("Can't save outgoing receipt. Rejected.");
             }
             info() << "Send public key hash to " << nodePaymentIdAndContractor.second->mainAddress()->fullAddress()
-                   << " with receipt " << outgoingReservedAmount;
+                   << " with receipt " << outgoingReservedAmount << " signed by key number " << signatureAndKeyNumber.second;
             sendMessage<TransactionPublicKeyHashMessage>(
                 nodePaymentIdAndContractor.second->mainAddress(),
                 mEquivalent,
