@@ -1506,7 +1506,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
                 return reject("Can't save outgoing receipt. Rejected.");
             }
             info() << "send final amount configuration to " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress()
-                   << " with receipt " << outgoingReservedAmount;
+                   << " with receipt " << outgoingReservedAmount << " signed by key number " << signatureAndKeyNumber.second;
             sendMessage<FinalAmountsConfigurationMessage>(
                 paymentNodeIdAndContractor.second->mainAddress(),
                 mEquivalent,

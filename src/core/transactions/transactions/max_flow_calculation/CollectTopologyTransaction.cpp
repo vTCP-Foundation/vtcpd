@@ -33,7 +33,9 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
     if(mTrustLinesManager->firstLevelNeighborsWithOutgoingFlow().first.empty()) {
         return resultDone();
     }
-    sendMessagesToContractors();
+    if (mHopsCnt > 0) {
+        sendMessagesToContractors();
+    }
 
     if (mIamGateway) {
         for (auto const &nodeAddressAndOutgoingFlow : mTrustLinesManager->outgoingFlows()) {
@@ -42,7 +44,6 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
             if (mTrustLinesManager->isContractorGateway(targetID)) {
                 mTopologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
-                        //TopologyTrustLinesManager::kCurrentNodeID,
                         0,
                         targetID,
                         trustLineAmountShared));
@@ -51,7 +52,6 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
             if (isNodeListedInTransactionContractors(nodeAddressAndOutgoingFlow.first)) {
                 mTopologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
-                        //TopologyTrustLinesManager::kCurrentNodeID,
                         0,
                         targetID,
                         trustLineAmountShared));
@@ -63,7 +63,6 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
             auto trustLineAmountShared = nodeAddressAndOutgoingFlow.second;
             mTopologyTrustLineManager->addTrustLine(
                 make_shared<TopologyTrustLine>(
-                    //TopologyTrustLinesManager::kCurrentNodeID,
                     0,
                     targetID,
                     trustLineAmountShared));

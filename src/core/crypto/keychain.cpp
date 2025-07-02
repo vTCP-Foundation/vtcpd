@@ -291,6 +291,20 @@ bool TrustLineKeychain::saveOutgoingPaymentReceipt(IOTransaction::Shared ioTrans
         auto contractorKeyHash =
             ioTransaction->ownKeysHandler()->getPublicKeyHash(mTrustLineID, ownKeyNumber);
 
+        if (ioTransaction->outgoingPaymentReceiptHandler()->isContainsKeyHash(contractorKeyHash)) {
+            warning() << "Outgoing receipt with key number " << ownKeyNumber << " already exists";
+            ioTransaction->ownKeysHandler()->invalidKey(mTrustLineID, ownKeyNumber, signature);
+            // TODO: inform about this for trying to use another key
+            return false;
+        }
+
+        if (ioTransaction->auditHandler()->isContainsKeyHash(contractorKeyHash)) {
+            warning() << "Audit with key number " << ownKeyNumber << " already exists";
+            ioTransaction->ownKeysHandler()->invalidKey(mTrustLineID, ownKeyNumber, signature);
+            // TODO: inform about this for trying to use another key
+            return false;
+        }
+
         ioTransaction->outgoingPaymentReceiptHandler()->saveRecord(
             mTrustLineID, auditNumber, transactionUUID, contractorKeyHash, amount);
 

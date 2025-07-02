@@ -24,8 +24,8 @@ void PathStats::setNodeState(
     const PathStats::NodeState state)
 {
 #ifdef INTERNAL_ARGUMENTS_VALIDATION
-    assert(positionInPath > 0);
-    assert(positionInPath <= mIntermediateNodesStates.size());
+    assert(positionInPath >= 0);
+    assert(positionInPath < mIntermediateNodesStates.size());
 #endif
 
     mIntermediateNodesStates[positionInPath] = state;

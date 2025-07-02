@@ -58,7 +58,7 @@ SubsystemsInfluenceCommand::SubsystemsInfluenceCommand(
             commandBuffer.end(),
             char_[check]);
 
-        /*parse(
+        parse(
         	commandBuffer.begin(),
         	commandBuffer.end(), (
         	+(int_[flagsAdd])
@@ -74,7 +74,7 @@ SubsystemsInfluenceCommand::SubsystemsInfluenceCommand(
         	addressTypeParse,
         	addressAddToVector)
         	> -((digit[forbiddenAmountAdd] > !alpha > !punct) > eol)))
-        	> eoi));*/
+        	> eoi));
 
         mForbiddenAmount = TrustLineAmount(forbiddenAmount);
     } catch (...) {

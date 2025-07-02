@@ -680,7 +680,7 @@ void BasePaymentTransaction::commit(
     debug() << "Votes saved.";
 
     // delete this transaction from storage
-    ioTransaction->transactionHandler()->deleteRecord(
+    ioTransaction->transactionHandler()->deleteRecordIfExists(
         currentTransactionUUID());
 
     // todo : don't send signal if transaction committed after observing
@@ -777,7 +777,7 @@ void BasePaymentTransaction::removeAllDataFromStorageConcerningTransaction(
         mTransactionUUID);
     ioTransaction->paymentParticipantsVotesHandler()->deleteRecords(
         mTransactionUUID);
-    ioTransaction->transactionHandler()->deleteRecord(
+    ioTransaction->transactionHandler()->deleteRecordIfExists(
         mTransactionUUID);
 }
 

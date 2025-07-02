@@ -68,8 +68,8 @@ private:
 
 protected:
     // these constants should be the same as in PublicKeysSharingTargetTransaction
-    static const uint32_t kWaitMillisecondsForResponse = 5000;
-    static const uint16_t kMaxCountSendingAttempts = 3;
+    static const uint32_t kWaitMillisecondsForResponse = 500;
+    static const uint16_t kMaxCountSendingAttempts = 5;
 
 private:
     ShareKeysCommand::Shared mCommand;
