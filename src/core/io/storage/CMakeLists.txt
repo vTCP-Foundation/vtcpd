@@ -78,39 +78,6 @@ add_library(io__storage
     sqlite/FeaturesHandlerSQLite.cpp
     sqlite/SQLiteStatementRAII.h
     sqlite/SQLiteStatementRAII.cpp
-    # Legacy concrete classes that still exist
-    # TrustLineHandler.h
-    # TrustLineHandler.cpp
-    # TransactionsHandler.h
-    # TransactionsHandler.cpp
-    # HistoryStorage.h
-    # HistoryStorage.cpp
-    # OwnKeysHandler.h
-    # OwnKeysHandler.cpp
-    # ContractorKeysHandler.h
-    # ContractorKeysHandler.cpp
-    # AuditHandler.h
-    # AuditHandler.cpp
-    # PaymentKeysHandler.h
-    # PaymentKeysHandler.cpp
-    # IncomingPaymentReceiptHandler.h
-    # IncomingPaymentReceiptHandler.cpp
-    # OutgoingPaymentReceiptHandler.h
-    # OutgoingPaymentReceiptHandler.cpp
-    # PaymentTransactionsHandler.h
-    # PaymentTransactionsHandler.cpp
-    # PaymentParticipantsVotesHandler.h
-    # PaymentParticipantsVotesHandler.cpp
-    # AuditRulesHandler.h
-    # AuditRulesHandler.cpp
-    # ContractorsHandler.h
-    # ContractorsHandler.cpp
-    # AddressHandler.h
-    # AddressHandler.cpp
-    # FeaturesHandler.h
-    # FeaturesHandler.cpp
-    # SQLiteStatementRAII.h
-    # SQLiteStatementRAII.cpp
     )
 
 target_include_directories(io__storage

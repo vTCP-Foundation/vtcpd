@@ -8,6 +8,7 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../trust_lines/audit_rules/BaseAuditRule.h"
+#include "SQLiteStatementRAII.h"
 #include <sqlite3.h>
 
 class AuditRulesHandlerSQLite : public AuditRulesHandler

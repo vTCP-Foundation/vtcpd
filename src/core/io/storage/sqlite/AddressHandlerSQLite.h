@@ -7,6 +7,7 @@
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/exceptions/ValueError.h"
 #include "../../../common/memory/MemoryUtils.h"
+#include "SQLiteStatementRAII.h"
 #include <sqlite3.h>
 #include <vector>
 
