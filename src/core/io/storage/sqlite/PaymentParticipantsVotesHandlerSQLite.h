@@ -8,6 +8,7 @@
 #include "../../../common/exceptions/ValueError.h"
 #include "../../../crypto/lamportkeys.h"
 #include "../../../common/memory/MemoryUtils.h"
+#include "SQLiteStatementRAII.h"
 #include <sqlite3.h>
 #include <memory>
 

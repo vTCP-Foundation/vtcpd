@@ -1,5 +1,4 @@
 #include "PaymentTransactionsHandlerSQLite.h"
-#include "SQLiteStatementRAII.h"
 
 PaymentTransactionsHandlerSQLite::PaymentTransactionsHandlerSQLite(
     sqlite3 *dbConnection,

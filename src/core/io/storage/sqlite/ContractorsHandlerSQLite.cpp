@@ -9,19 +9,13 @@ ContractorsHandlerSQLite::ContractorsHandlerSQLite(
     mTableName(tableName),
     mLog(logger)
 {
-    sqlite3_stmt *stmt;
     string query = "CREATE TABLE IF NOT EXISTS " + mTableName +
                    "(id INTEGER PRIMARY KEY, "
                    "id_on_contractor_side INTEGER, "
                    "crypto_key BLOB NOT NULL, "
                    "is_confirmed INTEGER NOT NULL DEFAULT 0);";
-    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::creating table: "
-                      "Bad query; sqlite error: " +
-                      to_string(rc));
-    }
-    rc = sqlite3_step(stmt);
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+    int rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_DONE) {
     } else {
         throw IOError("ContractorsHandlerSQLite::creating table: "
@@ -30,13 +24,8 @@ ContractorsHandlerSQLite::ContractorsHandlerSQLite(
     }
 
     query = "CREATE UNIQUE INDEX IF NOT EXISTS " + mTableName + "_id_idx on " + mTableName + " (id);";
-    rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::creating index for ID: "
-                      "Bad query; sqlite error: " +
-                      to_string(rc));
-    }
-    rc = sqlite3_step(stmt);
+    SQLiteStatementRAII stmtUnique(mDataBase, query.c_str());
+    rc = sqlite3_step(stmtUnique.get());
     if (rc == SQLITE_DONE) {
     } else {
         throw IOError("ContractorsHandlerSQLite::creating index for ID: "
@@ -44,8 +33,9 @@ ContractorsHandlerSQLite::ContractorsHandlerSQLite(
                       to_string(rc));
     }
 
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
+#ifdef STORAGE_HANDLER_DEBUG_LOG
+    info() << "ContractorsHandler initialized: table=" << mTableName;
+#endif
 }
 
 void ContractorsHandlerSQLite::saveContractor(
@@ -53,15 +43,8 @@ void ContractorsHandlerSQLite::saveContractor(
 {
     string query = "INSERT INTO " + mTableName +
                    " (id, crypto_key) VALUES (?, ?);";
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::saveContractor: "
-                      "Bad query; sqlite error: " +
-                      to_string(rc));
-    }
-
-    rc = sqlite3_bind_int(stmt, 1, contractor->getID());
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+    int rc = sqlite3_bind_int(stmt.get(), 1, contractor->getID());
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::saveContractor: "
                       "Bad binding of ID; sqlite error: " +
@@ -72,16 +55,14 @@ void ContractorsHandlerSQLite::saveContractor(
     vector<byte_t> cryptoKeyBlob;
     if (cryptoKey)
         cryptoKey->serialize(cryptoKeyBlob);
-    rc = sqlite3_bind_blob(stmt, 2, &cryptoKeyBlob[0], cryptoKeyBlob.size(), SQLITE_STATIC);
+    rc = sqlite3_bind_blob(stmt.get(), 2, &cryptoKeyBlob[0], cryptoKeyBlob.size(), SQLITE_STATIC);
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::saveContractor: "
                       "Bad binding of cryptoKey; sqlite error: " +
                       to_string(rc));
     }
 
-    rc = sqlite3_step(stmt);
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
+    rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_DONE) {
 #ifdef STORAGE_HANDLER_DEBUG_LOG
         info() << "prepare inserting is completed successfully";
@@ -99,21 +80,14 @@ void ContractorsHandlerSQLite::saveContractorFull(
     string query = "INSERT INTO " + mTableName +
                    "(id, id_on_contractor_side, crypto_key, is_confirmed) "
                    "VALUES (?, ?, ?, 1);";
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::saveContractorFull: "
-                      "Bad query; sqlite error: " +
-                      to_string(rc));
-    }
-
-    rc = sqlite3_bind_int(stmt, 1, contractor->getID());
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+    int rc = sqlite3_bind_int(stmt.get(), 1, contractor->getID());
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::saveContractorFull: "
                       "Bad binding of ID; sqlite error: " +
                       to_string(rc));
     }
-    rc = sqlite3_bind_int(stmt, 2, contractor->ownIdOnContractorSide());
+    rc = sqlite3_bind_int(stmt.get(), 2, contractor->ownIdOnContractorSide());
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::saveContractorFull: "
                       "Bad binding of ID on contractor side; sqlite error: " +
@@ -123,16 +97,14 @@ void ContractorsHandlerSQLite::saveContractorFull(
     vector<byte_t> cryptoKeyBlob;
     if (cryptoKey)
         cryptoKey->serialize(cryptoKeyBlob);
-    rc = sqlite3_bind_blob(stmt, 3, &cryptoKeyBlob[0], cryptoKeyBlob.size(), SQLITE_STATIC);
+    rc = sqlite3_bind_blob(stmt.get(), 3, &cryptoKeyBlob[0], cryptoKeyBlob.size(), SQLITE_STATIC);
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::saveContractorFull: "
                       "Bad binding of cryptoKey; sqlite error: " +
                       to_string(rc));
     }
 
-    rc = sqlite3_step(stmt);
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
+    rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_DONE) {
 #ifdef STORAGE_HANDLER_DEBUG_LOG
         info() << "prepare inserting is completed successfully";
@@ -149,15 +121,8 @@ void ContractorsHandlerSQLite::saveConfirmationInfo(
 {
     string query = "UPDATE " + mTableName +
                    " SET id_on_contractor_side = ?, crypto_key = ?, is_confirmed = 1 WHERE id = ?;";
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::saveConfirmationInfo: "
-                      "Bad query; sqlite error: " +
-                      to_string(rc));
-    }
-
-    rc = sqlite3_bind_int(stmt, 1, contractor->ownIdOnContractorSide());
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+    int rc = sqlite3_bind_int(stmt.get(), 1, contractor->ownIdOnContractorSide());
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::saveConfirmationInfo: "
                       "Bad binding of ID on contractor side; sqlite error: " +
@@ -168,22 +133,20 @@ void ContractorsHandlerSQLite::saveConfirmationInfo(
     if (cryptoKey) {
         cryptoKey->serialize(cryptoKeyBlob);
     }
-    rc = sqlite3_bind_blob(stmt, 2, &cryptoKeyBlob[0], cryptoKeyBlob.size(), SQLITE_STATIC);
+    rc = sqlite3_bind_blob(stmt.get(), 2, &cryptoKeyBlob[0], cryptoKeyBlob.size(), SQLITE_STATIC);
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::saveConfirmationInfo: "
                       "Bad binding of cryptoKey; sqlite error: " +
                       to_string(rc));
     }
-    rc = sqlite3_bind_int(stmt, 3, contractor->getID());
+    rc = sqlite3_bind_int(stmt.get(), 3, contractor->getID());
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::saveConfirmationInfo: "
                       "Bad binding of ID; sqlite error: " +
                       to_string(rc));
     }
 
-    rc = sqlite3_step(stmt);
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
+    rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_DONE) {
 #ifdef STORAGE_HANDLER_DEBUG_LOG
         info() << "updateing is completed successfully";
@@ -203,35 +166,27 @@ void ContractorsHandlerSQLite::updateCryptoKey(
     Contractor::Shared contractor)
 {
     string query = "UPDATE " + mTableName + " SET crypto_key = ?, is_confirmed = 1 WHERE id = ?;";
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::updateCryptoKey: "
-                      "Bad query; sqlite error: " +
-                      to_string(rc));
-    }
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     auto cryptoKey = contractor->cryptoKey();
     vector<byte_t> cryptoKeyBlob;
     if (cryptoKey) {
         cryptoKey->serialize(cryptoKeyBlob);
     }
-    rc = sqlite3_bind_blob(stmt, 1, &cryptoKeyBlob[0], cryptoKeyBlob.size(), SQLITE_STATIC);
+    int rc = sqlite3_bind_blob(stmt.get(), 1, &cryptoKeyBlob[0], cryptoKeyBlob.size(), SQLITE_STATIC);
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::updateCryptoKey: "
                       "Bad binding of cryptoKey; sqlite error: " +
                       to_string(rc));
     }
-    rc = sqlite3_bind_int(stmt, 2, contractor->getID());
+    rc = sqlite3_bind_int(stmt.get(), 2, contractor->getID());
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::updateCryptoKey: "
                       "Bad binding of ID; sqlite error: " +
                       to_string(rc));
     }
 
-    rc = sqlite3_step(stmt);
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
+    rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_DONE) {
 #ifdef STORAGE_HANDLER_DEBUG_LOG
         info() << "updateing is completed successfully";
@@ -251,35 +206,27 @@ void ContractorsHandlerSQLite::updateChannelIdOnContractorSide(
     Contractor::Shared contractor)
 {
     string query = "UPDATE " + mTableName + " SET id_on_contractor_side = ? WHERE id = ?;";
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::updateChannelIdOnContractorSide: "
-                      "Bad query; sqlite error: " +
-                      to_string(rc));
-    }
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     auto cryptoKey = contractor->cryptoKey();
     vector<byte_t> cryptoKeyBlob;
     if (cryptoKey) {
         cryptoKey->serialize(cryptoKeyBlob);
     }
-    rc = sqlite3_bind_int(stmt, 1, contractor->ownIdOnContractorSide());
+    int rc = sqlite3_bind_int(stmt.get(), 1, contractor->ownIdOnContractorSide());
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::updateChannelIdOnContractorSide: "
                       "Bad binding of ChannelOnContractorSide; sqlite error: " +
                       to_string(rc));
     }
-    rc = sqlite3_bind_int(stmt, 2, contractor->getID());
+    rc = sqlite3_bind_int(stmt.get(), 2, contractor->getID());
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::updateChannelIdOnContractorSide: "
                       "Bad binding of ID; sqlite error: " +
                       to_string(rc));
     }
 
-    rc = sqlite3_step(stmt);
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
+    rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_DONE) {
 #ifdef STORAGE_HANDLER_DEBUG_LOG
         info() << "updateing is completed successfully";
@@ -298,40 +245,27 @@ void ContractorsHandlerSQLite::updateChannelIdOnContractorSide(
 vector<Contractor::Shared> ContractorsHandlerSQLite::allContractors()
 {
     string queryCount = "SELECT count(*) FROM " + mTableName;
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(mDataBase, queryCount.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::allContractors: "
-                      "Bad count query; sqlite error: " +
-                      to_string(rc));
-    }
-    sqlite3_step(stmt);
-    auto rowCount = (uint32_t)sqlite3_column_int(stmt, 0);
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
+    SQLiteStatementRAII stmt(mDataBase, queryCount.c_str());
+    int rc = sqlite3_step(stmt.get());
+    auto rowCount = (uint32_t)sqlite3_column_int(stmt.get(), 0);
     vector<Contractor::Shared> result;
     result.reserve(rowCount);
 
     string query = "SELECT id, id_on_contractor_side, crypto_key, is_confirmed FROM " + mTableName;
-    rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::allContractors: "
-                      "Bad query; sqlite error: " +
-                      to_string(rc));
-    }
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        auto id = (ContractorID)sqlite3_column_int(stmt, 0);
-        auto idOnContractorSide = (ContractorID)sqlite3_column_int(stmt, 1);
+    SQLiteStatementRAII stmtRows(mDataBase, query.c_str());
+    while (sqlite3_step(stmtRows.get()) == SQLITE_ROW) {
+        auto id = (ContractorID)sqlite3_column_int(stmtRows.get(), 0);
+        auto idOnContractorSide = (ContractorID)sqlite3_column_int(stmtRows.get(), 1);
 
-        vector<uint8_t> cryptoKeyBlob(sqlite3_column_bytes(stmt, 2));
+        vector<uint8_t> cryptoKeyBlob(sqlite3_column_bytes(stmtRows.get(), 2));
         memcpy(
             &cryptoKeyBlob[0],
-            sqlite3_column_blob(stmt, 2),
+            sqlite3_column_blob(stmtRows.get(), 2),
             cryptoKeyBlob.size());
         MsgEncryptor::KeyTrio::Shared cryptoKey =
             make_shared<MsgEncryptor::KeyTrio>(cryptoKeyBlob);
 
-        auto isChannelConfirmed = sqlite3_column_int(stmt, 3);
+        auto isChannelConfirmed = sqlite3_column_int(stmtRows.get(), 3);
 
         try {
             result.push_back(
@@ -345,41 +279,24 @@ vector<Contractor::Shared> ContractorsHandlerSQLite::allContractors()
                             "Unable to create contractor instance from DB.");
         }
     }
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
     return result;
 }
 
 vector<TrustLineID> ContractorsHandlerSQLite::allIDs()
 {
     string queryCount = "SELECT count(*) FROM " + mTableName;
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(mDataBase, queryCount.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::allIDs: "
-                      "Bad count query; sqlite error: " +
-                      to_string(rc));
-    }
-    sqlite3_step(stmt);
-    auto rowCount = (uint32_t)sqlite3_column_int(stmt, 0);
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
+    SQLiteStatementRAII stmt(mDataBase, queryCount.c_str());
+    int rc = sqlite3_step(stmt.get());
+    auto rowCount = (uint32_t)sqlite3_column_int(stmt.get(), 0);
     vector<ContractorID> result;
     result.reserve(rowCount);
 
     string query = "SELECT id FROM " + mTableName;
-    rc = sqlite3_prepare_v2(mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::allIDs: "
-                      "Bad query; sqlite error: " +
-                      to_string(rc));
-    }
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
+    SQLiteStatementRAII stmtRows(mDataBase, query.c_str());
+    while (sqlite3_step(stmtRows.get()) == SQLITE_ROW) {
         result.push_back(
-            (ContractorID)sqlite3_column_int(stmt, 0));
+            (ContractorID)sqlite3_column_int(stmtRows.get(), 0));
     }
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
     return result;
 }
 
@@ -387,21 +304,14 @@ void ContractorsHandlerSQLite::removeContractor(
     ContractorID contractorID)
 {
     string query = "DELETE FROM " + mTableName + " WHERE id = ?";
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2( mDataBase, query.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorsHandlerSQLite::removeContractor: "
-                          "Bad query; sqlite error: " + to_string(rc));
-    }
-    rc = sqlite3_bind_int(stmt, 1, contractorID);
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+    int rc = sqlite3_bind_int(stmt.get(), 1, contractorID);
     if (rc != SQLITE_OK) {
         throw IOError("ContractorsHandlerSQLite::removeContractor: "
                           "Bad binding of ContractorID; sqlite error: " + to_string(rc));
     }
 
-    rc = sqlite3_step(stmt);
-    sqlite3_reset(stmt);
-    sqlite3_finalize(stmt);
+    rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_DONE) {
 #ifdef STORAGE_HANDLER_DEBUG_LOG
         info() << "deleting is completed successfully";

@@ -1,5 +1,4 @@
 #include "OwnKeysHandlerSQLite.h"
-#include "SQLiteStatementRAII.h"
 
 OwnKeysHandlerSQLite::OwnKeysHandlerSQLite(
     sqlite3 *dbConnection,

@@ -9,6 +9,7 @@
 #include "../../../crypto/lamportkeys.h"
 #include "../../../crypto/lamportscheme.h"
 #include "../../../common/memory/MemoryUtils.h"
+#include "SQLiteStatementRAII.h"
 #include <sqlite3.h>
 #include <memory>
 

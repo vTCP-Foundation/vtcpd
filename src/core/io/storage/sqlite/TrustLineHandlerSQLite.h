@@ -6,6 +6,7 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/multiprecision/MultiprecisionUtils.h"
 #include "../interfaces/TrustLineHandler.h"
+#include "SQLiteStatementRAII.h"
 
 #include <sqlite3.h>
 #include <vector>
