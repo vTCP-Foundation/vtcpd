@@ -3,7 +3,7 @@
 
 #include "../base/BaseTransaction.h"
 #include "../../../interface/commands_interface/commands/history/HistoryTrustLinesCommand.h"
-#include "../../../io/storage/StorageHandler.h"
+#include "../../../io/storage/interfaces/StorageHandler.h"
 #include "../../../io/storage/record/trust_line/TrustLineRecord.h"
 
 #include <vector>

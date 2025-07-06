@@ -3,7 +3,7 @@
 
 #include "../base/BaseTransaction.h"
 #include "../../../interface/commands_interface/commands/history/HistoryAdditionalPaymentsCommand.h"
-#include "../../../io/storage/StorageHandler.h"
+#include "../../../io/storage/interfaces/StorageHandler.h"
 
 #include <vector>
 

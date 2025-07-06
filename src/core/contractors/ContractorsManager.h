@@ -2,7 +2,7 @@
 #define VTCPD_CONTRACTORSMANAGER_H
 
 #include "Contractor.h"
-#include "../io/storage/StorageHandler.h"
+#include "../io/storage/interfaces/StorageHandler.h"
 #include "../common/exceptions/ValueError.h"
 #include "../common/exceptions/NotFoundError.h"
 

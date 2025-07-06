@@ -13,7 +13,7 @@
 #include <boost/asio/steady_timer.hpp>
 #include "../../providing/ProvidingHandler.h"
 
-#include "../../io/storage/CommunicatorStorageHandler.h"
+#include "../../io/storage/interfaces/CommunicatorStorageHandler.h"
 
 
 using namespace std;

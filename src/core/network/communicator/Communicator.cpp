@@ -1,4 +1,5 @@
 ﻿#include "Communicator.h"
+#include "../../io/storage/sqlite/CommunicatorStorageHandlerSQLite.h"
 
 
 Communicator::Communicator(
@@ -16,7 +17,7 @@ Communicator::Communicator(
     mLog(logger),
 
     mCommunicatorStorageHandler(
-        make_unique<CommunicatorStorageHandler>(
+        make_unique<CommunicatorStorageHandlerSQLite>(
             // todo : move this consts to Core.h
             "io",
             "communicatorStorageDB",

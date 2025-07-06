@@ -5,7 +5,7 @@
 #include "../../../network/messages/general/PongMessage.h"
 
 #include "../../../equivalents/EquivalentsSubsystemsRouter.h"
-#include "../../../io/storage/StorageHandler.h"
+#include "../../../io/storage/interfaces/StorageHandler.h"
 
 namespace signals = boost::signals2;
 

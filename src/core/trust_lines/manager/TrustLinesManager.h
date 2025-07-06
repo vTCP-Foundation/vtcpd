@@ -10,8 +10,8 @@
 #include "../../payments/reservations/AmountReservationsHandler.h"
 #include "../audit_rules/AuditRuleCountPayments.h"
 
-#include "../../io/storage/StorageHandler.h"
-#include "../../io/storage/IOTransaction.h"
+#include "../../io/storage/interfaces/StorageHandler.h"
+#include "../../io/storage/interfaces/IOTransaction.h"
 #include "../../crypto/keychain.h"
 #include "../../contractors/ContractorsManager.h"
 

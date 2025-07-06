@@ -1,4 +1,5 @@
 ﻿#include "Core.h"
+#include "io/storage/sqlite/StorageHandlerSQLite.h"
 
 Core::Core(
     char* pArgv)
@@ -398,7 +399,7 @@ int Core::initCommandsInterface()
 int Core::initStorageHandler()
 {
     try {
-        mStorageHandler = make_unique<StorageHandler>(
+        mStorageHandler = make_unique<StorageHandlerSQLite>(
                               "io",
                               "storageDB",
                               *mLog);

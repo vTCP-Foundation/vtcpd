@@ -33,6 +33,24 @@ target_compile_definitions(project_options INTERFACE
 # Dependencies management
 include(FetchContent)
 
+# Google Test Framework
+option(BUILD_TESTING "Build the testing tree" OFF)
+if(BUILD_TESTING)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+    )
+    
+    # For Windows: Prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    
+    FetchContent_MakeAvailable(googletest)
+    
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
 # Find required packages
 find_package(Boost CONFIG REQUIRED
     COMPONENTS 
@@ -95,12 +113,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
 
-# Testing configuration
-option(BUILD_TESTING "Build the testing tree." OFF)
-if(BUILD_TESTING)
-    enable_testing()
-    add_subdirectory(src/tests)
-endif()
+# Testing configuration removed - legacy Catch2 tests deleted
 
 option(ENABLE_GCC_SANITIZERS "Enable GCC runtime memory sanitizers (ASan, UBSan) for Debug builds" OFF)
 

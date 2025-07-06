@@ -3,7 +3,7 @@
 
 #include "../../common/Types.h"
 #include "../TrustLine.h"
-#include "../../io/storage/IOTransaction.h"
+#include "../../io/storage/interfaces/IOTransaction.h"
 
 class BaseAuditRule
 {

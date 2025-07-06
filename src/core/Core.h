@@ -10,7 +10,7 @@
 #include "interface/events_interface/interface/EventsInterfaceManager.h"
 #include "resources/manager/ResourcesManager.h"
 #include "transactions/manager/TransactionsManager.h"
-#include "io/storage/StorageHandler.h"
+#include "io/storage/interfaces/StorageHandler.h"
 #include "equivalents/EquivalentsSubsystemsRouter.h"
 #include "crypto/keychain.h"
 #include "contractors/ContractorsManager.h"

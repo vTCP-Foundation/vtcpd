@@ -13,7 +13,7 @@
 #include "messages/ObservingParticipantsVotesAppendRequestMessage.h"
 #include "messages/ObservingParticipantsVotesAppendResponseMessage.h"
 
-#include "../io/storage/StorageHandler.h"
+#include "../io/storage/interfaces/StorageHandler.h"
 #include "../resources/manager/ResourcesManager.h"
 #include "../resources/resources/BlockNumberRecourse.h"
 #include "../logger/LoggerMixin.hpp"
