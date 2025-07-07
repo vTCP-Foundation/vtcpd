@@ -10,9 +10,9 @@
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/multiprecision/MultiprecisionUtils.h"
 #include "SQLiteStatementRAII.h"
-#include "record/payment/PaymentRecord.h"
-#include "record/trust_line/TrustLineRecord.h"
-#include "record/payment/PaymentAdditionalRecord.h"
+#include "../record/payment/PaymentRecord.h"
+#include "../record/trust_line/TrustLineRecord.h"
+#include "../record/payment/PaymentAdditionalRecord.h"
 #include <sqlite3.h>
 #include <vector>
 #include <memory>

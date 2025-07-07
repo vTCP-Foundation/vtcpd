@@ -1,0 +1,76 @@
+#ifndef VTCPD_INCOMINGPAYMENTRECEIPTHANDLERPOSTGRESQL_H
+#define VTCPD_INCOMINGPAYMENTRECEIPTHANDLERPOSTGRESQL_H
+
+#include "../interfaces/IncomingPaymentReceiptHandler.h"
+#include "../../../logger/Logger.h"
+#include "../../../common/exceptions/IOError.h"
+#include "../../../common/exceptions/NotFoundError.h"
+#include "../../../common/exceptions/ValueError.h"
+#include "../../../common/multiprecision/MultiprecisionUtils.h"
+#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/lamportscheme.h"
+#include "../../../common/memory/MemoryUtils.h"
+#include "../record/audit/ReceiptRecord.h"
+
+#include <libpq-fe.h>
+#include <string>
+#include <vector>
+#include <map>
+
+using namespace crypto::lamport;
+
+class IncomingPaymentReceiptHandlerPostgreSQL : public IncomingPaymentReceiptHandler
+{
+public:
+    IncomingPaymentReceiptHandlerPostgreSQL(
+        PGconn *dbConnection,
+        const std::string &tableName,
+        Logger &logger);
+
+    void saveRecord(
+        const TrustLineID trustLineID,
+        const AuditNumber auditNumber,
+        const TransactionUUID &transactionUUID,
+        const KeyHash::Shared contractorPublicKeyHash,
+        const TrustLineAmount &amount,
+        const Signature::Shared contractorSignature) override;
+
+    std::map<TransactionUUID, TrustLineAmount> auditAmounts(
+        const TrustLineID trustLineID,
+        const AuditNumber auditNumber) override;
+
+    std::vector<ReceiptRecord::Shared> receiptsByAuditNumber(
+        const TrustLineID trustLineID,
+        const AuditNumber auditNumber) override;
+
+    std::vector<ReceiptRecord::Shared> receiptsLessEqualThanAuditNumber(
+        const TrustLineID trustLineID,
+        const AuditNumber auditNumber) override;
+
+    void deleteRecords(
+        const TransactionUUID &transactionUUID) override;
+
+    void deleteRecords(
+        const TrustLineID trustLineID) override;
+
+    bool isContainsKeyHash(
+        KeyHash::Shared keyHash) override;
+
+    bool isContainsTransaction(
+        const TransactionUUID &transactionUUID) override;
+
+    size_t countReceiptsByNumber(
+        const TrustLineID trustLineID,
+        const AuditNumber auditNumber) override;
+
+private:
+    LoggerStream info() const;
+    LoggerStream warning() const;
+    const std::string logHeader() const;
+
+    PGconn *mDataBase = nullptr;
+    std::string mTableName;
+    Logger &mLog;
+};
+
+#endif // VTCPD_INCOMINGPAYMENTRECEIPTHANDLERPOSTGRESQL_H 

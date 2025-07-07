@@ -1,4 +1,4 @@
-                                                                                                                                                                                                                                                                #ifndef VTCPD_IOTRANSACTIONSQLITE_H
+#ifndef VTCPD_IOTRANSACTIONSQLITE_H
 #define VTCPD_IOTRANSACTIONSQLITE_H
 
 #include "../interfaces/IOTransaction.h"

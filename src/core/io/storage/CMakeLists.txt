@@ -80,6 +80,9 @@ add_library(io__storage
     sqlite/SQLiteStatementRAII.cpp
     )
 
+# Add PostgreSQL implementation sources (if libpq is available)
+add_subdirectory(postgresql)
+
 target_include_directories(io__storage
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}

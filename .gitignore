@@ -3,6 +3,8 @@ uuid2address/
 build/
 build-debug/
 build-release/
+build-tests/
+build-pg/
 cmake/
 cmake-build-debug/
 
