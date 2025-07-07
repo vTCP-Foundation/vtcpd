@@ -122,9 +122,9 @@ pair<std::unique_ptr<PrivateKey>, KeyNumber> OwnKeysHandlerPostgreSQL::nextAvail
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,1);
     checkTuples(mDataBase,res,"nextAvailableKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("No available keys"); }
-    const unsigned char *privBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    const unsigned char *privBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
     KeyNumber number = static_cast<KeyNumber>(atoi(PQgetvalue(res,0,1)));
-    auto privKey = make_unique<PrivateKey>(privBytes);
+    auto privKey = make_unique<PrivateKey>(reinterpret_cast<byte_t*>(const_cast<unsigned char*>(privBytesConst)));
     PQclear(res);
     return make_pair(std::move(privKey), number);
 }

@@ -11,6 +11,10 @@
     ],
     "equivalents_registry_address":"eth",
     "max_hops_count": 2,
+    "database_config": "sqlite3:///io",
+    // Database configuration examples:
+    // For SQLite (default): "database_config": "sqlite3:///io"
+    // For PostgreSQL: "database_config": "postgresql://username:password@localhost:5432/"
     "providers":[
       {
         "name":"geo.pay",
@@ -37,7 +41,7 @@
       "six_nodes_enabled": true,
       "six_nodes_interval_sec": 1200,
       "routing_tables_interval_days": 3
-    }
+    },
     "observers": [
       {
         "type": "ipv4", 

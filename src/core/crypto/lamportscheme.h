@@ -26,6 +26,10 @@ public:
     Signature(
         byte_t* data);
 
+    // Overload that accepts const byte_t* to avoid const-cast throughout codebase.
+    Signature(
+        const byte_t* data) : Signature(const_cast<byte_t*>(data)) {}
+
     ~Signature();
 
     static const size_t signatureSize();

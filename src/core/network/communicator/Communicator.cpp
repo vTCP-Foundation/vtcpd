@@ -1,5 +1,5 @@
 ﻿#include "Communicator.h"
-#include "../../io/storage/sqlite/CommunicatorStorageHandlerSQLite.h"
+#include "../../io/storage/StorageProviderFactory.h"
 
 
 Communicator::Communicator(
@@ -9,6 +9,7 @@ Communicator::Communicator(
     ContractorsManager *contractorsManager,
     TailManager *tailManager,
     ProvidingHandler *providingHandler,
+    const DatabaseConfiguration &dbConfig,
     Logger &logger):
 
     mIOCtx(IOCtx),
@@ -17,10 +18,9 @@ Communicator::Communicator(
     mLog(logger),
 
     mCommunicatorStorageHandler(
-        make_unique<CommunicatorStorageHandlerSQLite>(
-            // todo : move this consts to Core.h
-            "io",
-            "communicatorStorageDB",
+        StorageProviderFactory::createCommunicatorStorageHandler(
+            dbConfig,
+            "storagedb",
             logger)),
 
     mConfirmationRequiredMessagesHandler(

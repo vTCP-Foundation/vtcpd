@@ -25,6 +25,8 @@ StorageHandlerPostgreSQL::StorageHandlerPostgreSQL(
     const string &connectionOptions,
     Logger &logger) :
     mLog(logger),
+    mContractorsHandler(connection(connectionOptions, logger), kContractorsTableName, logger),
+    mAddressHandler(connection(connectionOptions, logger), kContractorAddressesTableName, logger),
     mTrustLineHandler(connection(connectionOptions, logger), kTrustLineTableName, logger),
     mTransactionHandler(connection(connectionOptions, logger), kTransactionTableName, logger),
     mHistoryStorage(connection(connectionOptions, logger), kHistoryMainTableName, kHistoryAdditionalTableName, logger),
@@ -37,8 +39,6 @@ StorageHandlerPostgreSQL::StorageHandlerPostgreSQL(
     mPaymentKeysHandler(connection(connectionOptions, logger), kPaymentKeysTableName, logger),
     mPaymentParticipantsVotesHandler(connection(connectionOptions, logger), kPaymentParticipantsVotesTableName, logger),
     mFeaturesHandler(connection(connectionOptions, logger), kFeaturesTableName, logger),
-    mContractorsHandler(connection(connectionOptions, logger), kContractorsTableName, logger),
-    mAddressHandler(connection(connectionOptions, logger), kContractorAddressesTableName, logger),
     mConnectionOptions(connectionOptions)
 {
 }

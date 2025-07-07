@@ -47,6 +47,10 @@ public:
     KeyHash(
         byte_t* buffer);
 
+    // Overloaded constructor to accept const buffer without requiring widespread const_casts.
+    KeyHash(
+        const byte_t* buffer) : KeyHash(const_cast<byte_t*>(buffer)) {}
+
     const byte_t* data() const;
 
     const string toString() const;
@@ -79,6 +83,9 @@ public:
     PublicKey(
         byte_t* data);
 
+    PublicKey(
+        const byte_t* data) : PublicKey(const_cast<byte_t*>(data)) {}
+
     ~PublicKey() noexcept;
 
     const byte_t* data() const;
@@ -101,6 +108,9 @@ public:
 
     PrivateKey(
         byte_t* data);
+
+    PrivateKey(
+        const byte_t* data) : PrivateKey(const_cast<byte_t*>(data)) {}
 
     PublicKey::Shared derivePublicKey();
 

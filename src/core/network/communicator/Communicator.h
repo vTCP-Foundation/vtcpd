@@ -2,6 +2,7 @@
 #define VTCPD_COMMUNICATOR_H
 
 #include "../../common/Types.h"
+#include "../../settings/DatabaseProviderType.h"
 
 #include "internal/common/Types.h"
 #include "internal/outgoing/OutgoingMessagesHandler.h"
@@ -35,6 +36,7 @@ public:
         ContractorsManager *contractorsManager,
         TailManager *tailManager,
         ProvidingHandler *providingHandler,
+        const DatabaseConfiguration &dbConfig,
         Logger &logger)
     noexcept(false);
 

@@ -1,4 +1,5 @@
 #include "PaymentKeysHandlerPostgreSQL.h"
+#include "../../../common/exceptions/ValueError.h"
 #include <sstream>
 
 using namespace std;
@@ -90,8 +91,8 @@ PrivateKey* PaymentKeysHandlerPostgreSQL::getOwnPrivateKey(
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,1);
     checkTuples(mDataBase,res,"getOwnPrivateKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Private key not found"); }
-    const unsigned char *privBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
-    auto privKey = new PrivateKey(privBytes);
+    const unsigned char *privBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    auto privKey = new PrivateKey(reinterpret_cast<byte_t*>(const_cast<unsigned char*>(privBytesConst)));
     PQclear(res);
     return privKey;
 }

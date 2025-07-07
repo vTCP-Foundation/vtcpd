@@ -21,6 +21,10 @@ public:
     GNSAddress(
         byte_t* buffer);
 
+    // Overload accepting const pointer
+    GNSAddress(
+        const byte_t* buffer) : GNSAddress(const_cast<byte_t*>(buffer)) {}
+
     const string host() const override;
 
     const Port port() const override;

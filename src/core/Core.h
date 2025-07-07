@@ -11,6 +11,7 @@
 #include "resources/manager/ResourcesManager.h"
 #include "transactions/manager/TransactionsManager.h"
 #include "io/storage/interfaces/StorageHandler.h"
+#include "io/storage/StorageProviderFactory.h"
 #include "equivalents/EquivalentsSubsystemsRouter.h"
 #include "crypto/keychain.h"
 #include "contractors/ContractorsManager.h"
@@ -81,7 +82,8 @@ private:
     int initTransactionsManager(
         const json &conf);
 
-    int initStorageHandler();
+    int initStorageHandler(
+        const json &conf);
 
     int initContractorsManager(
         const json &conf);

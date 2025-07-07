@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 
+# Check for PostgreSQL availability before building
+find_package(PostgreSQL QUIET)
+
 add_library(io__storage
     record/base/Record.h
     record/base/Record.cpp
@@ -13,6 +16,9 @@ add_library(io__storage
     record/audit/AuditRecord.cpp
     record/audit/ReceiptRecord.h
     record/audit/ReceiptRecord.cpp
+    # Factory files
+    StorageProviderFactory.h
+    StorageProviderFactory.cpp
     # Interface files
     interfaces/StorageHandler.h
     interfaces/IOTransaction.h
@@ -35,7 +41,7 @@ add_library(io__storage
     interfaces/AddressHandler.h
     interfaces/FeaturesHandler.h
     interfaces/DatabaseStatementRAII.h
-    # SQLite implementations
+    # SQLite implementations (always available)
     sqlite/StorageHandlerSQLite.h
     sqlite/StorageHandlerSQLite.cpp
     sqlite/IOTransactionSQLite.h
@@ -93,7 +99,20 @@ target_compile_features(io__storage
         cxx_std_20
 )
 
+# Always link SQLite (required)
 target_link_libraries(io__storage
     PUBLIC
         SQLite::SQLite3
-        contractors)
+        contractors
+        settings)
+
+# Add PostgreSQL support if available
+if(PostgreSQL_FOUND)
+    target_compile_definitions(io__storage 
+        PRIVATE 
+            POSTGRESQL_PROVIDER_AVAILABLE)
+    
+    message(STATUS "PostgreSQL found, PostgreSQL provider will be available")
+else()
+    message(STATUS "PostgreSQL not found, only SQLite provider will be available")
+endif()

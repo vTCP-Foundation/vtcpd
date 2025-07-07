@@ -45,23 +45,9 @@ private:
     static PGconn *mDBConnection;
     Logger &mLog;
 
-    // handlers
-    TrustLineHandlerPostgreSQL mTrustLineHandler;
-    TransactionsHandlerPostgreSQL mTransactionHandler;
-    HistoryStoragePostgreSQL mHistoryStorage;
-    OwnKeysHandlerPostgreSQL mOwnKeysHandler;
-    ContractorKeysHandlerPostgreSQL mContractorKeysHandler;
-    AuditHandlerPostgreSQL mAuditHandler;
-    IncomingPaymentReceiptHandlerPostgreSQL mIncomingPaymentReceiptHandler;
-    OutgoingPaymentReceiptHandlerPostgreSQL mOutgoingPaymentReceiptHandler;
-    PaymentKeysHandlerPostgreSQL mPaymentKeysHandler;
-    PaymentParticipantsVotesHandlerPostgreSQL mPaymentParticipantsVotesHandler;
-    PaymentTransactionsHandlerPostgreSQL mPaymentTransactionsHandler;
-    ContractorsHandlerPostgreSQL mContractorsHandler;
-    AddressHandlerPostgreSQL mAddressHandler;
-    FeaturesHandlerPostgreSQL mFeaturesHandler;
-
     // table names
+    const std::string kContractorsTableName = "contractors";
+    const std::string kContractorAddressesTableName = "contractors_addresses";
     const std::string kTrustLineTableName = "trust_lines";
     const std::string kTransactionTableName = "transactions";
     const std::string kHistoryMainTableName = "history";
@@ -74,9 +60,23 @@ private:
     const std::string kPaymentKeysTableName = "payment_keys";
     const std::string kPaymentParticipantsVotesTableName = "payment_participants_votes";
     const std::string kPaymentTransactionsTableName = "payment_transactions";
-    const std::string kContractorsTableName = "contractors";
-    const std::string kContractorAddressesTableName = "contractors_addresses";
     const std::string kFeaturesTableName = "features";
+
+    // handlers
+    ContractorsHandlerPostgreSQL mContractorsHandler;
+    AddressHandlerPostgreSQL mAddressHandler;
+    TrustLineHandlerPostgreSQL mTrustLineHandler;
+    TransactionsHandlerPostgreSQL mTransactionHandler;
+    HistoryStoragePostgreSQL mHistoryStorage;
+    OwnKeysHandlerPostgreSQL mOwnKeysHandler;
+    ContractorKeysHandlerPostgreSQL mContractorKeysHandler;
+    AuditHandlerPostgreSQL mAuditHandler;
+    IncomingPaymentReceiptHandlerPostgreSQL mIncomingPaymentReceiptHandler;
+    OutgoingPaymentReceiptHandlerPostgreSQL mOutgoingPaymentReceiptHandler;
+    PaymentKeysHandlerPostgreSQL mPaymentKeysHandler;
+    PaymentParticipantsVotesHandlerPostgreSQL mPaymentParticipantsVotesHandler;
+    PaymentTransactionsHandlerPostgreSQL mPaymentTransactionsHandler;
+    FeaturesHandlerPostgreSQL mFeaturesHandler;
 
     std::string mConnectionOptions;
 };
