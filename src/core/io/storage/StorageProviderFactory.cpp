@@ -112,11 +112,28 @@ string StorageProviderFactory::createPostgreSQLConnectionString(
        << " port=" << config.port
        << " user=" << config.username
        << " password=" << config.password
-       << " dbname=" << dbName;
+       << " dbname=";
+    
+    // Use database name from configuration if specified, otherwise use provided dbName
+    if (!config.database.empty()) {
+        ss << config.database;
+    } else {
+        ss << dbName;
+    }
     
     return ss.str();
 }
 #endif
+
+string StorageProviderFactory::createPostgreSQLConnectionStringForTesting(
+    const DatabaseConfiguration &config,
+    const string &dbName) {
+#ifdef POSTGRESQL_PROVIDER_AVAILABLE
+    return createPostgreSQLConnectionString(config, dbName);
+#else
+    return "";
+#endif
+}
 
 void StorageProviderFactory::validateConfiguration(const DatabaseConfiguration &config) {
     if (config.providerType == DatabaseProviderType::SQLite) {
@@ -139,6 +156,7 @@ void StorageProviderFactory::validateConfiguration(const DatabaseConfiguration &
         if (config.password.empty()) {
             throw ValueError("StorageProviderFactory::validateConfiguration: PostgreSQL password cannot be empty");
         }
+        // Note: database name is optional - if not provided, default names will be used
     } else {
         throw ValueError("StorageProviderFactory::validateConfiguration: Unknown database provider type");
     }

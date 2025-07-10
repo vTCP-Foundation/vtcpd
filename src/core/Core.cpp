@@ -405,10 +405,10 @@ int Core::initStorageHandler(
     const json &conf)
 {
     try {
-        // Отримуємо database configuration з Settings
+        // Get database configuration from Settings
         DatabaseConfiguration dbConfig = mSettings->databaseConfiguration(&conf);
         
-        // Створюємо storage handler через factory
+        // Create storage handler through factory
         mStorageHandler = StorageProviderFactory::createStorageHandler(
             dbConfig,
             "storagedb",
@@ -424,7 +424,8 @@ int Core::initStorageHandler(
              << "Database configuration error: " << e.what() << "\033[0m" << endl;
         cerr << "\033[31m" << "Check your database_config in conf.json. Expected formats:" << "\033[0m" << endl;
         cerr << "\033[31m" << "  SQLite: \"database_config\": \"sqlite3:///path/to/directory\"" << "\033[0m" << endl;
-        cerr << "\033[31m" << "  PostgreSQL: \"database_config\": \"postgresql://user:pass@host:port/\"" << "\033[0m" << endl;
+        cerr << "\033[31m" << "  PostgreSQL: \"database_config\": \"postgresql://user:pass@host:port/database\"" << "\033[0m" << endl;
+        cerr << "\033[31m" << "  PostgreSQL (without DB): \"database_config\": \"postgresql://user:pass@host:port/\"" << "\033[0m" << endl;
         mLog->logException("Core", e);
         return -1;
     }

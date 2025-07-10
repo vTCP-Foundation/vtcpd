@@ -14,7 +14,7 @@ using namespace std;
 class StorageProviderFactory
 {
 public:
-    // Статичні методи для створення Storage handlers
+    // Static methods for creating Storage handlers
     static unique_ptr<StorageHandler> createStorageHandler(
         const DatabaseConfiguration &config,
         const string &mainDbName,
@@ -26,7 +26,7 @@ public:
         Logger &logger);
 
 private:
-    // Приватні методи для створення конкретних provider handlers
+    // Private methods for creating specific provider handlers
     static unique_ptr<StorageHandler> createSQLiteStorageHandler(
         const DatabaseConfiguration &config,
         const string &mainDbName,
@@ -50,10 +50,18 @@ private:
         const string &communicatorDbName,
         Logger &logger);
 
-    // Допоміжні методи для створення connection strings
+    // Helper methods for creating connection strings
     static string createPostgreSQLConnectionString(
         const DatabaseConfiguration &config,
         const string &dbName);
+#endif
+
+public:
+    // Public method for testing PostgreSQL connection string creation
+    static string createPostgreSQLConnectionStringForTesting(
+        const DatabaseConfiguration &config,
+        const string &dbName);
+#ifdef POSTGRESQL_PROVIDER_AVAILABLE
 #endif
 
     static void validateConfiguration(const DatabaseConfiguration &config);

@@ -1,71 +1,58 @@
-  {
-    "addresses":[
-      {
-        "type":"ipv4",
-        "address":"10.135.255.90:2033"
-      },
-      {
-        "type":"gns",
-        "address":"user@geo.pay"
-      }
+{
+    "addresses": [
+        {
+            "type": "ipv4",
+            "address": "127.0.0.1:2007"
+        }
     ],
-    "equivalents_registry_address":"eth",
-    "max_hops_count": 2,
-    "database_config": "sqlite3:///io",
-    // Database configuration examples:
-    // For SQLite (default): "database_config": "sqlite3:///io"
-    // For PostgreSQL: "database_config": "postgresql://username:password@localhost:5432/"
-    "providers":[
-      {
-        "name":"geo.pay",
-        "key":"111111",
-        "participant_id":2,
-        "addresses":[
-          {
-            "type":"ipv4",
-            "address":"127.0.0.1:2010"
-          },
-          {
-            "type":"ipv4",
-            "address":"127.0.0.1:2011"
-          }
-        ]
-      }
-    ],
-    "gateway": ["1", "5"],
-    "cycles_clearing": {
-      "three_nodes_enabled": true,
-      "four_nodes_enabled": true,
-      "five_nodes_enabled": true,
-      "five_nodes_interval_sec": 600,
-      "six_nodes_enabled": true,
-      "six_nodes_interval_sec": 1200,
-      "routing_tables_interval_days": 3
+    "interface": {
+        "host": "127.0.0.1",
+        "port": 2008
     },
+    "database_config": "sqlite3:///vtcpd_storage",
+    "database_config_postgresql_example": "postgresql://username:password@host:5432/database_name",
+    "database_config_postgresql_without_db": "postgresql://username:password@host:5432/",
     "observers": [
-      {
-        "type": "ipv4", 
-        "address": "68.183.146.232:4000"
-      },
-      {
-        "type": "ipv4", 
-        "address": "46.101.51.158:4000"
-      },
-      {
-        "type": "ipv4", 
-        "address": "206.189.84.116:4000"
-      },
-      {
-        "type": "ipv4", 
-        "address": "159.89.115.33:4000"
-      }
+        {
+            "type": "ipv4",
+            "address": "127.0.0.1:2009"
+        }
     ],
-    "event_files": [
-      {
-        "file": "events.fifo",
-        "blocked": false,
-        "events": [4]
-      }
-    ]
-  }
+    "gateway": [1, 2, 3],
+    "equivalents_registry_address": "127.0.0.1:2010",
+    "providers": {
+        "address_updating_period_sec": 600,
+        "cached_addresses_ttl_sec": 300,
+        "providers": [
+            {
+                "name": "Provider1",
+                "key": "provider_key_1",
+                "participant_id": 1,
+                "addresses": [
+                    {
+                        "type": "ipv4",
+                        "address": "127.0.0.1:2011"
+                    }
+                ]
+            }
+        ]
+    },
+    "event_files": {
+        "events": [
+            {
+                "type": "payment_received",
+                "file_path": "/tmp/payment_received.txt"
+            },
+            {
+                "type": "payment_sent",
+                "file_path": "/tmp/payment_sent.txt"
+            }
+        ]
+    },
+    "cycles_clearing": {
+        "cycles_clearing_period_sec": 600,
+        "cycles_clearing_enabled": true
+    },
+    "max_hops_count": 5
+}
   

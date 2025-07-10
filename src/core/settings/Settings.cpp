@@ -249,21 +249,21 @@ DatabaseConfiguration Settings::parseSQLiteURI(const string &uri) const {
 }
 
 DatabaseConfiguration Settings::parsePostgreSQLURI(const string &uri) const {
-    // Format: postgresql://user:password@host:port/
+    // Format: postgresql://user:password@host:port/database
     if (uri.length() < 15) { // "postgresql://" is 13 characters
         throw IOError("Settings::parsePostgreSQLURI: Invalid PostgreSQL URI format");
     }
 
     string connectionPart = uri.substr(13); // Remove "postgresql://"
     
-    // Find user:password@host:port pattern
+    // Find user:password@host:port/database pattern
     size_t atPos = connectionPart.find('@');
     if (atPos == string::npos) {
         throw IOError("Settings::parsePostgreSQLURI: Missing '@' separator in URI");
     }
 
     string userPass = connectionPart.substr(0, atPos);
-    string hostPort = connectionPart.substr(atPos + 1);
+    string hostPortDb = connectionPart.substr(atPos + 1);
 
     // Parse user:password
     size_t colonPos = userPass.find(':');
@@ -274,18 +274,27 @@ DatabaseConfiguration Settings::parsePostgreSQLURI(const string &uri) const {
     string username = userPass.substr(0, colonPos);
     string password = userPass.substr(colonPos + 1);
 
-    // Parse host:port
-    size_t colonPos2 = hostPort.find(':');
+    // Parse host:port/database
+    size_t colonPos2 = hostPortDb.find(':');
     if (colonPos2 == string::npos) {
         throw IOError("Settings::parsePostgreSQLURI: Missing ':' separator in host:port");
     }
 
-    string host = hostPort.substr(0, colonPos2);
-    string portStr = hostPort.substr(colonPos2 + 1);
+    string host = hostPortDb.substr(0, colonPos2);
+    string portDbStr = hostPortDb.substr(colonPos2 + 1);
     
-    // Remove trailing slash if present
-    if (portStr.back() == '/') {
-        portStr.pop_back();
+    // Parse port/database
+    size_t slashPos = portDbStr.find('/');
+    string portStr;
+    string database;
+    
+    if (slashPos != string::npos) {
+        portStr = portDbStr.substr(0, slashPos);
+        database = portDbStr.substr(slashPos + 1);
+    } else {
+        // No database specified, use default behavior
+        portStr = portDbStr;
+        database = "";
     }
 
     int port;
@@ -295,7 +304,7 @@ DatabaseConfiguration Settings::parsePostgreSQLURI(const string &uri) const {
         throw IOError("Settings::parsePostgreSQLURI: Invalid port number: " + portStr);
     }
 
-    DatabaseConfiguration config(host, port, username, password);
+    DatabaseConfiguration config(host, port, username, password, database);
     validateDatabaseConfiguration(config);
     return config;
 }
@@ -318,5 +327,6 @@ void Settings::validateDatabaseConfiguration(const DatabaseConfiguration &config
         if (config.password.empty()) {
             throw IOError("Settings::validateDatabaseConfiguration: PostgreSQL password cannot be empty");
         }
+        // Note: database name is optional - if not provided, default names will be used
     }
 }

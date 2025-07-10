@@ -17,6 +17,7 @@ struct DatabaseConfiguration {
     int port;               // для PostgreSQL - порт
     string username;        // для PostgreSQL - юзер
     string password;        // для PostgreSQL - пароль
+    string database;        // for PostgreSQL - database name
     
     DatabaseConfiguration() : providerType(DatabaseProviderType::SQLite), port(0) {}
     
@@ -25,8 +26,8 @@ struct DatabaseConfiguration {
         : providerType(DatabaseProviderType::SQLite), directory(dir), port(0) {}
     
     // Конструктор для PostgreSQL
-    DatabaseConfiguration(const string &h, int p, const string &u, const string &pass)
-        : providerType(DatabaseProviderType::PostgreSQL), host(h), port(p), username(u), password(pass) {}
+    DatabaseConfiguration(const string &h, int p, const string &u, const string &pass, const string &db = "")
+        : providerType(DatabaseProviderType::PostgreSQL), host(h), port(p), username(u), password(pass), database(db) {}
 };
 
 #endif //VTCPD_DATABASEPROVIDERTYPE_H 
