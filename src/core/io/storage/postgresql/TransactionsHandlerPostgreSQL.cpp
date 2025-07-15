@@ -1,5 +1,6 @@
 #include "TransactionsHandlerPostgreSQL.h"
 #include <sstream>
+#include <arpa/inet.h>
 
 using namespace std;
 
@@ -75,10 +76,20 @@ BytesShared TransactionsHandlerPostgreSQL::getTransaction(
     const string query="SELECT transaction_body, transaction_bytes_count FROM " + mTableName + " WHERE transaction_uuid=$1 LIMIT 1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
     params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    
+    // Use binary format for the result to get raw bytes
     PGresult *res=PQexecParams(mDataBase,query.c_str(),1,nullptr,params,lengths,formats,1);
     checkTuples(mDataBase,res,"getTransaction");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Transaction not found"); }
-    size_t bytesCnt = static_cast<size_t>(atoi(PQgetvalue(res,0,1)));
+    
+    // Get bytes count from the integer field (4 bytes in network byte order)
+    int bytesCountFieldLength = PQgetlength(res, 0, 1);
+    if (bytesCountFieldLength != 4) { PQclear(res); throw IOError("Invalid bytes count field length"); }
+    
+    // Convert from network byte order to host byte order
+    uint32_t bytesCnt32 = ntohl(*reinterpret_cast<const uint32_t*>(PQgetvalue(res, 0, 1)));
+    size_t bytesCnt = static_cast<size_t>(bytesCnt32);
+    
     if (bytesCnt==0) { PQclear(res); throw IOError("Invalid bytes count"); }
     BytesShared data = tryMalloc(bytesCnt);
     memcpy(data.get(), PQgetvalue(res,0,0), bytesCnt);
@@ -114,11 +125,17 @@ vector<BytesShared> TransactionsHandlerPostgreSQL::allTransactions()
 {
     vector<BytesShared> result;
     const string query="SELECT transaction_body, transaction_bytes_count FROM " + mTableName + ";";
-    PGresult *res = PQexec(mDataBase, query.c_str());
+    PGresult *res = PQexecParams(mDataBase, query.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1);
     checkTuples(mDataBase,res,"allTransactions");
     int rows=PQntuples(res); result.reserve(rows);
     for (int i=0;i<rows;++i) {
-        size_t bytesCnt = static_cast<size_t>(atoi(PQgetvalue(res,i,1)));
+        // Get bytes count from the integer field (4 bytes in network byte order)
+        int bytesCountFieldLength = PQgetlength(res, i, 1);
+        if (bytesCountFieldLength != 4) continue;
+        
+        uint32_t bytesCnt32 = ntohl(*reinterpret_cast<const uint32_t*>(PQgetvalue(res, i, 1)));
+        size_t bytesCnt = static_cast<size_t>(bytesCnt32);
+        
         if (bytesCnt==0) continue;
         BytesShared data=tryMalloc(bytesCnt);
         memcpy(data.get(), PQgetvalue(res,i,0), bytesCnt);

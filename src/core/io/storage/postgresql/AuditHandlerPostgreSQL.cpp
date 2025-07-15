@@ -1,6 +1,7 @@
 #include "AuditHandlerPostgreSQL.h"
 #include "../../../core/io/storage/record/audit/AuditRecord.h"
 #include <sstream>
+#include <arpa/inet.h>
 
 using namespace std;
 
@@ -256,7 +257,11 @@ const AuditRecord::Shared AuditHandlerPostgreSQL::getActualAudit(
     }
 
     int idx = 0;
-    AuditNumber number = static_cast<AuditNumber>(atoi(PQgetvalue(res, 0, idx++)));
+    // Convert binary format to integer correctly
+    AuditNumber number;
+    const unsigned char *numberBytes = reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++));
+    memcpy(&number, numberBytes, sizeof(AuditNumber));
+    number = ntohl(number); // Convert from network byte order
 
     auto extractAmount = [&](int col){
         const unsigned char *bytes = reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, col));
@@ -311,7 +316,11 @@ const AuditRecord::Shared AuditHandlerPostgreSQL::getActualAuditFull(
     }
 
     int idx = 0;
-    AuditNumber number = static_cast<AuditNumber>(atoi(PQgetvalue(res, 0, idx++)));
+    // Convert binary format to integer correctly
+    AuditNumber number;
+    const unsigned char *numberBytes = reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++));
+    memcpy(&number, numberBytes, sizeof(AuditNumber));
+    number = ntohl(number); // Convert from network byte order
 
     auto extractAmount = [&](int col){
         const unsigned char *bytes = reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, col));
@@ -436,7 +445,11 @@ vector<AuditRecord::Shared> AuditHandlerPostgreSQL::auditsLessEqualThanAuditNumb
 
     for (int row = 0; row < rows; ++row) {
         int idx = 0;
-        AuditNumber number = static_cast<AuditNumber>(atoi(PQgetvalue(res, row, idx++)));
+        // Convert binary format to integer correctly
+        AuditNumber number;
+        const unsigned char *numberBytes = reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++));
+        memcpy(&number, numberBytes, sizeof(AuditNumber));
+        number = ntohl(number); // Convert from network byte order
         auto extractAmount = [&](int col)->TrustLineAmount {
             const unsigned char *bytes = reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, col));
             vector<byte_t> v(bytes, bytes + kTrustLineAmountBytesCount);

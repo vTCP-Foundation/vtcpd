@@ -129,7 +129,7 @@ vector<BaseAddress::Shared> AddressHandlerPostgreSQL::contractorAddresses(
         paramValues,
         paramLengths,
         paramFormats,
-        1 /* binary results for BYTEA */);
+        0 /* text results, handle BYTEA as hex string */);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
         string err = PQerrorMessage(mDataBase);
@@ -141,7 +141,24 @@ vector<BaseAddress::Shared> AddressHandlerPostgreSQL::contractorAddresses(
     for (int i = 0; i < rows; ++i) {
         int addressType = atoi(PQgetvalue(res, i, 0));
         size_t addressSize = static_cast<size_t>(atoi(PQgetvalue(res, i, 1)));
-        const unsigned char *addressBytes = reinterpret_cast<const unsigned char *>(PQgetvalue(res, i, 2));
+        
+        // Convert hex-encoded BYTEA back to binary data
+        const char* hexData = PQgetvalue(res, i, 2);
+        string hexString(hexData);
+        
+        // Remove \x prefix if present
+        if (hexString.substr(0, 2) == "\\x") {
+            hexString = hexString.substr(2);
+        }
+        
+        // Convert hex string to binary data
+        BytesShared addressBytesShared = tryCalloc(hexString.length() / 2);
+        for (size_t j = 0; j < hexString.length(); j += 2) {
+            string byteString = hexString.substr(j, 2);
+            unsigned char byte = static_cast<unsigned char>(stoul(byteString, nullptr, 16));
+            addressBytesShared.get()[j / 2] = byte;
+        }
+        const unsigned char *addressBytes = addressBytesShared.get();
 
         try {
             switch (static_cast<BaseAddress::AddressType>(addressType)) {

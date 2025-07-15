@@ -113,7 +113,7 @@ const KeyNumber ContractorKeysHandlerPostgreSQL::maxKeySetSequenceNumber(
 
     PGresult *res = PQexecParams(mDataBase, query.c_str(), 1, nullptr, params, lengths, formats, 0);
     checkTuples(mDataBase, res, "maxKeySetSequenceNumber");
-    if (PQntuples(res)==0 || PQgetvalue(res,0,0)==nullptr) {
+    if (PQntuples(res)==0 || PQgetvalue(res,0,0) == nullptr || strlen(PQgetvalue(res,0,0)) == 0) {
         PQclear(res);
         throw NotFoundError("No keys for TL");
     }
@@ -285,7 +285,7 @@ vector<KeyHash::Shared> ContractorKeysHandlerPostgreSQL::publicKeyHashesLessThan
 {
     vector<KeyHash::Shared> result;
     const string query = "SELECT hash FROM " + mTableName + " WHERE trust_line_id=$1 AND keys_set_sequence_number<$2;";
-    const char *p[2]; int l[2]={0,0}; int f[2]={0,1}; string tl=to_string(trustLineID); string seq=to_string(keysSetSequenceNumber); p[0]=tl.c_str(); p[1]=seq.c_str();
+    const char *p[2]; int l[2]={0,0}; int f[2]={0,0}; string tl=to_string(trustLineID); string seq=to_string(keysSetSequenceNumber); p[0]=tl.c_str(); p[1]=seq.c_str();
     PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,p,l,f,1);
     checkTuples(mDataBase,res,"publicKeyHashesLessThanSetNumber");
     int rows=PQntuples(res);

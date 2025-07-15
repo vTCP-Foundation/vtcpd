@@ -87,7 +87,7 @@ map<PaymentNodeID, Signature::Shared> PaymentParticipantsVotesHandlerPostgreSQL:
     const string query="SELECT payment_node_id, signature FROM " + mTableName + " WHERE transaction_uuid=$1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
     params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,1);
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
     checkTuples(mDataBase,res,"participantsSignatures");
     map<PaymentNodeID, Signature::Shared> result;
     int rows=PQntuples(res);

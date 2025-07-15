@@ -107,7 +107,7 @@ const KeyNumber OwnKeysHandlerPostgreSQL::maxKeySetSequenceNumber(
     string tlStr=to_string(trustLineID); params[0]=tlStr.c_str();
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
     checkTuples(mDataBase,res,"maxSeq");
-    if (PQntuples(res)==0 || PQgetvalue(res,0,0)==nullptr) { PQclear(res); throw NotFoundError("No keys"); }
+    if (PQntuples(res)==0 || PQgetvalue(res,0,0) == nullptr || strlen(PQgetvalue(res,0,0)) == 0) { PQclear(res); throw NotFoundError("No keys"); }
     KeyNumber seq = static_cast<KeyNumber>(atoi(PQgetvalue(res,0,0)));
     PQclear(res);
     return seq;
@@ -119,7 +119,7 @@ pair<std::unique_ptr<PrivateKey>, KeyNumber> OwnKeysHandlerPostgreSQL::nextAvail
     const string query="SELECT private_key, number FROM " + mTableName + " WHERE trust_line_id=$1 AND is_valid=1 ORDER BY number LIMIT 1;";
     const char *params[1]; int lengths[1]={0}; int formats[1]={0};
     string tlStr=to_string(trustLineID); params[0]=tlStr.c_str();
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,1);
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
     checkTuples(mDataBase,res,"nextAvailableKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("No available keys"); }
     const unsigned char *privBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
