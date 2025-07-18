@@ -5,6 +5,7 @@
 
 #include <sodium.h>
 #include <memory>
+#include <string>
 
 
 namespace crypto {
@@ -106,6 +107,13 @@ class PrivateKey : public BaseKey
 public:
     explicit PrivateKey();
 
+    /**
+     * Constructs PrivateKey using deterministic random generation with seed string.
+     * @param seedString String to use as seed (will be hashed to 32 bytes if needed).
+     */
+    PrivateKey(
+        const string& seedString);
+
     PrivateKey(
         byte_t* data);
 
@@ -117,6 +125,12 @@ public:
     void crop();
 
     const memory::SecureSegment *data() const;
+
+    /**
+     * Returns string representation of private key hash for logging purposes.
+     * @return Hash of private key as hex string
+     */
+    const string toString() const;
 
 private:
     memory::SecureSegment mData;

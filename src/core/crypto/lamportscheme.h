@@ -6,6 +6,8 @@
 #include <bitset>
 #include <cstring>
 #include <memory>
+#include <string>
+#include <sstream>
 
 namespace crypto {
 namespace lamport {
@@ -41,6 +43,12 @@ public:
         PublicKey::Shared pubKey) noexcept;
 
     const byte_t* data() const;
+
+    /**
+     * Returns string representation of signature hash for logging purposes.
+     * @return Hash of signature as hex string
+     */
+    const string toString() const;
 
 protected:
     void collectSignature(

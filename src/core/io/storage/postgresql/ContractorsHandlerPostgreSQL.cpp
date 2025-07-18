@@ -1,5 +1,6 @@
 #include "ContractorsHandlerPostgreSQL.h"
 #include <sstream>
+#include <arpa/inet.h>
 
 using namespace std;
 
@@ -125,18 +126,29 @@ vector<Contractor::Shared> ContractorsHandlerPostgreSQL::allContractors()
 {
     vector<Contractor::Shared> result;
     const string query = "SELECT id,id_on_contractor_side,crypto_key,is_confirmed FROM " + mTableName + ";";
-    PGresult *res = PQexec(mDataBase, query.c_str());
+    PGresult *res = PQexecParams(mDataBase, query.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1);
     checkTuples(mDataBase,res,"allContractors");
     int rows = PQntuples(res);
     result.reserve(rows);
     for(int i=0;i<rows;++i) {
-        auto id = static_cast<ContractorID>(atoi(PQgetvalue(res,i,0)));
-        auto idSide = static_cast<ContractorID>(atoi(PQgetvalue(res,i,1)));
+        // Read binary integer data (network byte order)
+        auto id = static_cast<ContractorID>(ntohl(*reinterpret_cast<const uint32_t*>(PQgetvalue(res,i,0))));
+        
+        // Handle NULL value for id_on_contractor_side
+        ContractorID idSide = 0;
+        if (!PQgetisnull(res, i, 1)) {
+            idSide = static_cast<ContractorID>(ntohl(*reinterpret_cast<const uint32_t*>(PQgetvalue(res,i,1))));
+        }
+        
+        // Read binary BYTEA data
         const unsigned char *blob = reinterpret_cast<const unsigned char *>(PQgetvalue(res,i,2));
         int blobSize = PQgetlength(res,i,2);
         vector<byte_t> crypto(blob, blob+blobSize);
         auto key = make_shared<MsgEncryptor::KeyTrio>(crypto);
-        bool confirmed = atoi(PQgetvalue(res,i,3))==1;
+        
+        // Read binary integer data for confirmed flag
+        bool confirmed = ntohl(*reinterpret_cast<const uint32_t*>(PQgetvalue(res,i,3))) == 1;
+        
         try {
             result.push_back(make_shared<Contractor>(id,idSide,key,confirmed));
         } catch(...) {
@@ -152,10 +164,12 @@ vector<ContractorID> ContractorsHandlerPostgreSQL::allIDs()
 {
     vector<ContractorID> result;
     const string query="SELECT id FROM " + mTableName + ";";
-    PGresult *res = PQexec(mDataBase, query.c_str());
+    PGresult *res = PQexecParams(mDataBase, query.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1);
     checkTuples(mDataBase,res,"allIDs");
     int rows=PQntuples(res); result.reserve(rows);
-    for(int i=0;i<rows;++i) result.push_back(static_cast<ContractorID>(atoi(PQgetvalue(res,i,0))));
+    for(int i=0;i<rows;++i) {
+        result.push_back(static_cast<ContractorID>(ntohl(*reinterpret_cast<const uint32_t*>(PQgetvalue(res,i,0)))));
+    }
     PQclear(res);
     return result;
 }

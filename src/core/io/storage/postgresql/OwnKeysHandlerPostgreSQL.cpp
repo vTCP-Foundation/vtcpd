@@ -1,5 +1,6 @@
 #include "OwnKeysHandlerPostgreSQL.h"
 #include <sstream>
+#include <arpa/inet.h>
 
 using namespace std;
 
@@ -119,13 +120,34 @@ pair<std::unique_ptr<PrivateKey>, KeyNumber> OwnKeysHandlerPostgreSQL::nextAvail
     const string query="SELECT private_key, number FROM " + mTableName + " WHERE trust_line_id=$1 AND is_valid=1 ORDER BY number LIMIT 1;";
     const char *params[1]; int lengths[1]={0}; int formats[1]={0};
     string tlStr=to_string(trustLineID); params[0]=tlStr.c_str();
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,1);
     checkTuples(mDataBase,res,"nextAvailableKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("No available keys"); }
+    
+    // Safely copy private key data before clearing the result
     const unsigned char *privBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
-    KeyNumber number = static_cast<KeyNumber>(atoi(PQgetvalue(res,0,1)));
-    auto privKey = make_unique<PrivateKey>(reinterpret_cast<byte_t*>(const_cast<unsigned char*>(privBytesConst)));
+    
+    // Convert number from binary format (PostgreSQL INTEGER is 4 bytes in network byte order)
+    const unsigned char *numberBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,1));
+    int numberLength = PQgetlength(res, 0, 1);
+    if (numberLength != 4) {
+        PQclear(res);
+        throw IOError("nextAvailableKey: unexpected number field length");
+    }
+    
+    // Convert from network byte order (big-endian) to host byte order
+    uint32_t networkNumber;
+    memcpy(&networkNumber, numberBytes, 4);
+    KeyNumber number = static_cast<KeyNumber>(ntohl(networkNumber));
+    
+    // Create a safe copy of the private key data
+    BytesShared privBuf = tryMalloc(PrivateKey::keySize());
+    memcpy(privBuf.get(), privBytesConst, PrivateKey::keySize());
+    
     PQclear(res);
+    
+    // Create PrivateKey from the copied data
+    auto privKey = make_unique<PrivateKey>(privBuf.get());
     return make_pair(std::move(privKey), number);
 }
 
@@ -174,8 +196,15 @@ const PublicKey::Shared OwnKeysHandlerPostgreSQL::getPublicKey(
     PGresult *res=PQexecParams(mDataBase,query.c_str(),2,nullptr,params,lengths,formats,1);
     checkTuples(mDataBase,res,"getPublicKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Public key not found"); }
-    auto pub=make_shared<PublicKey>(reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0)));
+    
+    // Safely copy public key data before clearing the result
+    const unsigned char *pubBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    BytesShared pubBuf = tryMalloc(PublicKey::keySize());
+    memcpy(pubBuf.get(), pubBytesConst, PublicKey::keySize());
+    
     PQclear(res);
+    
+    auto pub=make_shared<PublicKey>(pubBuf.get());
     return pub;
 }
 
@@ -191,8 +220,15 @@ const PublicKey::Shared OwnKeysHandlerPostgreSQL::getPublicKeyByHash(
     PGresult *res=PQexecParams(mDataBase,query.c_str(),2,nullptr,params,lengths,formats,1);
     checkTuples(mDataBase,res,"getPublicKeyByHash");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Public key not found"); }
-    auto pub=make_shared<PublicKey>(reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0)));
+    
+    // Safely copy public key data before clearing the result
+    const unsigned char *pubBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    BytesShared pubBuf = tryMalloc(PublicKey::keySize());
+    memcpy(pubBuf.get(), pubBytesConst, PublicKey::keySize());
+    
     PQclear(res);
+    
+    auto pub=make_shared<PublicKey>(pubBuf.get());
     return pub;
 }
 
@@ -207,8 +243,15 @@ const KeyHash::Shared OwnKeysHandlerPostgreSQL::getPublicKeyHash(
     PGresult *res=PQexecParams(mDataBase,query.c_str(),2,nullptr,params,lengths,formats,1);
     checkTuples(mDataBase,res,"getPublicKeyHash");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Key hash not found"); }
-    auto hash=make_shared<KeyHash>(reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0)));
+    
+    // Safely copy hash data before clearing the result
+    const unsigned char *hashBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    BytesShared hashBuf = tryMalloc(KeyHash::kBytesSize);
+    memcpy(hashBuf.get(), hashBytesConst, KeyHash::kBytesSize);
+    
     PQclear(res);
+    
+    auto hash=make_shared<KeyHash>(hashBuf.get());
     return hash;
 }
 
@@ -254,14 +297,19 @@ vector<PublicKey::Shared> OwnKeysHandlerPostgreSQL::publicKeysBySetNumber(
     const KeyNumber keysSetSequenceNumber) const
 {
     vector<PublicKey::Shared> result;
-    const string query="SELECT public_key FROM " + mTableName + " WHERE trust_line_id=$1 AND keys_set_sequence_number=$2 AND is_valid=1 ORDER BY number;";
+    const string query="SELECT public_key FROM " + mTableName + " WHERE trust_line_id=$1 AND keys_set_sequence_number=$2 ORDER BY number;";
     const char *params[2]; int lengths[2]={0,0}; int formats[2]={0,0}; string tlStr=to_string(trustLineID); string seqStr=to_string(keysSetSequenceNumber);
     params[0]=tlStr.c_str(); params[1]=seqStr.c_str();
     PGresult *res=PQexecParams(mDataBase,query.c_str(),2,nullptr,params,lengths,formats,1);
     checkTuples(mDataBase,res,"publicKeysBySetNumber");
     int rows=PQntuples(res); result.reserve(rows);
     for (int i=0;i<rows;++i) {
-        auto pub=make_shared<PublicKey>(reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,0)));
+        // Safely copy public key data before creating the object
+        const unsigned char *pubBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,0));
+        BytesShared pubBuf = tryMalloc(PublicKey::keySize());
+        memcpy(pubBuf.get(), pubBytesConst, PublicKey::keySize());
+        
+        auto pub=make_shared<PublicKey>(pubBuf.get());
         result.push_back(pub);
     }
     PQclear(res);
@@ -304,7 +352,12 @@ vector<KeyHash::Shared> OwnKeysHandlerPostgreSQL::publicKeyHashesLessThanSetNumb
     checkTuples(mDataBase,res,"publicKeyHashesLessThanSetNumber");
     int rows=PQntuples(res); result.reserve(rows);
     for (int i=0;i<rows;++i) {
-        auto hash=make_shared<KeyHash>(reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,0)));
+        // Safely copy hash data before creating the object
+        const unsigned char *hashBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,0));
+        BytesShared hashBuf = tryMalloc(KeyHash::kBytesSize);
+        memcpy(hashBuf.get(), hashBytesConst, KeyHash::kBytesSize);
+        
+        auto hash=make_shared<KeyHash>(hashBuf.get());
         result.push_back(hash);
     }
     PQclear(res);

@@ -1,5 +1,7 @@
 #include "lamportkeys.h"
 #include <cstring>
+#include <sstream>
+#include <iomanip>
 
 namespace crypto {
 namespace lamport {
@@ -13,6 +15,30 @@ PrivateKey::PrivateKey() : mData(memory::SecureSegment(kRandomNumbersSlotsCount 
     auto offset = static_cast<byte_t*>(guard.address());
     for (size_t i = 0; i < kRandomNumbersSlotsCount; ++i) {
         randombytes_buf(offset, kRandomNumberSlotSize);
+        offset += kRandomNumberSlotSize;
+    }
+}
+
+PrivateKey::PrivateKey(
+    const string& seedString) : mData(memory::SecureSegment(kRandomNumbersSlotsCount * kRandomNumberSlotSize)),
+    mIsCropped(false)
+{
+    // Convert string to 32-byte seed
+    byte_t seed[randombytes_SEEDBYTES];
+    crypto_generichash(seed, randombytes_SEEDBYTES, 
+                       reinterpret_cast<const byte_t*>(seedString.c_str()), 
+                       seedString.length(), nullptr, 0);
+
+    auto guard = mData.unlockAndInitGuard();
+
+    auto offset = static_cast<byte_t*>(guard.address());
+    for (size_t i = 0; i < kRandomNumbersSlotsCount; ++i) {
+        // Create a modified seed for each slot by hashing the original seed with the slot index
+        byte_t modifiedSeed[randombytes_SEEDBYTES];
+        crypto_generichash(modifiedSeed, randombytes_SEEDBYTES, seed, randombytes_SEEDBYTES, 
+                          reinterpret_cast<const byte_t*>(&i), sizeof(i));
+        
+        randombytes_buf_deterministic(offset, kRandomNumberSlotSize, modifiedSeed);
         offset += kRandomNumberSlotSize;
     }
 }
@@ -57,6 +83,28 @@ PublicKey::Shared PrivateKey::derivePublicKey()
 const memory::SecureSegment *PrivateKey::data() const
 {
     return &mData;
+}
+
+const string PrivateKey::toString() const
+{
+    // Generate hash of private key for logging
+    auto guard = mData.unlockAndInitGuard();
+    
+    byte_t keyHash[32];
+    crypto_generichash(
+        keyHash,
+        32,
+        static_cast<byte_t*>(guard.address()),
+        keySize(),
+        nullptr,
+        0);
+    
+    stringstream ss;
+    ss << std::hex;
+    for (int i = 0; i < 32; i++) {
+        ss << std::setfill('0') << std::setw(2) << (int)keyHash[i];
+    }
+    return ss.str();
 }
 
 PublicKey::PublicKey(
