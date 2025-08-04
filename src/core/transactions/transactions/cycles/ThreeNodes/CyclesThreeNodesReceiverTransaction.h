@@ -4,7 +4,7 @@
 #include "../../base/BaseTransaction.h"
 #include "../../../../contractors/ContractorsManager.h"
 #include "../../../../trust_lines/manager/TrustLinesManager.h"
-#include "../../../../io/storage/StorageHandler.h"
+#include "../../../../io/storage/interfaces/StorageHandler.h"
 #include "../../../../network/messages/cycles/ThreeNodes/CyclesThreeNodesBalancesRequestMessage.h"
 #include "../../../../network/messages/cycles/ThreeNodes/CyclesThreeNodesBalancesResponseMessage.h"
 

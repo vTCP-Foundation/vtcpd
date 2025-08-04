@@ -4,7 +4,7 @@
 #include "../base/BaseTransaction.h"
 #include "../../../network/messages/trust_line_channels/UpdateChannelAddressesMessage.h"
 #include "../../../contractors/ContractorsManager.h"
-#include "../../../io/storage/StorageHandler.h"
+#include "../../../io/storage/interfaces/StorageHandler.h"
 
 class UpdateChannelAddressesTargetTransaction : public BaseTransaction
 {

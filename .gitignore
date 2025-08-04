@@ -1,8 +1,5 @@
 .idea/*
-uuid2address/
-build/
-build-debug/
-build-release/
+build*
 cmake/
 cmake-build-debug/
 
@@ -12,5 +9,3 @@ cmake-build-debug/
 *.cpp.o
 CMakeCache.txt
 settings.json
-
-tests/*

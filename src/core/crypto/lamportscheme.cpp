@@ -1,4 +1,6 @@
 #include "lamportscheme.h"
+#include <sstream>
+#include <iomanip>
 
 namespace crypto {
 namespace lamport {
@@ -66,6 +68,30 @@ const size_t Signature::signatureSize()
 const byte_t* Signature::data() const
 {
     return mData;
+}
+
+const string Signature::toString() const
+{
+    if (mData == nullptr) {
+        return "null";
+    }
+    
+    // Generate hash of signature for logging
+    byte_t signatureHash[32];
+    crypto_generichash(
+        signatureHash,
+        32,
+        mData,
+        signatureSize(),
+        nullptr,
+        0);
+    
+    stringstream ss;
+    ss << std::hex;
+    for (int i = 0; i < 32; i++) {
+        ss << std::setfill('0') << std::setw(2) << (int)signatureHash[i];
+    }
+    return ss.str();
 }
 
 bool Signature::check(

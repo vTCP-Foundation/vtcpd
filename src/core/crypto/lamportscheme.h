@@ -6,6 +6,8 @@
 #include <bitset>
 #include <cstring>
 #include <memory>
+#include <string>
+#include <sstream>
 
 namespace crypto {
 namespace lamport {
@@ -26,6 +28,10 @@ public:
     Signature(
         byte_t* data);
 
+    // Overload that accepts const byte_t* to avoid const-cast throughout codebase.
+    Signature(
+        const byte_t* data) : Signature(const_cast<byte_t*>(data)) {}
+
     ~Signature();
 
     static const size_t signatureSize();
@@ -37,6 +43,12 @@ public:
         PublicKey::Shared pubKey) noexcept;
 
     const byte_t* data() const;
+
+    /**
+     * Returns string representation of signature hash for logging purposes.
+     * @return Hash of signature as hex string
+     */
+    const string toString() const;
 
 protected:
     void collectSignature(

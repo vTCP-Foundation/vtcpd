@@ -2,6 +2,7 @@
 #define VTCPD_SETTINGS_H
 
 #include "../common/Types.h"
+#include "DatabaseProviderType.h"
 
 #include "../common/exceptions/IOError.h"
 #include "../common/exceptions/RuntimeError.h"
@@ -11,6 +12,7 @@
 #include <string>
 #include <fstream>
 #include <streambuf>
+#include <memory>
 
 using namespace std;
 using json = nlohmann::json;
@@ -45,7 +47,16 @@ public:
 	int hopsCount(
 		const json *conf = nullptr) const;
 
+    DatabaseConfiguration databaseConfiguration(
+        const json *conf = nullptr) const;
+
     json loadParsedJSON() const;
+
+private:
+    DatabaseConfiguration parseDatabaseURI(const string &uri) const;
+    DatabaseConfiguration parseSQLiteURI(const string &uri) const;
+    DatabaseConfiguration parsePostgreSQLURI(const string &uri) const;
+    void validateDatabaseConfiguration(const DatabaseConfiguration &config) const;
 };
 
 #endif //VTCPD_SETTINGS_H

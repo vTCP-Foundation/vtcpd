@@ -5,6 +5,7 @@
 
 #include <sodium.h>
 #include <memory>
+#include <string>
 
 
 namespace crypto {
@@ -47,6 +48,10 @@ public:
     KeyHash(
         byte_t* buffer);
 
+    // Overloaded constructor to accept const buffer without requiring widespread const_casts.
+    KeyHash(
+        const byte_t* buffer) : KeyHash(const_cast<byte_t*>(buffer)) {}
+
     const byte_t* data() const;
 
     const string toString() const;
@@ -79,6 +84,9 @@ public:
     PublicKey(
         byte_t* data);
 
+    PublicKey(
+        const byte_t* data) : PublicKey(const_cast<byte_t*>(data)) {}
+
     ~PublicKey() noexcept;
 
     const byte_t* data() const;
@@ -99,14 +107,30 @@ class PrivateKey : public BaseKey
 public:
     explicit PrivateKey();
 
+    /**
+     * Constructs PrivateKey using deterministic random generation with seed string.
+     * @param seedString String to use as seed (will be hashed to 32 bytes if needed).
+     */
+    PrivateKey(
+        const string& seedString);
+
     PrivateKey(
         byte_t* data);
+
+    PrivateKey(
+        const byte_t* data) : PrivateKey(const_cast<byte_t*>(data)) {}
 
     PublicKey::Shared derivePublicKey();
 
     void crop();
 
     const memory::SecureSegment *data() const;
+
+    /**
+     * Returns string representation of private key hash for logging purposes.
+     * @return Hash of private key as hex string
+     */
+    const string toString() const;
 
 private:
     memory::SecureSegment mData;

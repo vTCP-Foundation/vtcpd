@@ -2,7 +2,7 @@
 #define VTCPD_FEATURESMANAGER_H
 
 #include "../settings/Settings.h"
-#include "../io/storage/StorageHandler.h"
+#include "../io/storage/interfaces/StorageHandler.h"
 #include "../logger/LoggerMixin.hpp"
 
 #include <boost/asio/steady_timer.hpp>

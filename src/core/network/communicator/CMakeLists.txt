@@ -56,4 +56,6 @@ target_link_libraries(network__communicator
         common
         exceptions
         logger
-        network__messages)
+        network__messages
+        settings
+        io__storage)

@@ -1,4 +1,5 @@
 ﻿#include "Core.h"
+#include "io/storage/sqlite/StorageHandlerSQLite.h"
 
 Core::Core(
     char* pArgv)
@@ -83,7 +84,7 @@ int Core::initSubsystems()
         return initCode;
     }
 
-    initCode = initStorageHandler();
+    initCode = initStorageHandler(conf);
     if (initCode != 0) {
         return initCode;
     }
@@ -219,6 +220,8 @@ int Core::initCommunicator(
 {
     try {
         auto interface = mSettings->interface(&conf);
+        DatabaseConfiguration dbConfig = mSettings->databaseConfiguration(&conf);
+        
         mCommunicator = make_unique<Communicator>(
                             mIOCtx,
                             interface.first,
@@ -226,12 +229,15 @@ int Core::initCommunicator(
                             mContractorsManager.get(),
                             mTailManager.get(),
                             mProvidingHandler.get(),
+                            dbConfig,
                             *mLog);
 
-        info() << "Network communicator is successfully initialised";
+        string providerType = (dbConfig.providerType == DatabaseProviderType::SQLite) ? "SQLite" : "PostgreSQL";
+        info() << "Network communicator (" << providerType << ") is successfully initialised";
         return 0;
 
     } catch (const std::exception &e) {
+        error() << "Failed to initialize communicator: " << e.what();
         mLog->logException("Core", e);
         return -1;
     }
@@ -395,16 +401,31 @@ int Core::initCommandsInterface()
     }
 }
 
-int Core::initStorageHandler()
+int Core::initStorageHandler(
+    const json &conf)
 {
     try {
-        mStorageHandler = make_unique<StorageHandler>(
-                              "io",
-                              "storageDB",
-                              *mLog);
-        info() << "Storage handler is successfully initialised";
+        // Get database configuration from Settings
+        DatabaseConfiguration dbConfig = mSettings->databaseConfiguration(&conf);
+        
+        // Create storage handler through factory
+        mStorageHandler = StorageProviderFactory::createStorageHandler(
+            dbConfig,
+            "storagedb",
+            *mLog);
+        
+        string providerType = (dbConfig.providerType == DatabaseProviderType::SQLite) ? "SQLite" : "PostgreSQL";
+        info() << "Storage handler (" << providerType << ") is successfully initialised";
         return 0;
+        
     } catch (const std::exception &e) {
+        error() << "Failed to initialize storage handler: " << e.what();
+        cerr << "\033[31m" << utc_now() << " : ERR  \t[CORE]\t" 
+             << "Database configuration error: " << e.what() << "\033[0m" << endl;
+        cerr << "\033[31m" << "Check your database_config in conf.json. Expected formats:" << "\033[0m" << endl;
+        cerr << "\033[31m" << "  SQLite: \"database_config\": \"sqlite3:///path/to/directory\"" << "\033[0m" << endl;
+        cerr << "\033[31m" << "  PostgreSQL: \"database_config\": \"postgresql://user:pass@host:port/database\"" << "\033[0m" << endl;
+        cerr << "\033[31m" << "  PostgreSQL (without DB): \"database_config\": \"postgresql://user:pass@host:port/\"" << "\033[0m" << endl;
         mLog->logException("Core", e);
         return -1;
     }

@@ -5,7 +5,7 @@
 #include "lamportscheme.h"
 #include "../logger/Logger.h"
 #include "../transactions/transactions/base/TransactionUUID.h"
-#include "../io/storage/IOTransaction.h"
+#include "../io/storage/interfaces/IOTransaction.h"
 #include "../io/storage/record/audit/AuditRecord.h"
 #include "../io/storage/record/audit/ReceiptRecord.h"
 

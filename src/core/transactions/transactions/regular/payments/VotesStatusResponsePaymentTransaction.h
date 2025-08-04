@@ -3,7 +3,7 @@
 
 #include "../../base/BaseTransaction.h"
 #include "../../../../contractors/ContractorsManager.h"
-#include "../../../../io/storage/StorageHandler.h"
+#include "../../../../io/storage/interfaces/StorageHandler.h"
 #include "../../../../network/messages/payments/VotesStatusRequestMessage.hpp"
 #include "../../../../network/messages/payments/ParticipantsVotesMessage.h"
 #include "../../../../crypto/lamportscheme.h"

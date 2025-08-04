@@ -5,7 +5,7 @@
 
 #include "../../../interface/commands_interface/commands/general/RemoveOutdatedCryptoDataCommand.h"
 #include "../../../equivalents/EquivalentsSubsystemsRouter.h"
-#include "../../../io/storage/StorageHandler.h"
+#include "../../../io/storage/interfaces/StorageHandler.h"
 #include "../../../crypto/keychain.h"
 
 #include "../../../interface/commands_interface/commands/general/RemoveOutdatedCryptoDataCommand.h"

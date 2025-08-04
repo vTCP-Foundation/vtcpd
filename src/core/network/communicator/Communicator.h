@@ -2,6 +2,7 @@
 #define VTCPD_COMMUNICATOR_H
 
 #include "../../common/Types.h"
+#include "../../settings/DatabaseProviderType.h"
 
 #include "internal/common/Types.h"
 #include "internal/outgoing/OutgoingMessagesHandler.h"
@@ -13,7 +14,7 @@
 #include <boost/asio/steady_timer.hpp>
 #include "../../providing/ProvidingHandler.h"
 
-#include "../../io/storage/CommunicatorStorageHandler.h"
+#include "../../io/storage/interfaces/CommunicatorStorageHandler.h"
 
 
 using namespace std;
@@ -35,6 +36,7 @@ public:
         ContractorsManager *contractorsManager,
         TailManager *tailManager,
         ProvidingHandler *providingHandler,
+        const DatabaseConfiguration &dbConfig,
         Logger &logger)
     noexcept(false);
 

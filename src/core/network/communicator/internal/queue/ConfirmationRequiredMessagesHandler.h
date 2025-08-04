@@ -5,11 +5,11 @@
 #include "../../internal/common/Types.h"
 #include "../../../../common/exceptions/RuntimeError.h"
 #include "../../../../logger/LoggerMixin.hpp"
-#include "../../../../io/storage/CommunicatorStorageHandler.h"
-#include "../../../../io/storage/CommunicatorIOTransaction.h"
+#include "../../../../io/storage/interfaces/CommunicatorStorageHandler.h"
+#include "../../../../io/storage/interfaces/CommunicatorIOTransaction.h"
 #include "../../../../trust_lines/manager/TrustLinesManager.h"
-#include "../../../../io/storage/StorageHandler.h"
-#include "../../../../io/storage/IOTransaction.h"
+#include "../../../../io/storage/interfaces/StorageHandler.h"
+#include "../../../../io/storage/interfaces/IOTransaction.h"
 
 #include <boost/asio/steady_timer.hpp>
 #include <boost/signals2.hpp>
