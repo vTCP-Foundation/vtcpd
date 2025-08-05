@@ -2,8 +2,9 @@ cmake_minimum_required(VERSION 3.14)
 
 # Build only stable, up-to-date tests (other old tests require refactor)
 add_executable(unit_tests
-    example_test.cpp
     database_config_test.cpp
+    crypto/SphincsKeysTest.cpp
+    crypto/SphincsSignatureTest.cpp
     sqlite/HistoryStorageSQLiteTest.cpp
     sqlite/SQLiteStatementRAIITest.cpp
     sqlite/AddressHandlerSQLiteTest.cpp

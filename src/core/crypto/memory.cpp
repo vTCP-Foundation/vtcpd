@@ -44,6 +44,14 @@ noexcept
     return mAddress;
 }
 
+size_t SecureSegment::size()
+const
+noexcept
+{
+
+    return mSize;
+}
+
 void SecureSegment::wipeAndFree() noexcept
 {
 

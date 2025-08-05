@@ -9,6 +9,10 @@ add_library(crypto
     lamportkeys.h
     lamportscheme.cpp
     lamportscheme.h
+    sphincskeys.cpp
+    sphincskeys.h
+    sphincsscheme.cpp
+    sphincsscheme.h
     ByteEncryptor.cpp
     ByteEncryptor.h
     MsgEncryptor.cpp
@@ -26,17 +30,22 @@ target_compile_features(crypto
         cxx_std_20
 )
 
+# Find OpenSSL package (required for SPHINCS+ support)
+find_package(OpenSSL 3.0.8 REQUIRED)
+
 # Find sodium package if available, otherwise fall back to direct linking
 find_package(sodium QUIET)
 if(sodium_FOUND)
     target_link_libraries(crypto
         PRIVATE
             sodium::sodium
+            OpenSSL::Crypto
     )
 else()
     target_link_libraries(crypto
         PRIVATE
             sodium
+            OpenSSL::Crypto
     )
 endif()
 
