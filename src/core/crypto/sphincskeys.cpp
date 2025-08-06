@@ -116,6 +116,18 @@ string PublicKey::hashString() const
     return ss.str();
 }
 
+const KeyHash::Shared PublicKey::hash() const
+{
+    if (!mIsValid) {
+        return nullptr;
+    }
+    
+    byte_t hashBuffer[KeyHash::kBytesSize];
+    SHA256(mKeyData, kKeySize, hashBuffer);
+    
+    return make_shared<KeyHash>(hashBuffer);
+}
+
 bool PublicKey::isValid() const
 {
     return mIsValid;
@@ -363,6 +375,38 @@ void PrivateKey::secureWipe()
         OPENSSL_cleanse(guard.address(), mKeyData.size());
     }
     mIsValid = false;
+}
+
+// KeyHash implementation
+
+KeyHash::KeyHash(byte_t* buffer)
+{
+    memcpy(mData, buffer, kBytesSize);
+}
+
+const byte_t* KeyHash::data() const
+{
+    return mData;
+}
+
+const string KeyHash::toString() const
+{
+    stringstream ss;
+    ss << hex << setfill('0');
+    for (size_t i = 0; i < kBytesSize; ++i) {
+        ss << setw(2) << static_cast<unsigned>(mData[i]);
+    }
+    return ss.str();
+}
+
+bool operator==(const KeyHash &kh1, const KeyHash &kh2)
+{
+    return memcmp(kh1.mData, kh2.mData, KeyHash::kBytesSize) == 0;
+}
+
+bool operator!=(const KeyHash &kh1, const KeyHash &kh2)
+{
+    return !(kh1 == kh2);
 }
 
 } // namespace sphincs

@@ -14,6 +14,66 @@ namespace sphincs {
 using namespace std;
 
 /**
+ * @brief Hash of a SPHINCS+ public key for identification and storage
+ * 
+ * This class provides a consistent way to hash and identify SPHINCS+ public keys.
+ * It generates a 32-byte SHA-256 hash of the public key data for use in
+ * database storage, key lookups, and audit operations.
+ */
+class KeyHash
+{
+public:
+    typedef shared_ptr<KeyHash> Shared;
+
+public:
+    /**
+     * @brief Default constructor - creates uninitialized hash
+     */
+    KeyHash() : mData{} {}
+
+    /**
+     * @brief Constructs KeyHash by copying data from the provided buffer
+     * Note: The class copies the data into internal memory and does not take ownership
+     * of the buffer passed. The caller remains responsible for freeing the buffer.
+     * @param buffer Pointer to bytes to copy from. Must be at least kBytesSize bytes long.
+     */
+    KeyHash(byte_t* buffer);
+
+    /**
+     * @brief Overloaded constructor to accept const buffer without requiring widespread const_casts
+     */
+    KeyHash(const byte_t* buffer) : KeyHash(const_cast<byte_t*>(buffer)) {}
+
+    /**
+     * @brief Get raw hash data
+     * @return Pointer to hash bytes
+     */
+    const byte_t* data() const;
+
+    /**
+     * @brief Convert hash to hex string representation
+     * @return Hex-encoded hash string
+     */
+    const string toString() const;
+
+    /**
+     * @brief Compare hashes for equality
+     */
+    friend bool operator==(const KeyHash &kh1, const KeyHash &kh2);
+
+    /**
+     * @brief Compare hashes for inequality
+     */
+    friend bool operator!=(const KeyHash &kh1, const KeyHash &kh2);
+
+public:
+    static constexpr size_t kBytesSize = 32; // SHA-256 hash size
+
+private:
+    byte_t mData[kBytesSize];
+};
+
+/**
  * @brief Get the SPHINCS+ algorithm name
  * @return "SLH-DSA-SHA2-256s" - the SPHINCS+ algorithm used
  */
@@ -114,6 +174,12 @@ public:
      * @return Key hash as hex string
      */
     string hashString() const;
+
+    /**
+     * @brief Generate hash of the public key for database storage and lookups
+     * @return Shared pointer to KeyHash object
+     */
+    const KeyHash::Shared hash() const;
 
     /**
      * @brief Check if key is valid/initialized

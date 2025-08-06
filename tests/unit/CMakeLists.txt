@@ -46,4 +46,7 @@ target_link_libraries(unit_tests PRIVATE
 target_compile_features(unit_tests PRIVATE cxx_std_20)
 
 # Discover tests
-gtest_discover_tests(unit_tests) 
+gtest_discover_tests(unit_tests)
+
+# Add crypto tests subdirectory
+add_subdirectory(crypto) 

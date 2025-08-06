@@ -273,3 +273,103 @@ TEST_F(SphincsKeysTest, DeterministicKeyPairIntegration) {
     EXPECT_EQ(*derived1, *derived2);
     EXPECT_EQ(*keyPair1.second, *derived1);
 }
+
+// ===== KeyHash Tests =====
+
+TEST_F(SphincsKeysTest, KeyHashDefaultConstructor) {
+    KeyHash hash;
+    EXPECT_NE(hash.data(), nullptr);
+    EXPECT_EQ(hash.toString().length(), KeyHash::kBytesSize * 2); // Hex representation
+}
+
+TEST_F(SphincsKeysTest, KeyHashFromBuffer) {
+    byte_t testData[KeyHash::kBytesSize];
+    for (size_t i = 0; i < KeyHash::kBytesSize; ++i) {
+        testData[i] = static_cast<byte_t>(i);
+    }
+    
+    KeyHash hash(testData);
+    const byte_t* hashData = hash.data();
+    
+    // Verify data was copied correctly
+    for (size_t i = 0; i < KeyHash::kBytesSize; ++i) {
+        EXPECT_EQ(hashData[i], testData[i]);
+    }
+}
+
+TEST_F(SphincsKeysTest, KeyHashToString) {
+    byte_t testData[KeyHash::kBytesSize];
+    for (size_t i = 0; i < KeyHash::kBytesSize; ++i) {
+        testData[i] = static_cast<byte_t>(i);
+    }
+    
+    KeyHash hash(testData);
+    string hashStr = hash.toString();
+    
+    EXPECT_EQ(hashStr.length(), KeyHash::kBytesSize * 2); // Each byte = 2 hex chars
+    
+    // Verify hex encoding is correct for first few bytes
+    EXPECT_EQ(hashStr.substr(0, 2), "00");
+    EXPECT_EQ(hashStr.substr(2, 2), "01");
+    EXPECT_EQ(hashStr.substr(4, 2), "02");
+}
+
+TEST_F(SphincsKeysTest, KeyHashEquality) {
+    byte_t testData[KeyHash::kBytesSize];
+    for (size_t i = 0; i < KeyHash::kBytesSize; ++i) {
+        testData[i] = static_cast<byte_t>(i);
+    }
+    
+    KeyHash hash1(testData);
+    KeyHash hash2(testData);
+    KeyHash hash3; // Different (default constructor)
+    
+    EXPECT_EQ(hash1, hash2);
+    EXPECT_NE(hash1, hash3);
+    EXPECT_NE(hash2, hash3);
+}
+
+TEST_F(SphincsKeysTest, PublicKeyHash) {
+    // Create a test public key
+    byte_t testData[PublicKey::keySize()];
+    for (size_t i = 0; i < PublicKey::keySize(); ++i) {
+        testData[i] = static_cast<byte_t>(i % 256);
+    }
+    
+    PublicKey key(testData);
+    EXPECT_TRUE(key.isValid());
+    
+    // Get hash
+    auto keyHash = key.hash();
+    EXPECT_NE(keyHash, nullptr);
+    EXPECT_EQ(keyHash->toString().length(), KeyHash::kBytesSize * 2);
+    
+    // Hash should be deterministic - same key should produce same hash
+    auto keyHash2 = key.hash();
+    EXPECT_EQ(*keyHash, *keyHash2);
+}
+
+TEST_F(SphincsKeysTest, PublicKeyHashConsistency) {
+    // Verify that hashString() and hash() produce consistent results
+    byte_t testData[PublicKey::keySize()];
+    for (size_t i = 0; i < PublicKey::keySize(); ++i) {
+        testData[i] = static_cast<byte_t>(i % 256);
+    }
+    
+    PublicKey key(testData);
+    EXPECT_TRUE(key.isValid());
+    
+    string hashStr = key.hashString();
+    auto keyHash = key.hash();
+    string hashObjStr = keyHash->toString();
+    
+    EXPECT_EQ(hashStr, hashObjStr);
+}
+
+TEST_F(SphincsKeysTest, InvalidPublicKeyHash) {
+    PublicKey key; // Invalid key
+    EXPECT_FALSE(key.isValid());
+    
+    auto keyHash = key.hash();
+    EXPECT_EQ(keyHash, nullptr);
+}
