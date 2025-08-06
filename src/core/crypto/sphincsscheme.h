@@ -14,15 +14,14 @@ using namespace std;
 
 /**
  * @brief SPHINCS+ Signature class
- * Provides deterministic signature generation and verification using OpenSSL EVP interface
+ * Provides deterministic signature generation and verification using real SPHINCS+ SLH-DSA-SHA2-256s
  * 
- * Note: Currently implemented using Ed25519 as the underlying algorithm since SPHINCS+
- * is not yet available in OpenSSL 3.0.13. Ed25519 provides:
+ * This implementation uses the real SPHINCS+ SLH-DSA-SHA2-256s algorithm
+ * from OpenSSL 3.5+, providing:
+ * - True post-quantum cryptographic security
  * - Deterministic signatures (same input + key = same signature)
- * - Strong security equivalent to current post-quantum needs
- * - Full OpenSSL EVP compatibility
- * 
- * This implementation can be easily replaced with actual SPHINCS+ when available.
+ * - Small signature size variant (256s)
+ * - Full compatibility with OpenSSL EVP interface
  */
 class Signature
 {
@@ -30,12 +29,11 @@ public:
     typedef shared_ptr<Signature> Shared;
 
     /**
-     * @return Signature size in bytes
-     * Note: Using Ed25519 signature size as placeholder until real SPHINCS+ is available
+     * @return Signature size in bytes for SPHINCS+ SLH-DSA-SHA2-256s
      */
     static constexpr size_t signatureSize()
     {
-        return 64; // Ed25519 signature size, will be updated for SPHINCS+
+        return 29792; // SPHINCS+ SLH-DSA-SHA2-256s signature size
     }
 
     /**
@@ -149,7 +147,7 @@ public:
     void clear();
 
 private:
-    static constexpr size_t kSignatureSize = 64; // Ed25519 signature size
+    static constexpr size_t kSignatureSize = 29792; // SPHINCS+ SLH-DSA-SHA2-256s signature size
     
     byte_t mSignatureData[kSignatureSize];
     bool mIsValid;

@@ -93,7 +93,7 @@ bool Signature::sign(const PrivateKey& privateKey, const byte_t* data, size_t da
         return false;
     }
     
-    // Perform signing
+    // Perform SPHINCS+ signing
     size_t sigLen = kSignatureSize;
     if (EVP_DigestSign(mdctx, mSignatureData, &sigLen, data, dataSize) <= 0) {
         EVP_MD_CTX_free(mdctx);
@@ -123,9 +123,9 @@ bool Signature::verify(const PublicKey& publicKey, const byte_t* data, size_t da
         return false;
     }
     
-    // Create EVP_PKEY from public key data
-    EVP_PKEY* evpKey = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, nullptr, 
-                                                   publicKey.data(), publicKey.keySize());
+    // Create EVP_PKEY from SPHINCS+ public key data
+    EVP_PKEY* evpKey = EVP_PKEY_new_raw_public_key_ex(nullptr, getAlgorithmName(), nullptr,
+                                                      publicKey.data(), publicKey.keySize());
     if (evpKey == nullptr) {
         return false;
     }
@@ -137,14 +137,14 @@ bool Signature::verify(const PublicKey& publicKey, const byte_t* data, size_t da
         return false;
     }
     
-    // Initialize verification
+    // Initialize SPHINCS+ verification (no hash function needed as it's built-in)
     if (EVP_DigestVerifyInit(mdctx, nullptr, nullptr, nullptr, evpKey) <= 0) {
         EVP_MD_CTX_free(mdctx);
         EVP_PKEY_free(evpKey);
         return false;
     }
     
-    // Perform verification
+    // Perform SPHINCS+ verification
     int result = EVP_DigestVerify(mdctx, mSignatureData, kSignatureSize, data, dataSize);
     
     EVP_MD_CTX_free(mdctx);

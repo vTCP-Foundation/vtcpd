@@ -52,9 +52,11 @@ TEST_F(SphincsSignatureTest, SignatureFromData) {
 }
 
 TEST_F(SphincsSignatureTest, SignatureFromValidHexString) {
-    // Create a valid hex string (128 characters for 64 bytes)
-    string hexString = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    // Create a valid hex string (59584 characters for 29792 bytes)
+    string hexString;
+    for (int i = 0; i < 29792; ++i) {
+        hexString += "ab"; // Each byte as hex (2 chars)
+    }
     
     Signature sig(hexString);
     EXPECT_TRUE(sig.isValid());
@@ -67,9 +69,11 @@ TEST_F(SphincsSignatureTest, SignatureFromInvalidHexString) {
     Signature sig1(invalidString);
     EXPECT_FALSE(sig1.isValid());
     
-    // Test with invalid characters
-    string invalidChars = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeG"
-                         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    // Test with invalid characters (create string of correct length but with invalid char)
+    string invalidChars;
+    for (int i = 0; i < 29792; ++i) {
+        invalidChars += (i == 100) ? "aG" : "ab"; // Invalid 'G' character at position 100
+    }
     Signature sig2(invalidChars);
     EXPECT_FALSE(sig2.isValid());
 }
@@ -308,7 +312,7 @@ TEST_F(SphincsSignatureTest, SignatureClear) {
 // ===== Size Tests =====
 
 TEST_F(SphincsSignatureTest, SignatureSize) {
-    EXPECT_EQ(Signature::signatureSize(), 64);  // Ed25519 signature size
+    EXPECT_EQ(Signature::signatureSize(), 29792);  // SPHINCS+ SLH-DSA-SHA2-256s signature size
     EXPECT_GT(Signature::signatureSize(), 0);
 }
 

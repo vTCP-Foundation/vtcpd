@@ -177,8 +177,8 @@ TEST_F(SphincsKeysTest, PrivateKeyDeterministicGeneration) {
 }
 
 TEST_F(SphincsKeysTest, PrivateKeyFromData) {
-    byte_t keyData[PrivateKey::keySize()];
-    for (size_t i = 0; i < PrivateKey::keySize(); ++i) {
+    byte_t keyData[PrivateKey::privateKeySize()];
+    for (size_t i = 0; i < PrivateKey::privateKeySize(); ++i) {
         keyData[i] = static_cast<byte_t>(i % 256);
     }
     
@@ -206,7 +206,7 @@ TEST_F(SphincsKeysTest, PrivateKeySerialization) {
     PrivateKey original;
     
     auto serialized = original.serialize();
-    EXPECT_EQ(serialized.size(), PrivateKey::keySize());
+    EXPECT_EQ(serialized.size(), PrivateKey::privateKeySize());
     
     PrivateKey deserialized;
     deserialized.deserialize(serialized);
@@ -231,10 +231,10 @@ TEST_F(SphincsKeysTest, PrivateKeyInvalidData) {
 // ===== Key Size Tests =====
 
 TEST_F(SphincsKeysTest, KeySizeConstants) {
-    EXPECT_EQ(PublicKey::keySize(), 32);  // Ed25519 key size
-    EXPECT_EQ(PrivateKey::keySize(), 32); // Ed25519 key size
+    EXPECT_EQ(PublicKey::keySize(), 64);  // SPHINCS+ SLH-DSA-SHA2-256s public key size
+    EXPECT_EQ(PrivateKey::privateKeySize(), 128); // SPHINCS+ SLH-DSA-SHA2-256s private key size
     EXPECT_GT(PublicKey::keySize(), 0);
-    EXPECT_GT(PrivateKey::keySize(), 0);
+    EXPECT_GT(PrivateKey::privateKeySize(), 0);
 }
 
 // ===== Integration Tests =====

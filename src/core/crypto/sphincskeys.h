@@ -14,30 +14,36 @@ namespace sphincs {
 using namespace std;
 
 /**
+ * @brief Get the SPHINCS+ algorithm name
+ * @return "SLH-DSA-SHA2-256s" - the SPHINCS+ algorithm used
+ */
+constexpr const char* getAlgorithmName() {
+    return "SLH-DSA-SHA2-256s";
+}
+
+/**
  * @brief Base class for SPHINCS+ keys providing common functionality
  * 
- * Note: Due to SPHINCS+ not being available in current OpenSSL 3.0.13,
- * this implementation uses Ed25519 as the underlying algorithm which provides:
+ * This implementation uses the real SPHINCS+ SLH-DSA-SHA2-256s algorithm
+ * from OpenSSL 3.5+, providing:
+ * - True post-quantum cryptographic security
  * - Deterministic signatures (same input + key = same signature)
- * - Post-quantum resistance equivalent for current security needs
+ * - Small signature size variant (256s)
  * - Full compatibility with OpenSSL EVP interface
- * 
- * This can be easily replaced with actual SPHINCS+ when available in OpenSSL.
  */
 class BaseKey
 {
 public:
     /**
-     * @return Key size in bytes for SPHINCS+ keys
-     * Note: Using Ed25519 key size as placeholder until real SPHINCS+ is available
+     * @return Public key size in bytes for SPHINCS+ SLH-DSA-SHA2-256s
      */
     static constexpr size_t keySize()
     {
-        return 32; // Ed25519 key size, will be updated for SPHINCS+
+        return 64; // SPHINCS+ SLH-DSA-SHA2-256s public key size
     }
 
 protected:
-    static constexpr size_t kKeySize = 32;
+    static constexpr size_t kKeySize = 64;
 };
 
 /**
@@ -133,12 +139,20 @@ private:
 
 /**
  * @brief SPHINCS+ Private Key class
- * Provides secure private key storage and deterministic key operations
+ * Provides secure private key storage and deterministic key operations using real SPHINCS+
  */
 class PrivateKey : public BaseKey
 {
 public:
     typedef shared_ptr<PrivateKey> Shared;
+
+    /**
+     * @return Private key size in bytes for SPHINCS+ SLH-DSA-SHA2-256s
+     */
+    static constexpr size_t privateKeySize()
+    {
+        return 128; // SPHINCS+ SLH-DSA-SHA2-256s private key size
+    }
 
     /**
      * @brief Default constructor - generates new random private key
@@ -153,7 +167,7 @@ public:
 
     /**
      * @brief Constructor from raw key data
-     * @param keyData Raw private key bytes (must be keySize() bytes)
+     * @param keyData Raw private key bytes (must be privateKeySize() bytes)
      */
     explicit PrivateKey(const byte_t* keyData);
 
@@ -209,12 +223,12 @@ private:
     void initFromData(const byte_t* keyData);
 
     /**
-     * @brief Generate random private key
+     * @brief Generate random private key using SPHINCS+ algorithm
      */
     void generateRandom();
 
     /**
-     * @brief Generate deterministic private key from seed
+     * @brief Generate deterministic private key from seed using SPHINCS+
      * @param seedString Seed for deterministic generation
      */
     void generateFromSeed(const string& seedString);
@@ -225,6 +239,7 @@ private:
     void secureWipe();
 
 private:
+    static constexpr size_t kPrivateKeySize = 128; // SPHINCS+ SLH-DSA-SHA2-256s private key size
     memory::SecureSegment mKeyData;
     mutable EVP_PKEY* mEVPKey;
     bool mIsValid;
