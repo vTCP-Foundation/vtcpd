@@ -24,12 +24,12 @@ AuditRecord::AuditRecord(
     TrustLineAmount &incomingAmount,
     TrustLineAmount &outgoingAmount,
     TrustLineBalance &balance,
-    lamport::KeyHash::Shared ownKeyHash,
-    lamport::Signature::Shared ownSignature,
-    lamport::KeyHash::Shared contractorKeyHash,
-    lamport::Signature::Shared contractorSignature,
-    lamport::KeyHash::Shared ownKeysSetHash,
-    lamport::KeyHash::Shared contractorKeysSetHash) :
+    sphincs::KeyHash::Shared ownKeyHash,
+    sphincs::Signature::Shared ownSignature,
+    sphincs::KeyHash::Shared contractorKeyHash,
+    sphincs::Signature::Shared contractorSignature,
+    sphincs::KeyHash::Shared ownKeysSetHash,
+    sphincs::KeyHash::Shared contractorKeysSetHash) :
 
     mAuditNumber(auditNumber),
     mIncomingAmount(incomingAmount),
@@ -72,19 +72,19 @@ AuditRecord::AuditRecord(
     mBalance = bytesToTrustLineBalance(balanceBytes);
     bytesBufferOffset += kTrustLineBalanceSerializeBytesCount;
 
-    mOwnKeyHash = make_shared<lamport::KeyHash>(
+    mOwnKeyHash = make_shared<sphincs::KeyHash>(
                       buffer + bytesBufferOffset);
-    bytesBufferOffset += lamport::KeyHash::kBytesSize;
+    bytesBufferOffset += sphincs::KeyHash::kBytesSize;
 
-    mOwnSignature = make_shared<lamport::Signature>(
+    mOwnSignature = make_shared<sphincs::Signature>(
                         buffer + bytesBufferOffset);
-    bytesBufferOffset += lamport::Signature::signatureSize();
+    bytesBufferOffset += sphincs::Signature::signatureSize();
 
-    mContractorKeyHash = make_shared<lamport::KeyHash>(
+    mContractorKeyHash = make_shared<sphincs::KeyHash>(
                              buffer + bytesBufferOffset);
-    bytesBufferOffset += lamport::KeyHash::kBytesSize;
+    bytesBufferOffset += sphincs::KeyHash::kBytesSize;
 
-    mContractorSignature = make_shared<lamport::Signature>(
+    mContractorSignature = make_shared<sphincs::Signature>(
                                buffer + bytesBufferOffset);
 }
 
@@ -108,38 +108,38 @@ const TrustLineBalance &AuditRecord::balance() const
     return mBalance;
 }
 
-const lamport::KeyHash::Shared AuditRecord::ownKeyHash() const
+const sphincs::KeyHash::Shared AuditRecord::ownKeyHash() const
 {
     return mOwnKeyHash;
 }
 
-const lamport::Signature::Shared AuditRecord::ownSignature() const
+const sphincs::Signature::Shared AuditRecord::ownSignature() const
 {
     return mOwnSignature;
 }
 
-const lamport::KeyHash::Shared AuditRecord::contractorKeyHash() const
+const sphincs::KeyHash::Shared AuditRecord::contractorKeyHash() const
 {
     return mContractorKeyHash;
 }
 
-const lamport::Signature::Shared AuditRecord::contractorSignature() const
+const sphincs::Signature::Shared AuditRecord::contractorSignature() const
 {
     return mContractorSignature;
 }
 
-const lamport::KeyHash::Shared AuditRecord::ownKeysSetHash() const
+const sphincs::KeyHash::Shared AuditRecord::ownKeysSetHash() const
 {
     return mOwnKeysSetHash;
 }
 
-const lamport::KeyHash::Shared AuditRecord::contractorKeysSetHash() const
+const sphincs::KeyHash::Shared AuditRecord::contractorKeysSetHash() const
 {
     return mContractorKeysSetHash;
 }
 
 void AuditRecord::setContractorSignature(
-    lamport::Signature::Shared signature)
+    sphincs::Signature::Shared signature)
 {
     mContractorSignature = signature;
 }
@@ -150,13 +150,13 @@ bool AuditRecord::isPendingState() const
 }
 
 void AuditRecord::setOwnKeysSetHash(
-    lamport::KeyHash::Shared ownKeysSetHash)
+    sphincs::KeyHash::Shared ownKeysSetHash)
 {
     mOwnKeysSetHash = ownKeysSetHash;
 }
 
 void AuditRecord::setContractorKeysSetHash(
-    lamport::KeyHash::Shared contractorKeysSetHash)
+    sphincs::KeyHash::Shared contractorKeysSetHash)
 {
     mContractorKeysSetHash = contractorKeysSetHash;
 }
@@ -199,25 +199,25 @@ BytesShared AuditRecord::serializeToBytes()
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         mOwnKeyHash->data(),
-        lamport::KeyHash::kBytesSize);
-    dataBytesOffset += lamport::KeyHash::kBytesSize;
+        sphincs::KeyHash::kBytesSize);
+    dataBytesOffset += sphincs::KeyHash::kBytesSize;
 
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         mOwnSignature->data(),
-        lamport::Signature::signatureSize());
-    dataBytesOffset += lamport::Signature::signatureSize();
+        sphincs::Signature::signatureSize());
+    dataBytesOffset += sphincs::Signature::signatureSize();
 
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         mContractorKeyHash->data(),
-        lamport::KeyHash::kBytesSize);
-    dataBytesOffset += lamport::KeyHash::kBytesSize;
+        sphincs::KeyHash::kBytesSize);
+    dataBytesOffset += sphincs::KeyHash::kBytesSize;
 
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         mContractorKeyHash->data(),
-        lamport::Signature::signatureSize());
+        sphincs::Signature::signatureSize());
 
     return dataBytesShared;
 }
@@ -299,7 +299,7 @@ BytesShared AuditRecord::serializeToCheckSignatureByContractor()
 
 const size_t AuditRecord::recordSize()
 {
-    return sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + kTrustLineBalanceSerializeBytesCount + lamport::KeyHash::kBytesSize + lamport::Signature::signatureSize() + lamport::KeyHash::kBytesSize + lamport::Signature::signatureSize();
+    return sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + kTrustLineBalanceSerializeBytesCount + sphincs::KeyHash::kBytesSize + sphincs::Signature::signatureSize() + sphincs::KeyHash::kBytesSize + sphincs::Signature::signatureSize();
 }
 
 const size_t AuditRecord::recordSizeForSignatureChecking()

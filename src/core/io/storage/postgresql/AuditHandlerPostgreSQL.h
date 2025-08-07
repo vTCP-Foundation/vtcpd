@@ -6,12 +6,12 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/exceptions/ValueError.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincskeys.h"
 #include "../../../common/memory/MemoryUtils.h"
 #include <libpq-fe.h>
 #include <memory>
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class AuditHandlerPostgreSQL : public AuditHandler
 {
@@ -24,12 +24,12 @@ public:
     void saveFullAudit(
         AuditNumber number,
         TrustLineID trustLineID,
-        lamport::KeyHash::Shared ownKeyHash,
-        lamport::Signature::Shared ownSignature,
-        lamport::KeyHash::Shared contractorKeyHash,
-        lamport::Signature::Shared contractorSignature,
-        lamport::KeyHash::Shared ownKeysSetHash,
-        lamport::KeyHash::Shared contractorKeysSetHash,
+        sphincs::KeyHash::Shared ownKeyHash,
+        sphincs::Signature::Shared ownSignature,
+        sphincs::KeyHash::Shared contractorKeyHash,
+        sphincs::Signature::Shared contractorSignature,
+        sphincs::KeyHash::Shared ownKeysSetHash,
+        sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance) override;
@@ -37,10 +37,10 @@ public:
     void saveOwnAuditPart(
         AuditNumber number,
         TrustLineID trustLineID,
-        lamport::KeyHash::Shared ownKeyHash,
-        lamport::Signature::Shared ownSignature,
-        lamport::KeyHash::Shared ownKeysSetHash,
-        lamport::KeyHash::Shared contractorKeysSetHash,
+        sphincs::KeyHash::Shared ownKeyHash,
+        sphincs::Signature::Shared ownSignature,
+        sphincs::KeyHash::Shared ownKeysSetHash,
+        sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance) override;
@@ -48,8 +48,8 @@ public:
     void saveContractorAuditPart(
         AuditNumber number,
         TrustLineID trustLineID,
-        lamport::KeyHash::Shared contractorKeyHash,
-        lamport::Signature::Shared contractorSignature) override;
+        sphincs::KeyHash::Shared contractorKeyHash,
+        sphincs::Signature::Shared contractorSignature) override;
 
     const AuditRecord::Shared getActualAudit(
         TrustLineID trustLineID) override;
@@ -72,7 +72,7 @@ public:
         AuditNumber auditNumber) override;
 
     bool isContainsKeyHash(
-        lamport::KeyHash::Shared keyHash) const override;
+        sphincs::KeyHash::Shared keyHash) const override;
 
 private:
     LoggerStream info() const;

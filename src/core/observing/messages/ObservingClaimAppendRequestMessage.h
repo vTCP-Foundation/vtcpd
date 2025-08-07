@@ -3,7 +3,7 @@
 
 #include "base/ObservingMessage.hpp"
 #include "../../transactions/transactions/base/TransactionUUID.h"
-#include "../../crypto/lamportkeys.h"
+#include "../../crypto/sphincsscheme.h"
 
 #include <map>
 
@@ -19,7 +19,7 @@ public:
     ObservingClaimAppendRequestMessage(
         const TransactionUUID& transactionUUID,
         BlockNumber maximalClaimingBlockNumber,
-        const map<PaymentNodeID, lamport::PublicKey::Shared>& participantsPublicKeys);
+        const map<PaymentNodeID, sphincs::PublicKey::Shared>& participantsPublicKeys);
 
     const TransactionUUID& transactionUUID() const;
 
@@ -34,7 +34,7 @@ public:
 private:
     TransactionUUID mTransactionUUID;
     BlockNumber mMaximalClaimingBlockNumber;
-    map<PaymentNodeID, lamport::PublicKey::Shared> mParticipantsPublicKeys;
+    map<PaymentNodeID, sphincs::PublicKey::Shared> mParticipantsPublicKeys;
 };
 
 

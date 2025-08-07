@@ -22,8 +22,7 @@ PublicKeysSharingTargetTransaction::PublicKeysSharingTargetTransaction(
     mKeysStore(keystore),
     mTrustLinesInfluenceController(trustLinesInfluenceController)
 {
-    mContractorKeysCount = message->keysCount();
-    mCurrentKeyNumber = message->number();
+    mContractorKeysCount = 1; // Single key architecture
     mCurrentPublicKey = message->publicKey();
 }
 
@@ -61,11 +60,7 @@ TransactionResult::SharedConst PublicKeysSharingTargetTransaction::runPublicKeyR
     // todo check contractor keys count
     info() << "Contractor keys count " << mContractorKeysCount;
 
-    if (mCurrentKeyNumber != 0) {
-        warning() << "Invalid init key number " << mCurrentKeyNumber;
-        return sendKeyErrorConfirmation(
-                   ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
-    }
+    // Single key architecture - no key number validation needed
 
     if (mTrustLines->trustLineState(mContractorID) == TrustLine::Archived or
             mTrustLines->trustLineState(mContractorID) == TrustLine::Init) {
@@ -119,15 +114,10 @@ TransactionResult::SharedConst PublicKeysSharingTargetTransaction::runReceiveNex
         return resultContinuePreviousState();
     }
 
-    if (message->number() != mCurrentKeyNumber + 1) {
-        warning() << "Invalid key number " << message->number() << ". Wait for another";
-        return resultContinuePreviousState();
-    }
-
-    info() << "Received key number " << message->number();
+    // Single key architecture - accept the key directly
+    info() << "Received public key";
 
     mCurrentPublicKey = message->publicKey();
-    mCurrentKeyNumber = message->number();
 
     auto ioTransaction = mStorageHandler->beginTransaction();
     return runProcessKey(ioTransaction);
@@ -143,7 +133,6 @@ TransactionResult::SharedConst PublicKeysSharingTargetTransaction::runProcessKey
         keyChain.setContractorPublicKey(
             ioTransaction,
             mCurrentKeysSetSequenceNumber,
-            mCurrentKeyNumber,
             mCurrentPublicKey);
 
 #ifdef TESTS
@@ -163,30 +152,18 @@ TransactionResult::SharedConst PublicKeysSharingTargetTransaction::runProcessKey
         throw e;
     }
     info() << "Key saved, send hash confirmation";
-    if (mCurrentKeyNumber == 0) {
-        sendMessageWithTemporaryCaching<PublicKeyHashConfirmation>(
-            mContractorID,
-            Message::TrustLines_PublicKeysSharingInit,
-            kWaitMillisecondsForResponse / 1000 * kMaxCountSendingAttempts,
-            mEquivalent,
-            mContractorsManager->contractor(mContractorID),
-            mTransactionUUID,
-            mCurrentKeyNumber,
-            mCurrentPublicKey->hash());
-    } else {
-        sendMessageWithTemporaryCaching<PublicKeyHashConfirmation>(
-            mContractorID,
-            Message::TrustLines_PublicKey,
-            kWaitMillisecondsForResponse / 1000 * kMaxCountSendingAttempts,
-            mEquivalent,
-            mContractorsManager->contractor(mContractorID),
-            mTransactionUUID,
-            mCurrentKeyNumber,
-            mCurrentPublicKey->hash());
-    }
+    // Single key architecture - always send key confirmation
+    sendMessageWithTemporaryCaching<PublicKeyHashConfirmation>(
+        mContractorID,
+        Message::TrustLines_PublicKey,
+        kWaitMillisecondsForResponse / 1000 * kMaxCountSendingAttempts,
+        mEquivalent,
+        mContractorsManager->contractor(mContractorID),
+        mTransactionUUID,
+        mCurrentPublicKey->hash());
 
     try {
-        if (keyChain.allContractorKeysReceive(ioTransaction, mCurrentKeysSetSequenceNumber, mContractorKeysCount)) {
+        if (keyChain.contractorKeysPresent(ioTransaction)) {
             info() << "All keys received";
             // todo maybe don't save TL state in storage only in memory (don't use ioTransaction and try catch)
             mTrustLines->setTrustLineState(

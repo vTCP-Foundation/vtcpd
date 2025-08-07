@@ -7,8 +7,8 @@
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/exceptions/ValueError.h"
 #include "../../../common/multiprecision/MultiprecisionUtils.h"
-#include "../../../crypto/lamportkeys.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincskeys.h"
+#include "../../../crypto/sphincsscheme.h"
 #include "../../../common/memory/MemoryUtils.h"
 #include "../record/audit/ReceiptRecord.h"
 
@@ -17,7 +17,7 @@
 #include <vector>
 #include <map>
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class IncomingPaymentReceiptHandlerPostgreSQL : public IncomingPaymentReceiptHandler
 {

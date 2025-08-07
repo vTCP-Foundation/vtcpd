@@ -26,9 +26,7 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig,
     const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
     const BlockNumber maximalClaimingBlockNumber,
-    const KeyNumber publicKeyNumber,
-    const lamport::Signature::Shared signature,
-    const lamport::KeyHash::Shared transactionPublicKeyHash) :
+    const sphincs::Signature::Shared signature) :
 
     RequestMessageWithReservations(
         equivalent,
@@ -38,9 +36,7 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     mPaymentParticipants(paymentParticipants),
     mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
     mIsReceiptContains(true),
-    mPublicKeyNumber(publicKeyNumber),
-    mSignature(signature),
-    mTransactionPublicKeyHash(transactionPublicKeyHash)
+    mSignature(signature)
 {
 }
 
@@ -79,19 +75,9 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     //----------------------------------------------------
     if (mIsReceiptContains) {
         bytesBufferOffset += sizeof(byte_t);
-        memcpy(
-            &mPublicKeyNumber,
-            bytesBufferOffset,
-            sizeof(KeyNumber));
-        bytesBufferOffset += sizeof(KeyNumber);
-
-        auto signature = make_shared<lamport::Signature>(
+        auto signature = make_shared<sphincs::Signature>(
                              bytesBufferOffset);
         mSignature = signature;
-        bytesBufferOffset += lamport::Signature::signatureSize();
-
-        mTransactionPublicKeyHash = make_shared<lamport::KeyHash>(
-                                        bytesBufferOffset);
     }
 }
 
@@ -115,19 +101,9 @@ bool FinalAmountsConfigurationMessage::isReceiptContains() const
     return mIsReceiptContains;
 }
 
-const KeyNumber FinalAmountsConfigurationMessage::publicKeyNumber() const
-{
-    return mPublicKeyNumber;
-}
-
-const lamport::Signature::Shared FinalAmountsConfigurationMessage::signature() const
+const sphincs::Signature::Shared FinalAmountsConfigurationMessage::signature() const
 {
     return mSignature;
-}
-
-const lamport::KeyHash::Shared FinalAmountsConfigurationMessage::transactionPublicKeyHash() const
-{
-    return mTransactionPublicKeyHash;
 }
 
 pair<BytesShared, size_t> FinalAmountsConfigurationMessage::serializeToBytes() const
@@ -138,7 +114,7 @@ pair<BytesShared, size_t> FinalAmountsConfigurationMessage::serializeToBytes() c
         bytesCount += sizeof(PaymentNodeID) + participant.second->serializedSize();
     }
     if (mIsReceiptContains) {
-        bytesCount += sizeof(KeyNumber) + lamport::Signature::signatureSize() + lamport::KeyHash::kBytesSize;
+        bytesCount += sphincs::Signature::signatureSize();
     }
 
     BytesShared buffer = tryMalloc(bytesCount);
@@ -188,20 +164,8 @@ pair<BytesShared, size_t> FinalAmountsConfigurationMessage::serializeToBytes() c
         bytesBufferOffset += sizeof(byte_t);
         memcpy(
             bytesBufferOffset,
-            &mPublicKeyNumber,
-            sizeof(KeyNumber));
-        bytesBufferOffset += sizeof(KeyNumber);
-
-        memcpy(
-            bytesBufferOffset,
             mSignature->data(),
-            mSignature->signatureSize());
-        bytesBufferOffset += lamport::Signature::signatureSize();
-
-        memcpy(
-            bytesBufferOffset,
-            mTransactionPublicKeyHash->data(),
-            lamport::KeyHash::kBytesSize);
+            sphincs::Signature::signatureSize());
     }
     //----------------------------------------------------
     return make_pair(

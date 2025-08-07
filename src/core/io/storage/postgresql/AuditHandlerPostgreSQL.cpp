@@ -68,12 +68,12 @@ AuditHandlerPostgreSQL::AuditHandlerPostgreSQL(
 void AuditHandlerPostgreSQL::saveFullAudit(
     AuditNumber number,
     TrustLineID trustLineID,
-    lamport::KeyHash::Shared ownKeyHash,
-    lamport::Signature::Shared ownSignature,
-    lamport::KeyHash::Shared contractorKeyHash,
-    lamport::Signature::Shared contractorSignature,
-    lamport::KeyHash::Shared ownKeysSetHash,
-    lamport::KeyHash::Shared contractorKeysSetHash,
+    KeyHash::Shared ownKeyHash,
+    Signature::Shared ownSignature,
+    KeyHash::Shared contractorKeyHash,
+    Signature::Shared contractorSignature,
+    KeyHash::Shared ownKeysSetHash,
+    KeyHash::Shared contractorKeysSetHash,
     const TrustLineAmount &incomingAmount,
     const TrustLineAmount &outgoingAmount,
     const TrustLineBalance &balance)
@@ -110,12 +110,12 @@ void AuditHandlerPostgreSQL::saveFullAudit(
 
     paramLengths[0] = 0;
     paramLengths[1] = 0;
-    paramLengths[2] = lamport::KeyHash::kBytesSize;
+    paramLengths[2] = KeyHash::kBytesSize;
     paramLengths[3] = ownSignature->signatureSize();
-    paramLengths[4] = lamport::KeyHash::kBytesSize;
+    paramLengths[4] = KeyHash::kBytesSize;
     paramLengths[5] = contractorSignature->signatureSize();
-    paramLengths[6] = lamport::KeyHash::kBytesSize;
-    paramLengths[7] = lamport::KeyHash::kBytesSize;
+    paramLengths[6] = KeyHash::kBytesSize;
+    paramLengths[7] = KeyHash::kBytesSize;
     paramLengths[8] = kTrustLineAmountBytesCount;
     paramLengths[9] = kTrustLineAmountBytesCount;
     paramLengths[10] = kTrustLineBalanceSerializeBytesCount;
@@ -145,10 +145,10 @@ void AuditHandlerPostgreSQL::saveFullAudit(
 void AuditHandlerPostgreSQL::saveOwnAuditPart(
     AuditNumber number,
     TrustLineID trustLineID,
-    lamport::KeyHash::Shared ownKeyHash,
-    lamport::Signature::Shared ownSignature,
-    lamport::KeyHash::Shared ownKeysSetHash,
-    lamport::KeyHash::Shared contractorKeysSetHash,
+    KeyHash::Shared ownKeyHash,
+    Signature::Shared ownSignature,
+    KeyHash::Shared ownKeysSetHash,
+    KeyHash::Shared contractorKeysSetHash,
     const TrustLineAmount &incomingAmount,
     const TrustLineAmount &outgoingAmount,
     const TrustLineBalance &balance)
@@ -181,10 +181,10 @@ void AuditHandlerPostgreSQL::saveOwnAuditPart(
 
     paramLengths[0] = 0;
     paramLengths[1] = 0;
-    paramLengths[2] = lamport::KeyHash::kBytesSize;
+    paramLengths[2] = KeyHash::kBytesSize;
     paramLengths[3] = ownSignature->signatureSize();
-    paramLengths[4] = lamport::KeyHash::kBytesSize;
-    paramLengths[5] = lamport::KeyHash::kBytesSize;
+    paramLengths[4] = KeyHash::kBytesSize;
+    paramLengths[5] = KeyHash::kBytesSize;
     paramLengths[6] = kTrustLineAmountBytesCount;
     paramLengths[7] = kTrustLineAmountBytesCount;
     paramLengths[8] = kTrustLineBalanceSerializeBytesCount;
@@ -201,8 +201,8 @@ void AuditHandlerPostgreSQL::saveOwnAuditPart(
 void AuditHandlerPostgreSQL::saveContractorAuditPart(
     AuditNumber number,
     TrustLineID trustLineID,
-    lamport::KeyHash::Shared contractorKeyHash,
-    lamport::Signature::Shared contractorSignature)
+    KeyHash::Shared contractorKeyHash,
+    Signature::Shared contractorSignature)
 {
     const string query = "UPDATE " + mTableName +
                          " SET contractor_key_hash = $1, contractor_signature = $2 "
@@ -221,7 +221,7 @@ void AuditHandlerPostgreSQL::saveContractorAuditPart(
     paramValues[2] = tlIdStr.c_str();
     paramValues[3] = numStr.c_str();
 
-    paramLengths[0] = lamport::KeyHash::kBytesSize;
+    paramLengths[0] = KeyHash::kBytesSize;
     paramLengths[1] = contractorSignature->signatureSize();
     paramLengths[2] = 0;
     paramLengths[3] = 0;
@@ -277,13 +277,13 @@ const AuditRecord::Shared AuditHandlerPostgreSQL::getActualAudit(
     TrustLineBalance balance = bytesToTrustLineBalance(balanceBuf);
 
     const unsigned char *contractorSigPtr = reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++));
-    lamport::Signature::Shared contractorSignature = nullptr;
+    Signature::Shared contractorSignature = nullptr;
     if (contractorSigPtr) {
-        contractorSignature = make_shared<lamport::Signature>(contractorSigPtr);
+        contractorSignature = make_shared<Signature>(contractorSigPtr);
     }
 
-    auto ownKeysSetHash = make_shared<lamport::KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
-    auto contractorKeysSetHash = make_shared<lamport::KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
+    auto ownKeysSetHash = make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
+    auto contractorKeysSetHash = make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
 
     auto record = make_shared<AuditRecord>(number, incomingAmount, outgoingAmount, balance);
     record->setContractorSignature(contractorSignature);
@@ -335,23 +335,23 @@ const AuditRecord::Shared AuditHandlerPostgreSQL::getActualAuditFull(
     vector<byte_t> balanceBuf(balanceBytesPtr, balanceBytesPtr + kTrustLineBalanceSerializeBytesCount);
     TrustLineBalance balance = bytesToTrustLineBalance(balanceBuf);
 
-    auto ownKeyHash = make_shared<lamport::KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
-    auto ownSignature = make_shared<lamport::Signature>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
+    auto ownKeyHash = make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
+    auto ownSignature = make_shared<Signature>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
 
     const unsigned char *ckhPtr = reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++));
-    lamport::KeyHash::Shared contractorKeyHash = nullptr;
+    KeyHash::Shared contractorKeyHash = nullptr;
     if (ckhPtr) {
-        contractorKeyHash = make_shared<lamport::KeyHash>(ckhPtr);
+        contractorKeyHash = make_shared<KeyHash>(ckhPtr);
     }
 
     const unsigned char *csigPtr = reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++));
-    lamport::Signature::Shared contractorSignature = nullptr;
+    Signature::Shared contractorSignature = nullptr;
     if (csigPtr) {
-        contractorSignature = make_shared<lamport::Signature>(csigPtr);
+        contractorSignature = make_shared<Signature>(csigPtr);
     }
 
-    auto ownKeysSetHash = make_shared<lamport::KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
-    auto contractorKeysSetHash = make_shared<lamport::KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
+    auto ownKeysSetHash = make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
+    auto contractorKeysSetHash = make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, idx++)));
 
     PQclear(res);
     return make_shared<AuditRecord>(
@@ -460,16 +460,16 @@ vector<AuditRecord::Shared> AuditHandlerPostgreSQL::auditsLessEqualThanAuditNumb
         const unsigned char *balancePtr = reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++));
         vector<byte_t> balanceBuf(balancePtr, balancePtr + kTrustLineBalanceSerializeBytesCount);
         TrustLineBalance balance = bytesToTrustLineBalance(balanceBuf);
-        auto ownKeyHash = make_shared<lamport::KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++)));
-        auto ownSignature = make_shared<lamport::Signature>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++)));
+        auto ownKeyHash = make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++)));
+        auto ownSignature = make_shared<Signature>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++)));
         const unsigned char *ckhPtr = reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++));
-        lamport::KeyHash::Shared contractorKeyHash = nullptr;
-        if (ckhPtr) contractorKeyHash = make_shared<lamport::KeyHash>(ckhPtr);
+        KeyHash::Shared contractorKeyHash = nullptr;
+        if (ckhPtr) contractorKeyHash = make_shared<KeyHash>(ckhPtr);
         const unsigned char *csigPtr = reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++));
-        lamport::Signature::Shared contractorSignature = nullptr;
-        if (csigPtr) contractorSignature = make_shared<lamport::Signature>(csigPtr);
-        auto ownKeysSetHash = make_shared<lamport::KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++)));
-        auto contractorKeysSetHash = make_shared<lamport::KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++)));
+        Signature::Shared contractorSignature = nullptr;
+        if (csigPtr) contractorSignature = make_shared<Signature>(csigPtr);
+        auto ownKeysSetHash = make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++)));
+        auto contractorKeysSetHash = make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res, row, idx++)));
 
         result.push_back(make_shared<AuditRecord>(number, incomingAmount, outgoingAmount, balance, ownKeyHash, ownSignature,
                                                   contractorKeyHash, contractorSignature, ownKeysSetHash, contractorKeysSetHash));
@@ -479,7 +479,7 @@ vector<AuditRecord::Shared> AuditHandlerPostgreSQL::auditsLessEqualThanAuditNumb
 }
 
 bool AuditHandlerPostgreSQL::isContainsKeyHash(
-    lamport::KeyHash::Shared keyHash) const
+    KeyHash::Shared keyHash) const
 {
     const string query = "SELECT 1 FROM " + mTableName + " WHERE our_key_hash = $1 OR contractor_key_hash = $1 LIMIT 1;";
 
@@ -487,7 +487,7 @@ bool AuditHandlerPostgreSQL::isContainsKeyHash(
     int paramLengths[1];
     int paramFormats[1] = {1};
     paramValues[0] = reinterpret_cast<const char *>(keyHash->data());
-    paramLengths[0] = lamport::KeyHash::kBytesSize;
+    paramLengths[0] = KeyHash::kBytesSize;
 
     PGresult *res = PQexecParams(mDataBase, query.c_str(), 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     checkResultTuples(mDataBase, res, "AuditHandlerPostgreSQL::isContainsKeyHash");

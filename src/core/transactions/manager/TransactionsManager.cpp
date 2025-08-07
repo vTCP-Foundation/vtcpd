@@ -1386,7 +1386,7 @@ void TransactionsManager::launchVotesResponsePaymentsTransaction(
 void TransactionsManager::launchPaymentTransactionAfterGettingObservingSignatures(
     const TransactionUUID &transactionUUID,
     BlockNumber maximalClaimingBlockNumber,
-    map<PaymentNodeID, lamport::Signature::Shared> participantsSignatures)
+    map<PaymentNodeID, sphincs::Signature::Shared> participantsSignatures)
 {
     info() << "launchPaymentTransactionAfterGettingObservingSignatures";
     auto ioTransaction = mStorageHandler->beginTransaction();

@@ -153,11 +153,6 @@ bool Signature::verify(const PublicKey& publicKey, const byte_t* data, size_t da
     return result == 1;
 }
 
-bool Signature::verify(const PublicKey& publicKey, const string& data) const
-{
-    return verify(publicKey, reinterpret_cast<const byte_t*>(data.c_str()), data.length());
-}
-
 const byte_t* Signature::data() const
 {
     return mSignatureData;
@@ -260,17 +255,6 @@ Signature::Shared signData(const PrivateKey& privateKey, const byte_t* data, siz
 Signature::Shared signData(const PrivateKey& privateKey, const string& data)
 {
     return signData(privateKey, reinterpret_cast<const byte_t*>(data.c_str()), data.length());
-}
-
-bool verifySignature(const PublicKey& publicKey, const Signature& signature, 
-                    const byte_t* data, size_t dataSize)
-{
-    return signature.verify(publicKey, data, dataSize);
-}
-
-bool verifySignature(const PublicKey& publicKey, const Signature& signature, const string& data)
-{
-    return signature.verify(publicKey, data);
 }
 
 } // namespace util

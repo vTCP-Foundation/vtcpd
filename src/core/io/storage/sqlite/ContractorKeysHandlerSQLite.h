@@ -6,14 +6,14 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/exceptions/ValueError.h"
-#include "../../../crypto/lamportkeys.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincskeys.h"
+#include "../../../crypto/sphincsscheme.h"
 #include "../../../common/memory/MemoryUtils.h"
 #include "SQLiteStatementRAII.h"
 #include <sqlite3.h>
 #include <memory>
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class ContractorKeysHandlerSQLite : public ContractorKeysHandler
 {

@@ -888,7 +888,7 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::sendFinalPathCon
                     mNextNodeID,
                     mPathStats->maxFlow(),
                     true);
-            auto signatureAndKeyNumber = keyChain.sign(
+            auto signature = keyChain.sign(
                                              ioTransaction,
                                              serializedOutgoingReceiptData.first,
                                              serializedOutgoingReceiptData.second);
@@ -896,9 +896,8 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::sendFinalPathCon
                         ioTransaction,
                         mTrustLinesManager->auditNumber(mNextNodeID),
                         mTransactionUUID,
-                        signatureAndKeyNumber.second,
                         mPathStats->maxFlow(),
-                        signatureAndKeyNumber.first)) {
+                        signature)) {
                 return reject("Can't save outgoing receipt. Rejected.");
             }
             info() << "send message with final path amount info for node "
@@ -911,8 +910,7 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::sendFinalPathCon
                 mPathStats->maxFlow(),
                 mPaymentParticipants,
                 mMaximalClaimingBlockNumber,
-                signatureAndKeyNumber.second,
-                signatureAndKeyNumber.first,
+                signature,
                 mPublicKey->hash());
         } else {
             info() << "send message with final path amount info for node "
@@ -1034,8 +1032,7 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runFinalReservat
                 ioTransaction,
                 serializedIncomingReceiptData.first,
                 serializedIncomingReceiptData.second,
-                kMessage->signature(),
-                kMessage->publicKeyNumber())) {
+                kMessage->signature())) {
         removeAllDataFromStorageConcerningTransaction(ioTransaction);
         // todo : inform all participants about transaction finishing
         return reject("Sender send invalid receipt signature. Rejected");
@@ -1044,7 +1041,6 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runFinalReservat
                 ioTransaction,
                 mTrustLinesManager->auditNumber(mPreviousNodeID),
                 mTransactionUUID,
-                kMessage->publicKeyNumber(),
                 participantTotalIncomingReservationAmount,
                 kMessage->signature())) {
         removeAllDataFromStorageConcerningTransaction(ioTransaction);
@@ -1121,10 +1117,10 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runVotesConsiste
             sender);
     // todo if we store participants public keys on database, then we should use KeyChain,
     // or we can check sign directly from mParticipantsPublicKeys
-    if (!participantSignature->check(
+    if (!participantSignature->verify(
+                *participantPublicKey,
                 participantSerializedVotesData.first.get(),
-                participantSerializedVotesData.second,
-                participantPublicKey)) {
+                participantSerializedVotesData.second)) {
         removeAllDataFromStorageConcerningTransaction();
         return reject("Participant rejected voting. Rolling back");
     }

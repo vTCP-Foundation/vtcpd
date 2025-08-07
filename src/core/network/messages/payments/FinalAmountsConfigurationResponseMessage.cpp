@@ -18,7 +18,7 @@ FinalAmountsConfigurationResponseMessage::FinalAmountsConfigurationResponseMessa
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID& transactionUUID,
     const OperationState state,
-    const lamport::PublicKey::Shared publicKey) :
+    const sphincs::PublicKey::Shared publicKey) :
 
     TransactionMessage(
         equivalent,
@@ -39,7 +39,7 @@ FinalAmountsConfigurationResponseMessage::FinalAmountsConfigurationResponseMessa
     mState = (OperationState) (*state);
     if (mState == Accepted) {
         bytesBufferOffset += sizeof(SerializedOperationState);
-        auto publicKey = make_shared<lamport::PublicKey>(
+        auto publicKey = make_shared<sphincs::PublicKey>(
                              buffer.get() + bytesBufferOffset);
         mPublicKey = publicKey;
     }
@@ -50,7 +50,7 @@ const FinalAmountsConfigurationResponseMessage::OperationState FinalAmountsConfi
     return mState;
 }
 
-const lamport::PublicKey::Shared FinalAmountsConfigurationResponseMessage::publicKey() const
+const sphincs::PublicKey::Shared FinalAmountsConfigurationResponseMessage::publicKey() const
 {
     return mPublicKey;
 }
@@ -64,7 +64,7 @@ pair<BytesShared, size_t> FinalAmountsConfigurationResponseMessage::serializeToB
         + sizeof(SerializedOperationState);
 
     if (mState == Accepted) {
-        bytesCount += mPublicKey->keySize();
+        bytesCount += sphincs::PublicKey::keySize();
     }
 
     BytesShared dataBytesShared = tryMalloc(bytesCount);
@@ -87,7 +87,7 @@ pair<BytesShared, size_t> FinalAmountsConfigurationResponseMessage::serializeToB
         memcpy(
             dataBytesShared.get() + dataBytesOffset,
             mPublicKey->data(),
-            mPublicKey->keySize());
+            sphincs::PublicKey::keySize());
     }
     return make_pair(
                dataBytesShared,

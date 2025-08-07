@@ -895,7 +895,7 @@ void Core::onAddTransactionToObservingCheckingSlot(
 void Core::onObservingParticipantsVotesSlot(
     const TransactionUUID &transactionUUID,
     BlockNumber maximalClaimingBlockNumber,
-    map<PaymentNodeID, lamport::Signature::Shared> participantsSignatures)
+    map<PaymentNodeID, sphincs::Signature::Shared> participantsSignatures)
 {
     mTransactionsManager->launchPaymentTransactionAfterGettingObservingSignatures(
         transactionUUID,

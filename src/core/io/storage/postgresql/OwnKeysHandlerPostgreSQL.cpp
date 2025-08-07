@@ -81,12 +81,9 @@ void OwnKeysHandlerPostgreSQL::saveKey(
     string seqStr=to_string(keysSetSequenceNumber); params[2]=seqStr.c_str(); lengths[2]=0;
     params[3]=reinterpret_cast<const char*>(publicKey->data()); lengths[3]=publicKey->keySize();
 
-    BytesShared privBuf = tryMalloc(PrivateKey::keySize());
-    {
-        auto guard = privateKey->data()->unlockAndInitGuard();
-        memcpy(privBuf.get(), guard.address(), PrivateKey::keySize());
-    }
-    params[4]=reinterpret_cast<const char*>(privBuf.get()); lengths[4]=PrivateKey::keySize();
+    auto privateKeyData = privateKey->serialize();
+    auto guard = privateKeyData.unlockAndInitGuard();
+    params[4]=reinterpret_cast<const char*>(guard.address()); lengths[4]=PrivateKey::privateKeySize();
 
     string numStr=to_string(number); params[5]=numStr.c_str(); lengths[5]=0;
 

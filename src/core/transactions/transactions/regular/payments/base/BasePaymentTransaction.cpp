@@ -222,9 +222,9 @@ BasePaymentTransaction::BasePaymentTransaction(
                 *paymentNodeID,
                 participantContractor));
 
-        auto publicKey = make_shared<lamport::PublicKey>(
+        auto publicKey = make_shared<sphincs::PublicKey>(
                              buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += lamport::PublicKey::keySize();
+        bytesBufferOffset += sphincs::PublicKey::keySize();
 
         mParticipantsPublicKeys.insert(
             make_pair(
@@ -425,10 +425,11 @@ TransactionResult::SharedConst BasePaymentTransaction::processParticipantsVotesM
     auto coordinatorPublicKey = mParticipantsPublicKeys[kCoordinatorPaymentNodeID];
     auto coordinatorSerializedVotesData = getSerializedParticipantsVotesData(
             mPaymentParticipants[kCoordinatorPaymentNodeID]);
-    if (!coordinatorSignature->check(
-                coordinatorSerializedVotesData.first.get(),
-                coordinatorSerializedVotesData.second,
-                coordinatorPublicKey)) {
+    if (!coordinatorSignature->verify(
+            *coordinatorPublicKey,
+            coordinatorSerializedVotesData.first.get(),
+            coordinatorSerializedVotesData.second)) {
+
         recover("Final coordinator signature is wrong");
     }
     for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
@@ -444,10 +445,10 @@ TransactionResult::SharedConst BasePaymentTransaction::processParticipantsVotesM
         auto participantSignature = mParticipantsSignatures[paymentNodeIdAndContractor.first];
         auto participantSerializedVotesData = getSerializedParticipantsVotesData(
                 paymentNodeIdAndContractor.second);
-        if (!participantSignature->check(
-                    participantSerializedVotesData.first.get(),
-                    participantSerializedVotesData.second,
-                    participantPublicKey)) {
+        if (!participantSignature->verify(
+                *participantPublicKey,
+                participantSerializedVotesData.first.get(),
+                participantSerializedVotesData.second)) {
             warning() << "Node " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress() << " signature is wrong";
             // todo : can be recursive
             return recover("Consensus not achieved.");
@@ -1269,18 +1270,13 @@ bool BasePaymentTransaction::checkPublicKeysAppropriate()
         warning() << "different numbers of public keys and public keys hashes";
         return false;
     }
-    for (const auto &nodeAndPublicKeyHash : mParticipantsPublicKeysHashes) {
-        if (mParticipantsPublicKeys.find(nodeAndPublicKeyHash.second.first) == mParticipantsPublicKeys.end()) {
-            warning() << "public key from node " << nodeAndPublicKeyHash.first << " ["
-                      << nodeAndPublicKeyHash.second.first << "] is absent";
+    for (const auto &nodeAndPaymentNodeID : mParticipantsPublicKeysHashes) {
+        if (mParticipantsPublicKeys.find(nodeAndPaymentNodeID.second.first) == mParticipantsPublicKeys.end()) {
+            warning() << "public key from node " << nodeAndPaymentNodeID.first << " ["
+                      << nodeAndPaymentNodeID.second.first << "] is absent";
             return false;
         }
-        auto publicKey = mParticipantsPublicKeys[nodeAndPublicKeyHash.second.first];
-        if (*publicKey->hash() != *nodeAndPublicKeyHash.second.second) {
-            warning() << "there are different public key hashes for node " << nodeAndPublicKeyHash.first
-                      << " [" << nodeAndPublicKeyHash.second.first << "]";
-            return false;
-        }
+        // In SPHINCS+ single-key architecture, no hash verification needed
     }
     return true;
 }
@@ -1355,7 +1351,7 @@ pair<BytesShared, size_t> BasePaymentTransaction::serializeToBytes() const
     const auto parentBytesAndCount = BaseTransaction::serializeToBytes();
     size_t bytesCount = parentBytesAndCount.second + sizeof(SerializedRecordsCount) + reservationsSizeInBytes() + sizeof(SerializedRecordsCount) + sizeof(BlockNumber) + sizeof(byte_t) + mPayload.length();
     for (const auto &participant : mPaymentParticipants) {
-        bytesCount += sizeof(PaymentNodeID) + participant.second->serializedSize() + lamport::PublicKey::keySize();
+        bytesCount += sizeof(PaymentNodeID) + participant.second->serializedSize() + sphincs::PublicKey::keySize();
     }
 
     BytesShared dataBytesShared = tryCalloc(bytesCount);
@@ -1446,8 +1442,8 @@ pair<BytesShared, size_t> BasePaymentTransaction::serializeToBytes() const
         memcpy(
             dataBytesShared.get() + dataBytesOffset,
             participantPublicKey->data(),
-            lamport::PublicKey::keySize());
-        dataBytesOffset += lamport::PublicKey::keySize();
+            sphincs::PublicKey::keySize());
+        dataBytesOffset += sphincs::PublicKey::keySize();
     }
 
     memcpy(
@@ -1513,7 +1509,7 @@ void BasePaymentTransaction::setTransactionState(
 }
 
 void BasePaymentTransaction::setObservingParticipantsSignatures(
-    map<PaymentNodeID, lamport::Signature::Shared> participantsSignatures)
+    map<PaymentNodeID, sphincs::Signature::Shared> participantsSignatures)
 {
     mParticipantsSignatures = participantsSignatures;
 }

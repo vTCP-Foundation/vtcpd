@@ -7,7 +7,7 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/exceptions/ValueError.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincsscheme.h"
 #include "../record/audit/AuditRecord.h"
 
 #include <vector>
@@ -24,12 +24,12 @@ public:
     virtual void saveFullAudit(
         AuditNumber number,
         TrustLineID trustLineID,
-        lamport::KeyHash::Shared ownKeyHash,
-        lamport::Signature::Shared ownSignature,
-        lamport::KeyHash::Shared contractorKeyHash,
-        lamport::Signature::Shared contractorSignature,
-        lamport::KeyHash::Shared ownKeysSetHash,
-        lamport::KeyHash::Shared contractorKeysSetHash,
+        sphincs::KeyHash::Shared ownKeyHash,
+        sphincs::Signature::Shared ownSignature,
+        sphincs::KeyHash::Shared contractorKeyHash,
+        sphincs::Signature::Shared contractorSignature,
+        sphincs::KeyHash::Shared ownKeysSetHash,
+        sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance) = 0;
@@ -37,10 +37,10 @@ public:
     virtual void saveOwnAuditPart(
         AuditNumber number,
         TrustLineID trustLineID,
-        lamport::KeyHash::Shared ownKeyHash,
-        lamport::Signature::Shared ownSignature,
-        lamport::KeyHash::Shared ownKeysSetHash,
-        lamport::KeyHash::Shared contractorKeysSetHash,
+        sphincs::KeyHash::Shared ownKeyHash,
+        sphincs::Signature::Shared ownSignature,
+        sphincs::KeyHash::Shared ownKeysSetHash,
+        sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance) = 0;
@@ -48,8 +48,8 @@ public:
     virtual void saveContractorAuditPart(
         AuditNumber number,
         TrustLineID trustLineID,
-        lamport::KeyHash::Shared contractorKeyHash,
-        lamport::Signature::Shared contractorSignature) = 0;
+        sphincs::KeyHash::Shared contractorKeyHash,
+        sphincs::Signature::Shared contractorSignature) = 0;
 
     virtual const AuditRecord::Shared getActualAudit(
         TrustLineID trustLineID) = 0;
@@ -72,7 +72,7 @@ public:
         AuditNumber auditNumber) = 0;
 
     virtual bool isContainsKeyHash(
-        lamport::KeyHash::Shared keyHash) const = 0;
+        sphincs::KeyHash::Shared keyHash) const = 0;
 };
 
 #endif //VTCPD_INTERFACES_AUDITHANDLER_H 

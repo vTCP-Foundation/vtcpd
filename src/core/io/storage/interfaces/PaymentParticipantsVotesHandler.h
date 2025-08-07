@@ -8,10 +8,10 @@
 #include "../../../transactions/transactions/base/TransactionUUID.h"
 #include "../../../common/Types.h"
 #include "../../../contractors/Contractor.h"
-#include "../../../crypto/lamportkeys.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincskeys.h"
+#include "../../../crypto/sphincsscheme.h"
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class PaymentParticipantsVotesHandler
 {

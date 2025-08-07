@@ -205,7 +205,7 @@ vector<ReceiptRecord::Shared> OutgoingPaymentReceiptHandlerSQLite::receiptsByAud
 
         TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 1));
 
-        auto ownKeyHash = make_shared<lamport::KeyHash>(
+        auto ownKeyHash = make_shared<KeyHash>(
                               (byte_t*)sqlite3_column_blob(stmt.get(), 2));
 
         result.push_back(make_shared<ReceiptRecord>(
@@ -257,7 +257,7 @@ vector<ReceiptRecord::Shared> OutgoingPaymentReceiptHandlerSQLite::receiptsLessE
 
         TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 1));
 
-        auto ownKeyHash = make_shared<lamport::KeyHash>(
+        auto ownKeyHash = make_shared<KeyHash>(
                               (byte_t*)sqlite3_column_blob(stmt.get(), 2));
 
         auto currentAuditNumber = (AuditNumber)sqlite3_column_int(stmt.get(), 3);

@@ -645,8 +645,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalP
                     ioTransaction,
                     serializedIncomingReceiptData.first,
                     serializedIncomingReceiptData.second,
-                    kMessage->signature(),
-                    kMessage->publicKeyNumber())) {
+                    kMessage->signature())) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Coordinator send invalid receipt signature. Rejected");
@@ -655,7 +654,6 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalP
                     ioTransaction,
                     mTrustLinesManager->auditNumber(coordinatorID),
                     mTransactionUUID,
-                    kMessage->publicKeyNumber(),
                     coordinatorTotalIncomingReservationAmount,
                     kMessage->signature())) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
@@ -762,7 +760,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runCheckO
                     outgoingReservedAmount,
                     true);
             try {
-                auto signatureAndKeyNumber = keyChain.sign(
+                auto signature = keyChain.sign(
                                                  ioTransaction,
                                                  serializedOutgoingReceiptData.first,
                                                  serializedOutgoingReceiptData.second);
@@ -770,9 +768,8 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runCheckO
                             ioTransaction,
                             mTrustLinesManager->auditNumber(participantID),
                             mTransactionUUID,
-                            signatureAndKeyNumber.second,
                             outgoingReservedAmount,
-                            signatureAndKeyNumber.first)) {
+                            signature)) {
                     removeAllDataFromStorageConcerningTransaction(ioTransaction);
                     sendErrorMessageOnFinalAmountsConfiguration();
                     return reject("Can't save outgoing receipt. Rejected.");
@@ -784,8 +781,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runCheckO
                     currentTransactionUUID(),
                     ownPaymentID,
                     mPublicKey->hash(),
-                    signatureAndKeyNumber.second,
-                    signatureAndKeyNumber.first);
+                    signature);
             } catch (NotFoundError &e) {
                 warning() << e.what();
                 publicKeysSharingSignal(participantID, mEquivalent);
@@ -875,8 +871,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalR
                     ioTransaction,
                     serializedIncomingReceiptData.first,
                     serializedIncomingReceiptData.second,
-                    kMessage->signature(),
-                    kMessage->publicKeyNumber())) {
+                    kMessage->signature())) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Sender send invalid receipt signature. Rejected");
@@ -885,7 +880,6 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalR
                     ioTransaction,
                     mTrustLinesManager->auditNumber(senderID),
                     mTransactionUUID,
-                    kMessage->publicKeyNumber(),
                     participantTotalIncomingReservationAmount,
                     kMessage->signature())) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);

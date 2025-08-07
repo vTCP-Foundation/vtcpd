@@ -67,12 +67,9 @@ void PaymentKeysHandlerPostgreSQL::saveOwnKey(
     params[0] = reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
     params[1] = reinterpret_cast<const char*>(publicKey->data()); lengths[1]=publicKey->keySize();
 
-    BytesShared privBuf = tryMalloc(privateKey->keySize());
-    {
-        auto g = privateKey->data()->unlockAndInitGuard();
-        memcpy(privBuf.get(), g.address(), privateKey->keySize());
-    }
-    params[2] = reinterpret_cast<const char*>(privBuf.get()); lengths[2]=privateKey->keySize();
+    auto privateKeyData = privateKey->serialize();
+    auto guard = privateKeyData.unlockAndInitGuard();
+    params[2] = reinterpret_cast<const char*>(guard.address()); lengths[2]=privateKey->privateKeySize();
 
     PGresult *res = PQexecParams(mDataBase, query.c_str(), kParams, nullptr, params, lengths, formats, 0);
     checkCmd(mDataBase,res,"saveOwnKey");

@@ -2,8 +2,8 @@
 #define VTCPD_AUDITRECORD_H
 
 #include "../../../../common/Types.h"
-#include "../../../../crypto/lamportkeys.h"
-#include "../../../../crypto/lamportscheme.h"
+#include "../../../../crypto/sphincskeys.h"
+#include "../../../../crypto/sphincsscheme.h"
 #include "../../../../common/multiprecision/MultiprecisionUtils.h"
 #include "../../../../common/memory/MemoryUtils.h"
 
@@ -26,12 +26,12 @@ public:
         TrustLineAmount &incomingAmount,
         TrustLineAmount &outgoingAmount,
         TrustLineBalance &balance,
-        lamport::KeyHash::Shared ownKeyHash,
-        lamport::Signature::Shared ownSignature,
-        lamport::KeyHash::Shared contractorKeyHash,
-        lamport::Signature::Shared contractorSignature,
-        lamport::KeyHash::Shared ownKeysSetHash,
-        lamport::KeyHash::Shared contractorKeysSetHash);
+        sphincs::KeyHash::Shared ownKeyHash,
+        sphincs::Signature::Shared ownSignature,
+        sphincs::KeyHash::Shared contractorKeyHash,
+        sphincs::Signature::Shared contractorSignature,
+        sphincs::KeyHash::Shared ownKeysSetHash,
+        sphincs::KeyHash::Shared contractorKeysSetHash);
 
     AuditRecord(
         byte_t* buffer);
@@ -44,28 +44,28 @@ public:
 
     const TrustLineBalance &balance() const;
 
-    const lamport::KeyHash::Shared ownKeyHash() const;
+    const sphincs::KeyHash::Shared ownKeyHash() const;
 
-    const lamport::Signature::Shared ownSignature() const;
+    const sphincs::Signature::Shared ownSignature() const;
 
-    const lamport::KeyHash::Shared contractorKeyHash() const;
+    const sphincs::KeyHash::Shared contractorKeyHash() const;
 
-    const lamport::Signature::Shared contractorSignature() const;
+    const sphincs::Signature::Shared contractorSignature() const;
 
-    const lamport::KeyHash::Shared ownKeysSetHash() const;
+    const sphincs::KeyHash::Shared ownKeysSetHash() const;
 
-    const lamport::KeyHash::Shared contractorKeysSetHash() const;
+    const sphincs::KeyHash::Shared contractorKeysSetHash() const;
 
     void setContractorSignature(
-        lamport::Signature::Shared signature);
+        sphincs::Signature::Shared signature);
 
     bool isPendingState() const;
 
     void setOwnKeysSetHash(
-        lamport::KeyHash::Shared ownKeysSetHash);
+        sphincs::KeyHash::Shared ownKeysSetHash);
 
     void setContractorKeysSetHash(
-        lamport::KeyHash::Shared contractorKeysSetHash);
+        sphincs::KeyHash::Shared contractorKeysSetHash);
 
     BytesShared serializeToBytes();
 
@@ -82,12 +82,12 @@ private:
     TrustLineAmount mIncomingAmount;
     TrustLineAmount mOutgoingAmount;
     TrustLineBalance mBalance;
-    lamport::KeyHash::Shared mOwnKeyHash;
-    lamport::Signature::Shared mOwnSignature;
-    lamport::KeyHash::Shared mContractorKeyHash;
-    lamport::Signature::Shared mContractorSignature;
-    lamport::KeyHash::Shared mOwnKeysSetHash;
-    lamport::KeyHash::Shared mContractorKeysSetHash;
+    sphincs::KeyHash::Shared mOwnKeyHash;
+    sphincs::Signature::Shared mOwnSignature;
+    sphincs::KeyHash::Shared mContractorKeyHash;
+    sphincs::Signature::Shared mContractorSignature;
+    sphincs::KeyHash::Shared mOwnKeysSetHash;
+    sphincs::KeyHash::Shared mContractorKeysSetHash;
 };
 
 #endif // VTCPD_AUDITRECORD_H

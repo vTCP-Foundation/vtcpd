@@ -62,17 +62,10 @@ void PaymentKeysHandlerSQLite::saveOwnKey(
     }
 
     // todo encrypt private key data
-    BytesShared buffer = tryMalloc(privateKey->keySize());
-    {
-        auto g = privateKey->data()->unlockAndInitGuard();
-        memcpy(
-            buffer.get(),
-            g.address(),
-            privateKey->keySize());
-    }
-    auto g = privateKey->data()->unlockAndInitGuard();
-    rc = sqlite3_bind_blob(stmt.get(), 3, buffer.get(),
-                           (int)privateKey->keySize(), SQLITE_STATIC);
+    auto privateKeyData = privateKey->serialize();
+    auto guard = privateKeyData.unlockAndInitGuard();
+    rc = sqlite3_bind_blob(stmt.get(), 3, guard.address(),
+                           (int)privateKey->privateKeySize(), SQLITE_STATIC);
     if (rc != SQLITE_OK) {
         throw IOError("PaymentKeysHandlerSQLite::saveOwnKey: "
                       "Bad binding of Private Key; sqlite error: " +

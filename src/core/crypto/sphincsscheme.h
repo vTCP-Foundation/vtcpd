@@ -95,14 +95,6 @@ public:
     bool verify(const PublicKey& publicKey, const byte_t* data, size_t dataSize) const;
 
     /**
-     * @brief Verify signature against public key - convenient overload
-     * @param publicKey Public key to use for verification
-     * @param data Original data that was signed as string
-     * @return true if signature is valid, false otherwise
-     */
-    bool verify(const PublicKey& publicKey, const string& data) const;
-
-    /**
      * @brief Get raw signature data
      * @return Pointer to signature bytes
      */
@@ -187,26 +179,6 @@ Signature::Shared signData(const PrivateKey& privateKey, const byte_t* data, siz
  * @return Signature shared pointer, or nullptr on failure
  */
 Signature::Shared signData(const PrivateKey& privateKey, const string& data);
-
-/**
- * @brief Verify signature against data
- * @param publicKey Public key to use for verification
- * @param signature Signature to verify
- * @param data Original data that was signed
- * @param dataSize Size of data in bytes
- * @return true if signature is valid, false otherwise
- */
-bool verifySignature(const PublicKey& publicKey, const Signature& signature, 
-                    const byte_t* data, size_t dataSize);
-
-/**
- * @brief Verify signature against string data
- * @param publicKey Public key to use for verification
- * @param signature Signature to verify
- * @param data Original string data that was signed
- * @return true if signature is valid, false otherwise
- */
-bool verifySignature(const PublicKey& publicKey, const Signature& signature, const string& data);
 
 } // namespace util
 

@@ -15,8 +15,7 @@ public:
         Contractor::Shared contractor,
         const TransactionUUID &transactionUUID,
         const KeysCount keysCount,
-        const KeyNumber number,
-        const lamport::PublicKey::Shared publicKey);
+        const crypto::sphincs::PublicKey::Shared publicKey);
 
     PublicKeysSharingInitMessage(
         BytesShared buffer);

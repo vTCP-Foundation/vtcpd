@@ -213,10 +213,10 @@ vector<ReceiptRecord::Shared> IncomingPaymentReceiptHandlerSQLite::receiptsByAud
 
         TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 1));
 
-        auto contractorKeyHash = make_shared<lamport::KeyHash>(
+        auto contractorKeyHash = make_shared<KeyHash>(
                                      (byte_t*)sqlite3_column_blob(stmt.get(), 2));
 
-        auto contractorSignature = make_shared<lamport::Signature>(
+        auto contractorSignature = make_shared<Signature>(
                                        (byte_t*)sqlite3_column_blob(stmt.get(), 3));
 
         result.push_back(make_shared<ReceiptRecord>(
@@ -266,10 +266,10 @@ vector<ReceiptRecord::Shared> IncomingPaymentReceiptHandlerSQLite::receiptsLessE
 
         TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 1));
 
-        auto contractorKeyHash = make_shared<lamport::KeyHash>(
+        auto contractorKeyHash = make_shared<KeyHash>(
                                      (byte_t*)sqlite3_column_blob(stmt.get(), 2));
 
-        auto contractorSignature = make_shared<lamport::Signature>(
+        auto contractorSignature = make_shared<Signature>(
                                        (byte_t*)sqlite3_column_blob(stmt.get(), 3));
 
         result.push_back(make_shared<ReceiptRecord>(

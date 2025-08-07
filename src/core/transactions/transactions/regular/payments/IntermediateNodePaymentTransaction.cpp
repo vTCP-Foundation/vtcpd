@@ -736,8 +736,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runFinalReser
                     ioTransaction,
                     serializedIncomingReceiptData.first,
                     serializedIncomingReceiptData.second,
-                    kMessage->signature(),
-                    kMessage->publicKeyNumber())) {
+                    kMessage->signature())) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Coordinator send invalid receipt signature. Rejected");
@@ -746,7 +745,6 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runFinalReser
                     ioTransaction,
                     mTrustLinesManager->auditNumber(coordinatorID),
                     mTransactionUUID,
-                    kMessage->publicKeyNumber(),
                     coordinatorTotalIncomingReservationAmount,
                     kMessage->signature())) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
@@ -897,7 +895,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
                     participantID,
                     outgoingReservedAmount,
                     true);
-            auto signatureAndKeyNumber = keyChain.sign(
+            auto signature = keyChain.sign(
                                              ioTransaction,
                                              serializedOutgoingReceiptData.first,
                                              serializedOutgoingReceiptData.second);
@@ -905,15 +903,14 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
                         ioTransaction,
                         mTrustLinesManager->auditNumber(participantID),
                         mTransactionUUID,
-                        signatureAndKeyNumber.second,
                         outgoingReservedAmount,
-                        signatureAndKeyNumber.first)) {
+                        signature)) {
                 removeAllDataFromStorageConcerningTransaction(ioTransaction);
                 sendErrorMessageOnFinalAmountsConfiguration();
                 return reject("Can't save outgoing receipt. Rejected.");
             }
             info() << "Send public key hash to " << nodePaymentIdAndContractor.second->mainAddress()->fullAddress()
-                   << " with receipt " << outgoingReservedAmount << " signed by key number " << signatureAndKeyNumber.second;
+                   << " with receipt " << outgoingReservedAmount;
             sendMessage<TransactionPublicKeyHashMessage>(
                 nodePaymentIdAndContractor.second->mainAddress(),
                 mEquivalent,
@@ -921,8 +918,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
                 currentTransactionUUID(),
                 ownPaymentID,
                 mPublicKey->hash(),
-                signatureAndKeyNumber.second,
-                signatureAndKeyNumber.first);
+                signature);
         } else {
             info() << "Send public key hash to " << nodePaymentIdAndContractor.second->mainAddress()->fullAddress();
             sendMessage<TransactionPublicKeyHashMessage>(
@@ -1002,8 +998,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runFinalReser
                     ioTransaction,
                     serializedIncomingReceiptData.first,
                     serializedIncomingReceiptData.second,
-                    kMessage->signature(),
-                    kMessage->publicKeyNumber())) {
+                    kMessage->signature())) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Sender send invalid receipt signature. Rejected");
@@ -1012,7 +1007,6 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runFinalReser
                     ioTransaction,
                     mTrustLinesManager->auditNumber(senderID),
                     mTransactionUUID,
-                    kMessage->publicKeyNumber(),
                     participantTotalIncomingReservationAmount,
                     kMessage->signature())) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);

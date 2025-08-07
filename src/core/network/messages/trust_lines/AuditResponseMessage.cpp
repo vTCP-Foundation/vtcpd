@@ -4,14 +4,12 @@ AuditResponseMessage::AuditResponseMessage(
     const SerializedEquivalent equivalent,
     Contractor::Shared contractor,
     const TransactionUUID &transactionUUID,
-    const KeyNumber keyNumber,
-    const lamport::Signature::Shared signature):
+    const sphincs::Signature::Shared signature):
     ConfirmationMessage(
         equivalent,
         contractor->ownIdOnContractorSide(),
         transactionUUID),
-    mSignature(signature),
-    mKeyNumber(keyNumber)
+    mSignature(signature)
 {
     encrypt(contractor);
 }
@@ -38,13 +36,7 @@ AuditResponseMessage::AuditResponseMessage(
     auto bytesBufferOffset = ConfirmationMessage::kOffsetToInheritedBytes();
 
     if (state() == ConfirmationMessage::OK) {
-        memcpy(
-            &mKeyNumber,
-            buffer.get() + bytesBufferOffset,
-            sizeof(KeyNumber));
-        bytesBufferOffset += sizeof(KeyNumber);
-
-        mSignature = make_shared<lamport::Signature>(
+        mSignature = make_shared<sphincs::Signature>(
                          buffer.get() + bytesBufferOffset);
     }
 }
@@ -54,12 +46,7 @@ const Message::MessageType AuditResponseMessage::typeID() const
     return Message::TrustLines_AuditConfirmation;
 }
 
-const uint32_t AuditResponseMessage::keyNumber() const
-{
-    return mKeyNumber;
-}
-
-const lamport::Signature::Shared AuditResponseMessage::signature() const
+const sphincs::Signature::Shared AuditResponseMessage::signature() const
 {
     return mSignature;
 }
@@ -69,7 +56,7 @@ pair<BytesShared, size_t> AuditResponseMessage::serializeToBytes() const
     const auto parentBytesAndCount = ConfirmationMessage::serializeToBytes();
     auto kBufferSize = parentBytesAndCount.second;
     if (state() == ConfirmationMessage::OK) {
-        kBufferSize += sizeof(KeyNumber) + mSignature->signatureSize();
+        kBufferSize += mSignature->signatureSize();
     }
     BytesShared buffer = tryMalloc(kBufferSize);
 
@@ -82,12 +69,6 @@ pair<BytesShared, size_t> AuditResponseMessage::serializeToBytes() const
 
     if (state() == ConfirmationMessage::OK) {
         dataBytesOffset += parentBytesAndCount.second;
-
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            &mKeyNumber,
-            sizeof(KeyNumber));
-        dataBytesOffset += sizeof(KeyNumber);
 
         memcpy(
             buffer.get() + dataBytesOffset,

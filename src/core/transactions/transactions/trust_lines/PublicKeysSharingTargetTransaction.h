@@ -5,7 +5,7 @@
 #include "../../../contractors/ContractorsManager.h"
 #include "../../../trust_lines/manager/TrustLinesManager.h"
 #include "../../../crypto/keychain.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincskeys.h"
 
 #include "../../../subsystems_controller/TrustLinesInfluenceController.h"
 
@@ -67,8 +67,7 @@ private:
     string mSenderIncomingIP;
     vector<BaseAddress::Shared> mContractorAddresses;
     KeyNumber mCurrentKeysSetSequenceNumber;
-    KeyNumber mCurrentKeyNumber;
-    lamport::PublicKey::Shared mCurrentPublicKey;
+    crypto::sphincs::PublicKey::Shared mCurrentPublicKey;
     KeysCount mContractorKeysCount;
 
     TrustLinesInfluenceController *mTrustLinesInfluenceController;

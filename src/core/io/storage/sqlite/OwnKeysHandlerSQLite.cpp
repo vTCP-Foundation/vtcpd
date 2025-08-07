@@ -118,15 +118,11 @@ void OwnKeysHandlerSQLite::saveKey(
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
-    // Bind private_key - securely copy private key data
-    BytesShared buffer = tryMalloc(PrivateKey::keySize());
-    {
-        auto guard = privateKey->data()->unlockAndInitGuard();
-        memcpy(buffer.get(), guard.address(), PrivateKey::keySize());
-    }
-
-    rc = sqlite3_bind_blob(stmt.get(), 5, buffer.get(),
-                           (int)PrivateKey::keySize(), SQLITE_TRANSIENT);
+    // Bind private_key - copy private key data from secure segment
+    auto privateKeyData = privateKey->serialize();
+    auto guard = privateKeyData.unlockAndInitGuard();
+    rc = sqlite3_bind_blob(stmt.get(), 5, guard.address(),
+                           (int)PrivateKey::privateKeySize(), SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) {
         throw IOError("OwnKeysHandlerSQLite::saveKey: Failed to bind private_key. "
                       "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
@@ -154,7 +150,7 @@ void OwnKeysHandlerSQLite::saveKey(
            << ", KeyNumber=" << number
            << ", Sequence=" << keysSetSequenceNumber
            << ", PublicKeySize=" << publicKey->keySize()
-           << ", PrivateKeySize=" << PrivateKey::keySize();
+           << ", PrivateKeySize=" << PrivateKey::privateKeySize();
 #endif
 }
 

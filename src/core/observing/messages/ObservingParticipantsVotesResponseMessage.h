@@ -3,7 +3,7 @@
 
 #include "base/ObservingResponseMessage.h"
 #include "../../transactions/transactions/base/TransactionUUID.h"
-#include "../../crypto/lamportscheme.h"
+#include "../../crypto/sphincsscheme.h"
 
 #include <map>
 
@@ -25,14 +25,14 @@ public:
 
     const BlockNumber maximalClaimingBlockNumber() const;
 
-    const map<PaymentNodeID, lamport::Signature::Shared>& participantsSignatures() const;
+    const map<PaymentNodeID, sphincs::Signature::Shared>& participantsSignatures() const;
 
 private:
     ObservingTransaction::SerializedObservingResponseType mObservingResponse;
     bool mIsParticipantsVotesPresent;
     TransactionUUID mTransactionUUID;
     BlockNumber mMaximalClaimingBlockNumber;
-    map<PaymentNodeID, lamport::Signature::Shared> mParticipantsSignatures;
+    map<PaymentNodeID, sphincs::Signature::Shared> mParticipantsSignatures;
 };
 
 

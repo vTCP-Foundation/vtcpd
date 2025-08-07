@@ -67,10 +67,10 @@ TransactionResult::SharedConst BaseTrustLineTransaction::sendAuditErrorConfirmat
 }
 
 pair<BytesShared, size_t> BaseTrustLineTransaction::getOwnSerializedAuditData(
-    lamport::KeyHash::Shared ownPublicKeysHash,
-    lamport::KeyHash::Shared contractorPublicKeysHash)
+    crypto::sphincs::KeyHash::Shared ownPublicKeysHash,
+    crypto::sphincs::KeyHash::Shared contractorPublicKeysHash)
 {
-    size_t bytesCount = sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + kTrustLineBalanceSerializeBytesCount + lamport::KeyHash::kBytesSize + lamport::KeyHash::kBytesSize + sizeof(EquivalentRegisterAddressLength) + mFeaturesManager->getEquivalentsRegistryAddress().length();
+    size_t bytesCount = sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + kTrustLineBalanceSerializeBytesCount + crypto::sphincs::KeyHash::kBytesSize + crypto::sphincs::KeyHash::kBytesSize + sizeof(EquivalentRegisterAddressLength) + mFeaturesManager->getEquivalentsRegistryAddress().length();
     BytesShared dataBytesShared = tryCalloc(bytesCount);
     size_t dataBytesOffset = 0;
 
@@ -113,15 +113,15 @@ pair<BytesShared, size_t> BaseTrustLineTransaction::getOwnSerializedAuditData(
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         ownPublicKeysHash->data(),
-        lamport::KeyHash::kBytesSize);
-    dataBytesOffset += lamport::KeyHash::kBytesSize;
+        crypto::sphincs::KeyHash::kBytesSize);
+    dataBytesOffset += crypto::sphincs::KeyHash::kBytesSize;
     info() << "Own keys hash: " << ownPublicKeysHash->toString();
 
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         contractorPublicKeysHash->data(),
-        lamport::KeyHash::kBytesSize);
-    dataBytesOffset += lamport::KeyHash::kBytesSize;
+        crypto::sphincs::KeyHash::kBytesSize);
+    dataBytesOffset += crypto::sphincs::KeyHash::kBytesSize;
     info() << "Contractor keys hash: " << contractorPublicKeysHash->toString();
 
     auto equivalentRegistryAddress = mFeaturesManager->getEquivalentsRegistryAddress();
@@ -143,10 +143,10 @@ pair<BytesShared, size_t> BaseTrustLineTransaction::getOwnSerializedAuditData(
 }
 
 pair<BytesShared, size_t> BaseTrustLineTransaction::getContractorSerializedAuditData(
-    lamport::KeyHash::Shared ownPublicKeysHash,
-    lamport::KeyHash::Shared contractorPublicKeysHash)
+    crypto::sphincs::KeyHash::Shared ownPublicKeysHash,
+    crypto::sphincs::KeyHash::Shared contractorPublicKeysHash)
 {
-    size_t bytesCount = sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + kTrustLineBalanceSerializeBytesCount + lamport::KeyHash::kBytesSize + lamport::KeyHash::kBytesSize + sizeof(EquivalentRegisterAddressLength) + mFeaturesManager->getEquivalentsRegistryAddress().length();
+    size_t bytesCount = sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + kTrustLineBalanceSerializeBytesCount + crypto::sphincs::KeyHash::kBytesSize + crypto::sphincs::KeyHash::kBytesSize + sizeof(EquivalentRegisterAddressLength) + mFeaturesManager->getEquivalentsRegistryAddress().length();
     BytesShared dataBytesShared = tryCalloc(bytesCount);
     size_t dataBytesOffset = 0;
 
@@ -190,15 +190,15 @@ pair<BytesShared, size_t> BaseTrustLineTransaction::getContractorSerializedAudit
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         contractorPublicKeysHash->data(),
-        lamport::KeyHash::kBytesSize);
-    dataBytesOffset += lamport::KeyHash::kBytesSize;
+        crypto::sphincs::KeyHash::kBytesSize);
+    dataBytesOffset += crypto::sphincs::KeyHash::kBytesSize;
     info() << "Contractor keys hash: " << contractorPublicKeysHash->toString();
 
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         ownPublicKeysHash->data(),
-        lamport::KeyHash::kBytesSize);
-    dataBytesOffset += lamport::KeyHash::kBytesSize;
+        crypto::sphincs::KeyHash::kBytesSize);
+    dataBytesOffset += crypto::sphincs::KeyHash::kBytesSize;
     info() << "Own keys hash: " << ownPublicKeysHash->toString();
 
     auto equivalentRegistryAddress = mFeaturesManager->getEquivalentsRegistryAddress();

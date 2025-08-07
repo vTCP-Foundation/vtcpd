@@ -6,10 +6,10 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/memory/MemoryUtils.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincskeys.h"
 #include <sqlite3.h>
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class PaymentKeysHandler
 {

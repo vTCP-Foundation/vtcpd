@@ -6,12 +6,12 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/memory/MemoryUtils.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincskeys.h"
 #include <libpq-fe.h>
 #include <string>
 #include <vector>
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class PaymentKeysHandlerPostgreSQL : public PaymentKeysHandler
 {
