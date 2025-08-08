@@ -1,8 +1,6 @@
 #include "gtest/gtest.h"
 #include "../../../../src/core/io/storage/postgresql/IncomingPaymentReceiptHandlerPostgreSQL.h"
 #include "../../../../src/core/logger/Logger.h"
-#include "../../../../src/core/crypto/lamportkeys.h"
-#include "../../../../src/core/crypto/lamportscheme.h"
 #include "../../../../src/core/io/storage/record/audit/ReceiptRecord.h"
 #include "../../../../src/core/transactions/transactions/base/TransactionUUID.h"
 #include "../fixtures/DatabaseTestHelper.h"
@@ -15,7 +13,6 @@
 #include <libpq-fe.h>
 #include <sodium.h>
 
-using namespace crypto::lamport;
 
 class IncomingPaymentReceiptHandlerPostgreSQLIntegrationTest : public ::testing::Test {
 protected:

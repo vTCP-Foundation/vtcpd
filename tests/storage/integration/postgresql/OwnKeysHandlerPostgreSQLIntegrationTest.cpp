@@ -1,8 +1,6 @@
 #include "gtest/gtest.h"
 #include "../../../../src/core/io/storage/postgresql/OwnKeysHandlerPostgreSQL.h"
 #include "../../../../src/core/logger/Logger.h"
-#include "../../../../src/core/crypto/lamportkeys.h"
-#include "../../../../src/core/crypto/lamportscheme.h"
 #include "../fixtures/DatabaseTestHelper.h"
 #include "../fixtures/PostgreSQLTestFixtures.h"
 #include <memory>
@@ -12,7 +10,6 @@
 #include <libpq-fe.h>
 #include <sodium.h>
 
-using namespace crypto::lamport;
 
 class OwnKeysHandlerPostgreSQLIntegrationTest : public ::testing::Test {
 protected:

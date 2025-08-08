@@ -5,10 +5,6 @@ add_library(crypto
     memory.cpp
     keychain.h
     keychain.cpp
-    lamportkeys.cpp
-    lamportkeys.h
-    lamportscheme.cpp
-    lamportscheme.h
     sphincskeys.cpp
     sphincskeys.h
     sphincsscheme.cpp

@@ -1,8 +1,6 @@
 #include "gtest/gtest.h"
 #include "../../../../src/core/io/storage/postgresql/AuditHandlerPostgreSQL.h"
 #include "../../../../src/core/logger/Logger.h"
-#include "../../../../src/core/crypto/lamportkeys.h"
-#include "../../../../src/core/crypto/lamportscheme.h"
 #include "../../../../src/core/io/storage/record/audit/AuditRecord.h"
 #include "../fixtures/DatabaseTestHelper.h"
 #include "../fixtures/PostgreSQLTestFixtures.h"
@@ -13,7 +11,6 @@
 #include <libpq-fe.h>
 #include <sodium.h>
 
-using namespace crypto::lamport;
 
 class AuditHandlerPostgreSQLIntegrationTest : public ::testing::Test {
 protected:

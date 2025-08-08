@@ -12,14 +12,12 @@
 #include "../../../src/core/common/exceptions/IOError.h"
 #include "../../../src/core/common/exceptions/NotFoundError.h"
 #include "../../../src/core/common/exceptions/ValueError.h"
-#include "../../../src/core/crypto/lamportkeys.h"
 #include "../../../src/core/contractors/Contractor.h"
 #include "../../../src/core/logger/Logger.h"
 #include "../fixtures/TestDataFactory.h"
 
 using namespace std;
 using namespace testing;
-using namespace crypto::lamport;
 
 class PaymentParticipantsVotesHandlerSQLiteTest : public Test {
 protected:

@@ -1,8 +1,6 @@
 #include "../../../../src/core/io/storage/postgresql/PaymentParticipantsVotesHandlerPostgreSQL.h"
 #include "../../../../src/core/contractors/addresses/IPv4WithPortAddress.h"
 #include "../../../../src/core/contractors/Contractor.h"
-#include "../../../../src/core/crypto/lamportkeys.h"
-#include "../../../../src/core/crypto/lamportscheme.h"
 #include "../../../../src/core/transactions/transactions/base/TransactionUUID.h"
 #include "../../../../src/core/logger/Logger.h"
 #include "../../../../src/core/common/exceptions/IOError.h"
@@ -14,7 +12,6 @@
 #include <libpq-fe.h>
 #include <sodium.h>
 
-using namespace crypto::lamport;
 
 class PaymentParticipantsVotesHandlerPostgreSQLIntegrationTest : public ::testing::Test
 {
