@@ -26,40 +26,29 @@ public:
     void saveKey(
         const TrustLineID trustLineID,
         const KeyNumber keysSetSequenceNumber,
-        const PublicKey::Shared publicKey,
-        const KeyNumber number) override;
+        const PublicKey::Shared publicKey) override;
 
     const KeyNumber maxKeySetSequenceNumber(
         const TrustLineID trustLineID) override;
 
-    void invalidKey(
-        const TrustLineID trustLineID,
-        const KeyNumber number) override;
+    void invalidateKey(
+        const TrustLineID trustLineID) override;
 
     void invalidateKeyByHash(
         const TrustLineID trustLineID,
         const KeyHash::Shared keyHash) override;
 
-    PublicKey::Shared keyByNumber(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber) override;
+    PublicKey::Shared getPublicKey(
+        const TrustLineID trustLineID) override;
 
     PublicKey::Shared keyByHash(
         const TrustLineID trustLineID,
         const KeyHash::Shared keyHash) override;
 
-    const KeyHash::Shared keyHashByNumber(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber) override;
-
-    KeysCount availableKeysCnt(
+    const KeyHash::Shared getPublicKeyHash(
         const TrustLineID trustLineID) override;
 
-    KeysCount sequenceKeysCnt(
-        const TrustLineID trustLineID,
-        KeyNumber keysSetSequenceNumber) override;
-
-    void removeUnusedKeys(
+    bool hasKey(
         const TrustLineID trustLineID) override;
 
     std::vector<PublicKey::Shared> publicKeysBySetNumber(

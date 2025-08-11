@@ -24,18 +24,16 @@ public:
         const TrustLineID trustLineID,
         const KeyNumber keysSetSequenceNumber,
         const PublicKey::Shared publicKey,
-        const PrivateKey *privateKey,
-        const KeyNumber number) = 0;
+        const PrivateKey *privateKey) = 0;
 
     virtual const KeyNumber maxKeySetSequenceNumber(
         const TrustLineID trustLineID) = 0;
 
-    virtual pair<std::unique_ptr<PrivateKey>, KeyNumber> nextAvailableKey(
+    virtual std::unique_ptr<PrivateKey> getPrivateKey(
         const TrustLineID trustLineID) = 0;
 
-    virtual void invalidKey(
+    virtual void invalidateKey(
         const TrustLineID trustLineID,
-        const KeyNumber number,
         const Signature::Shared signature) = 0;
 
     virtual void invalidateKeyByHash(
@@ -44,24 +42,16 @@ public:
         const Signature::Shared signature) = 0;
 
     virtual const PublicKey::Shared getPublicKey(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber) = 0;
+        const TrustLineID trustLineID) = 0;
 
     virtual const PublicKey::Shared getPublicKeyByHash(
         const TrustLineID trustLineID,
         const KeyHash::Shared keyHash) = 0;
 
     virtual const KeyHash::Shared getPublicKeyHash(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber) = 0;
-
-    virtual const KeyNumber getKeyNumberByHash(
-        const KeyHash::Shared keyHash) = 0;
-
-    virtual KeysCount availableKeysCnt(
         const TrustLineID trustLineID) = 0;
 
-    virtual void removeUnusedKeys(
+    virtual bool hasKey(
         const TrustLineID trustLineID) = 0;
 
     virtual vector<PublicKey::Shared> publicKeysBySetNumber(

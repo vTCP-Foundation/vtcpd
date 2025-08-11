@@ -26,8 +26,6 @@ public:
      * - trust_line_id: INTEGER NOT NULL (foreign key to trust_lines table)
      * - keys_set_sequence_number: INTEGER NOT NULL
      * - public_key: BLOB NOT NULL (the actual public key data)
-     * - number: INTEGER NOT NULL (key number within the set)
-     * - is_valid: INTEGER NOT NULL DEFAULT 1 (validity flag)
      * Also creates necessary indexes on hash and trust_line_id columns.
      * @param dbConnection SQLite database connection (must not be null)
      * @param tableName Name of the table to create/use (must not be empty)
@@ -45,15 +43,13 @@ public:
      * @param trustLineID Trust line identifier
      * @param keysSetSequenceNumber Sequence number of the key set
      * @param publicKey Public key to save (must not be null)
-     * @param number Key number within the set
      * @throws ValueError if publicKey is null
      * @throws IOError if database operation fails
      */
     void saveKey(
         const TrustLineID trustLineID,
         const KeyNumber keysSetSequenceNumber,
-        const PublicKey::Shared publicKey,
-        const KeyNumber number);
+        const PublicKey::Shared publicKey) override;
 
     /**
      * Retrieves the maximum key set sequence number for a trust line.
@@ -64,13 +60,12 @@ public:
         const TrustLineID trustLineID);
 
     /**
-     * Marks a key as invalid by trust line ID and key number.
-     * @param number Key number to invalidate
+     * Marks a key as invalid by trust line ID.
+     * @param trustLineID Trust line identifier
      * @throws ValueError if no data was changed
      */
-    void invalidKey(
-        const TrustLineID trustLineID,
-        const KeyNumber number) override;
+    void invalidateKey(
+        const TrustLineID trustLineID) override;
 
     /**
      * Marks a key as invalid by hash.
@@ -82,14 +77,13 @@ public:
         const KeyHash::Shared keyHash) override;
 
     /**
-     * Retrieves a public key by trust line ID and key number.
-     * @param keyNumber Key number
+     * Retrieves a public key by trust line ID.
+     * @param trustLineID Trust line identifier
      * @return Shared pointer to the public key
      * @throws NotFoundError if key not found
      */
-    PublicKey::Shared keyByNumber(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber) override;
+    PublicKey::Shared getPublicKey(
+        const TrustLineID trustLineID) override;
 
     /**
      * Retrieves a public key by trust line ID and key hash.
@@ -103,34 +97,18 @@ public:
         const KeyHash::Shared keyHash) override;
 
     /**
-     * Retrieves a key hash by trust line ID and key number.
+     * Retrieves a key hash by trust line ID.
      * @return Shared pointer to the key hash
      * @throws NotFoundError if key hash not found
      */
-    const KeyHash::Shared keyHashByNumber(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber) override;
-
-    /**
-     * Counts available (valid) keys for a trust line.
-     * @return Number of available keys
-     */
-    KeysCount availableKeysCnt(
+    const KeyHash::Shared getPublicKeyHash(
         const TrustLineID trustLineID) override;
 
     /**
-     * Counts keys for a specific sequence number.
-     * @param keysSetSequenceNumber Sequence number
-     * @return Number of keys in the sequence
+     * Checks if a key exists for a trust line.
+     * @return True if key exists, false otherwise
      */
-    KeysCount sequenceKeysCnt(
-        const TrustLineID trustLineID,
-        KeyNumber keysSetSequenceNumber) override;
-
-    /**
-     * Removes all unused keys for a trust line.
-     */
-    void removeUnusedKeys(
+    bool hasKey(
         const TrustLineID trustLineID) override;
 
     /**

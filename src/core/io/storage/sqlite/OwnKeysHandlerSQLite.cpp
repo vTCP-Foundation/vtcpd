@@ -25,8 +25,6 @@ OwnKeysHandlerSQLite::OwnKeysHandlerSQLite(
                    "keys_set_sequence_number INTEGER NOT NULL, "
                    "public_key BLOB NOT NULL, "
                    "private_key BLOB NOT NULL, "
-                   "number INTEGER NOT NULL, "
-                   "is_valid INTEGER NOT NULL DEFAULT 1, "
                    "FOREIGN KEY(trust_line_id) REFERENCES trust_lines(id) ON DELETE CASCADE ON UPDATE CASCADE);";
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
@@ -63,8 +61,7 @@ void OwnKeysHandlerSQLite::saveKey(
     const TrustLineID trustLineID,
     const KeyNumber keysSetSequenceNumber,
     const PublicKey::Shared publicKey,
-    const PrivateKey *privateKey,
-    const KeyNumber number)
+    const PrivateKey *privateKey)
 {
     if (!publicKey) {
         throw ValueError("OwnKeysHandlerSQLite::saveKey: Public key cannot be null.");
@@ -74,9 +71,9 @@ void OwnKeysHandlerSQLite::saveKey(
         throw ValueError("OwnKeysHandlerSQLite::saveKey: Private key cannot be null.");
     }
 
-    string query = "INSERT INTO " + mTableName +
-                   "(hash, trust_line_id, keys_set_sequence_number, public_key, private_key, number) "
-                   "VALUES (?, ?, ?, ?, ?, ?);";
+    string query = "INSERT OR REPLACE INTO " + mTableName +
+                   "(hash, trust_line_id, keys_set_sequence_number, public_key, private_key) "
+                   "VALUES (?, ?, ?, ?, ?);";
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
@@ -88,7 +85,7 @@ void OwnKeysHandlerSQLite::saveKey(
                                (int)KeyHash::kBytesSize, SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) {
         throw IOError("OwnKeysHandlerSQLite::saveKey: Failed to bind hash. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ", Sequence=" + to_string(keysSetSequenceNumber) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
@@ -97,7 +94,7 @@ void OwnKeysHandlerSQLite::saveKey(
     rc = sqlite3_bind_int(stmt.get(), 2, trustLineID);
     if (rc != SQLITE_OK) {
         throw IOError("OwnKeysHandlerSQLite::saveKey: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
@@ -125,29 +122,21 @@ void OwnKeysHandlerSQLite::saveKey(
                            (int)PrivateKey::privateKeySize(), SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) {
         throw IOError("OwnKeysHandlerSQLite::saveKey: Failed to bind private_key. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
-    // Bind number
-    rc = sqlite3_bind_int(stmt.get(), 6, number);
-    if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::saveKey: Failed to bind number. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
 
     rc = sqlite3_step(stmt.get());
     if (rc != SQLITE_DONE) {
         throw IOError("OwnKeysHandlerSQLite::saveKey: Failed to execute INSERT. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ", Sequence=" + to_string(keysSetSequenceNumber) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
     info() << "Key saved: TrustLine=" << trustLineID
-           << ", KeyNumber=" << number
            << ", Sequence=" << keysSetSequenceNumber
            << ", PublicKeySize=" << publicKey->keySize()
            << ", PrivateKeySize=" << PrivateKey::privateKeySize();
@@ -189,16 +178,16 @@ const KeyNumber OwnKeysHandlerSQLite::maxKeySetSequenceNumber(
     }
 }
 
-pair<std::unique_ptr<PrivateKey>, KeyNumber> OwnKeysHandlerSQLite::nextAvailableKey(
+std::unique_ptr<PrivateKey> OwnKeysHandlerSQLite::getPrivateKey(
     const TrustLineID trustLineID)
 {
-    string query = "SELECT private_key, number FROM " + mTableName +
-                   " WHERE trust_line_id = ? AND is_valid = 1 ORDER BY number LIMIT 1;";
+    string query = "SELECT private_key FROM " + mTableName +
+                   " WHERE trust_line_id = ? LIMIT 1;";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
     if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::nextAvailableKey: Failed to bind trust_line_id. "
+        throw IOError("OwnKeysHandlerSQLite::getPrivateKey: Failed to bind trust_line_id. "
                       "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
@@ -206,70 +195,60 @@ pair<std::unique_ptr<PrivateKey>, KeyNumber> OwnKeysHandlerSQLite::nextAvailable
     rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_ROW) {
         auto privateKeyData = (byte_t*)sqlite3_column_blob(stmt.get(), 0);
-        auto number = (KeyNumber)sqlite3_column_int(stmt.get(), 1);
 
         auto privateKey = std::make_unique<PrivateKey>(privateKeyData);
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
-        info() << "Next available key retrieved: TrustLine=" << trustLineID
-               << ", KeyNumber=" << number;
+        info() << "Private key retrieved: TrustLine=" << trustLineID;
 #endif
 
-        return make_pair(std::move(privateKey), number);
+        return privateKey;
     } else if (rc == SQLITE_DONE) {
-        throw NotFoundError("OwnKeysHandlerSQLite::nextAvailableKey: No available keys found. "
+        throw NotFoundError("OwnKeysHandlerSQLite::getPrivateKey: No key found. "
                             "TrustLine=" + to_string(trustLineID) + ".");
     } else {
-        throw IOError("OwnKeysHandlerSQLite::nextAvailableKey: Failed to execute SELECT. "
+        throw IOError("OwnKeysHandlerSQLite::getPrivateKey: Failed to execute SELECT. "
                       "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 }
 
-void OwnKeysHandlerSQLite::invalidKey(
+void OwnKeysHandlerSQLite::invalidateKey(
     const TrustLineID trustLineID,
-    const KeyNumber number,
     const Signature::Shared signature)
 {
     if (!signature) {
-        throw ValueError("OwnKeysHandlerSQLite::invalidKey: Signature cannot be null.");
+        throw ValueError("OwnKeysHandlerSQLite::invalidateKey: Signature cannot be null.");
     }
 
-    string query = "UPDATE " + mTableName + " SET is_valid = 0, private_key = ? WHERE trust_line_id = ? AND number = ?;";
+    string query = "UPDATE " + mTableName + " SET private_key = ? WHERE trust_line_id = ?;";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_blob(stmt.get(), 1, signature->data(),
                                (int)signature->signatureSize(), SQLITE_STATIC);
     if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::invalidKey: Failed to bind signature. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+        throw IOError("OwnKeysHandlerSQLite::invalidateKey: Failed to bind signature. "
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     rc = sqlite3_bind_int(stmt.get(), 2, trustLineID);
     if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::invalidKey: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_bind_int(stmt.get(), 3, number);
-    if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::invalidKey: Failed to bind number. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+        throw IOError("OwnKeysHandlerSQLite::invalidateKey: Failed to bind trust_line_id. "
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     rc = sqlite3_step(stmt.get());
     if (rc != SQLITE_DONE) {
-        throw IOError("OwnKeysHandlerSQLite::invalidKey: Failed to execute UPDATE. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+        throw IOError("OwnKeysHandlerSQLite::invalidateKey: Failed to execute UPDATE. "
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     if (sqlite3_changes(mDataBase) == 0) {
         throw ValueError("OwnKeysHandlerSQLite::invalidKey: No rows affected. "
-                         "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) + ".");
+                         "TrustLine=" + to_string(trustLineID) + ".");
     }
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
@@ -337,24 +316,16 @@ void OwnKeysHandlerSQLite::invalidateKeyByHash(
 }
 
 const PublicKey::Shared OwnKeysHandlerSQLite::getPublicKey(
-    const TrustLineID trustLineID,
-    const KeyNumber keyNumber)
+    const TrustLineID trustLineID)
 {
     string query = "SELECT public_key FROM " + mTableName +
-                   " WHERE trust_line_id = ? AND number = ? AND is_valid = 1;";
+                   " WHERE trust_line_id = ?;";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
     if (rc != SQLITE_OK) {
         throw IOError("OwnKeysHandlerSQLite::getPublicKey: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_bind_int(stmt.get(), 2, keyNumber);
-    if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::getPublicKey: Failed to bind number. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
@@ -369,10 +340,10 @@ const PublicKey::Shared OwnKeysHandlerSQLite::getPublicKey(
         return result;
     } else if (rc == SQLITE_DONE) {
         throw NotFoundError("OwnKeysHandlerSQLite::getPublicKey: Key not found. "
-                            "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) + ".");
+                            "TrustLine=" + to_string(trustLineID) + ".");
     } else {
         throw IOError("OwnKeysHandlerSQLite::getPublicKey: Failed to execute SELECT. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 }
@@ -386,7 +357,7 @@ const PublicKey::Shared OwnKeysHandlerSQLite::getPublicKeyByHash(
     }
 
     string query = "SELECT public_key FROM " + mTableName +
-                   " WHERE trust_line_id = ? AND hash = ? AND is_valid = 1;";
+                   " WHERE trust_line_id = ? AND hash = ?;";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
@@ -423,24 +394,16 @@ const PublicKey::Shared OwnKeysHandlerSQLite::getPublicKeyByHash(
 }
 
 const KeyHash::Shared OwnKeysHandlerSQLite::getPublicKeyHash(
-    const TrustLineID trustLineID,
-    const KeyNumber keyNumber)
+    const TrustLineID trustLineID)
 {
     string query = "SELECT hash FROM " + mTableName +
-                   " WHERE trust_line_id = ? AND number = ? AND is_valid = 1;";
+                   " WHERE trust_line_id = ?;";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
     if (rc != SQLITE_OK) {
         throw IOError("OwnKeysHandlerSQLite::getPublicKeyHash: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_bind_int(stmt.get(), 2, keyNumber);
-    if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::getPublicKeyHash: Failed to bind number. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
@@ -455,104 +418,44 @@ const KeyHash::Shared OwnKeysHandlerSQLite::getPublicKeyHash(
         return result;
     } else if (rc == SQLITE_DONE) {
         throw NotFoundError("OwnKeysHandlerSQLite::getPublicKeyHash: Key hash not found. "
-                            "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) + ".");
+                            "TrustLine=" + to_string(trustLineID) + ".");
     } else {
         throw IOError("OwnKeysHandlerSQLite::getPublicKeyHash: Failed to execute SELECT. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 }
 
-const KeyNumber OwnKeysHandlerSQLite::getKeyNumberByHash(
-    const KeyHash::Shared keyHash)
-{
-    if (!keyHash) {
-        throw ValueError("OwnKeysHandlerSQLite::getKeyNumberByHash: Key hash cannot be null.");
-    }
-
-    string query = "SELECT number FROM " + mTableName + " WHERE hash = ?;";
-    SQLiteStatementRAII stmt(mDataBase, query.c_str());
-
-    int rc = sqlite3_bind_blob(stmt.get(), 1, keyHash->data(),
-                               (int)KeyHash::kBytesSize, SQLITE_STATIC);
-    if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::getKeyNumberByHash: Failed to bind hash. "
-                      "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_step(stmt.get());
-    if (rc == SQLITE_ROW) {
-        KeyNumber result = (KeyNumber)sqlite3_column_int(stmt.get(), 0);
-
-#ifdef STORAGE_HANDLER_DEBUG_LOG
-        info() << "Key number retrieved by hash: KeyNumber=" << result;
-#endif
-        return result;
-    } else if (rc == SQLITE_DONE) {
-        throw NotFoundError("OwnKeysHandlerSQLite::getKeyNumberByHash: Key number not found for given hash.");
-    } else {
-        throw IOError("OwnKeysHandlerSQLite::getKeyNumberByHash: Failed to execute SELECT. "
-                      "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-}
-
-KeysCount OwnKeysHandlerSQLite::availableKeysCnt(
+bool OwnKeysHandlerSQLite::hasKey(
     const TrustLineID trustLineID)
 {
     string query = "SELECT count(*) FROM " + mTableName +
-                   " WHERE trust_line_id = ? AND is_valid = 1";
+                   " WHERE trust_line_id = ?";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
     if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::availableKeysCnt: Failed to bind trust_line_id. "
+        throw IOError("OwnKeysHandlerSQLite::hasKey: Failed to bind trust_line_id. "
                       "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_ROW) {
-        KeysCount count = (KeysCount)sqlite3_column_int(stmt.get(), 0);
+        int count = sqlite3_column_int(stmt.get(), 0);
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
-        info() << "Available keys count: TrustLine=" << trustLineID
-               << ", Count=" << count;
+        info() << "Key existence check: TrustLine=" << trustLineID
+               << ", HasKey=" << (count > 0);
 #endif
-        return count;
+        return count > 0;
     } else {
-        throw IOError("OwnKeysHandlerSQLite::availableKeysCnt: Failed to execute count query. "
+        throw IOError("OwnKeysHandlerSQLite::hasKey: Failed to execute count query. "
                       "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 }
 
-void OwnKeysHandlerSQLite::removeUnusedKeys(
-    const TrustLineID trustLineID)
-{
-    string query = "DELETE FROM " + mTableName + " WHERE trust_line_id = ? AND is_valid = 1";
-    SQLiteStatementRAII stmt(mDataBase, query.c_str());
-
-    int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
-    if (rc != SQLITE_OK) {
-        throw IOError("OwnKeysHandlerSQLite::removeUnusedKeys: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_step(stmt.get());
-    if (rc != SQLITE_DONE) {
-        throw IOError("OwnKeysHandlerSQLite::removeUnusedKeys: Failed to execute DELETE. "
-                      "TrustLine=" + to_string(trustLineID) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    int deletedRows = sqlite3_changes(mDataBase);
-
-#ifdef STORAGE_HANDLER_DEBUG_LOG
-    info() << "Unused keys removed: TrustLine=" << trustLineID
-           << ", DeletedCount=" << deletedRows;
-#endif
-}
 
 vector<PublicKey::Shared> OwnKeysHandlerSQLite::publicKeysBySetNumber(
     const TrustLineID trustLineID,
@@ -593,7 +496,7 @@ vector<PublicKey::Shared> OwnKeysHandlerSQLite::publicKeysBySetNumber(
 
     // Now get the actual data
     string query = "SELECT public_key FROM " + mTableName +
-                   " WHERE trust_line_id = ? AND keys_set_sequence_number = ? ORDER BY number";
+                   " WHERE trust_line_id = ? AND keys_set_sequence_number = ?";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);

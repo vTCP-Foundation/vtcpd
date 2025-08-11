@@ -27,8 +27,6 @@ public:
      * - keys_set_sequence_number: INTEGER NOT NULL
      * - public_key: BLOB NOT NULL (the actual public key data)
      * - private_key: BLOB NOT NULL (encrypted private key data)
-     * - number: INTEGER NOT NULL (key number within the set)
-     * - is_valid: INTEGER NOT NULL DEFAULT 1 (validity flag)
      * Also creates necessary indexes on hash and trust_line_id columns.
      * @param dbConnection SQLite database connection (must not be null)
      * @param tableName Name of the table to create/use (must not be empty)
@@ -47,7 +45,6 @@ public:
      * @param keysSetSequenceNumber Sequence number of the key set
      * @param publicKey Public key to save (must not be null)
      * @param privateKey Private key to save (must not be null)
-     * @param number Key number within the set
      * @throws ValueError if publicKey or privateKey is null
      * @throws IOError if database operation fails
      */
@@ -55,8 +52,7 @@ public:
         const TrustLineID trustLineID,
         const KeyNumber keysSetSequenceNumber,
         const PublicKey::Shared publicKey,
-        const PrivateKey *privateKey,
-        const KeyNumber number);
+        const PrivateKey *privateKey) override;
 
     /**
      * Retrieves the maximum key set sequence number for a trust line.
@@ -67,23 +63,22 @@ public:
         const TrustLineID trustLineID);
 
     /**
-     * Retrieves the next available private key and its number for a trust line.
-     * @return Pair containing unique pointer to private key and its number
-     * @throws NotFoundError if no available keys found
+     * Retrieves the private key for a trust line.
+     * @return Unique pointer to private key
+     * @throws NotFoundError if no key found
      */
-    pair<std::unique_ptr<PrivateKey>, KeyNumber> nextAvailableKey(
-        const TrustLineID trustLineID);
+    std::unique_ptr<PrivateKey> getPrivateKey(
+        const TrustLineID trustLineID) override;
 
     /**
      * Marks a key as invalid and replaces private key with signature.
-     * @param number Key number to invalidate
+     * @param trustLineID Trust line identifier
      * @param signature Signature to store in place of private key (must not be null)
      * @throws ValueError if signature is null or no data was changed
      */
-    void invalidKey(
+    void invalidateKey(
         const TrustLineID trustLineID,
-        const KeyNumber number,
-        const Signature::Shared signature);
+        const Signature::Shared signature) override;
 
     /**
      * Marks a key as invalid by hash and replaces private key with signature.
@@ -96,14 +91,13 @@ public:
         const Signature::Shared signature);
 
     /**
-     * Retrieves a public key by trust line ID and key number.
-     * @param keyNumber Key number
+     * Retrieves a public key by trust line ID.
+     * @param trustLineID Trust line identifier
      * @return Shared pointer to the public key
      * @throws NotFoundError if key not found
      */
     const PublicKey::Shared getPublicKey(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber);
+        const TrustLineID trustLineID) override;
 
     /**
      * Retrieves a public key by trust line ID and key hash.
@@ -115,35 +109,21 @@ public:
         const KeyHash::Shared keyHash);
 
     /**
-     * Retrieves a key hash by trust line ID and key number.
+     * Retrieves a key hash by trust line ID.
      * @return Shared pointer to the key hash
      * @throws NotFoundError if key hash not found
      */
     const KeyHash::Shared getPublicKeyHash(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber);
+        const TrustLineID trustLineID) override;
+
 
     /**
-     * Retrieves a key number by key hash.
-     * @param keyHash Hash of the key (must not be null)
-     * @return Key number
-     * @throws NotFoundError if key number not found
+     * Checks if a key exists for a trust line.
+     * @return True if key exists, false otherwise
      */
-    const KeyNumber getKeyNumberByHash(
-        const KeyHash::Shared keyHash) override;
+    bool hasKey(
+        const TrustLineID trustLineID) override;
 
-    /**
-     * Counts available (valid) keys for a trust line.
-     * @return Number of available keys
-     */
-    KeysCount availableKeysCnt(
-        const TrustLineID trustLineID);
-
-    /**
-     * Removes all unused (valid) keys for a trust line.
-     */
-    void removeUnusedKeys(
-        const TrustLineID trustLineID);
 
     /**
      * Retrieves all public keys for a specific sequence number.
