@@ -33,9 +33,16 @@ Keystore::Keystore(
     mLogger(logger)
 {}
 
-int Keystore::init()
+int Keystore::init(IOTransaction::Shared ioTransaction)
 {
-    return sodium_init();
+    int rc = sodium_init();
+    // Ensure at least one payment key exists using provided transaction
+    try {
+        ensurePaymentKeyExists(ioTransaction);
+    } catch (const exception &e) {
+        warning() << string("Keystore::init key ensure failed: ") + e.what();
+    }
+    return rc;
 }
 
 TrustLineKeychain Keystore::keychain(const TrustLineID trustLineID) const
@@ -44,33 +51,39 @@ TrustLineKeychain Keystore::keychain(const TrustLineID trustLineID) const
             // todo mEncryptor,
             mLogger};
 }
-
 sphincs::PublicKey::Shared Keystore::generateAndSaveKeyPairForPaymentTransaction(
     IOTransaction::Shared ioTransaction,
     const TransactionUUID& transactionUUID)
 {
+    // Deprecated behavior retained temporarily for compatibility.
     auto keyPair = sphincs::util::generateKeyPair();
     auto privateKey = keyPair.first;
     auto publicKey = keyPair.second;
-    ioTransaction->paymentKeysHandler()->saveOwnKey(transactionUUID, publicKey, privateKey.get());
+    ioTransaction->paymentKeysHandler()->saveOwnKey(publicKey, privateKey.get());
     return publicKey;
 }
 
+void Keystore::ensurePaymentKeyExists(IOTransaction::Shared ioTransaction)
+{
+    if (!ioTransaction->paymentKeysHandler()->hasAnyKeys()) {
+        auto keyPair = sphincs::util::generateKeyPair();
+        ioTransaction->paymentKeysHandler()->saveOwnKey(keyPair.second, keyPair.first.get());
+    }
+}
+
 std::optional<sphincs::Signature::Shared> Keystore::signPaymentTransaction(IOTransaction::Shared ioTransaction,
-        const TransactionUUID& transactionUUID,
         BytesShared dataForSign,
         size_t dataForSignBytesCount)
 {
     try {
-        auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey(transactionUUID);
+        auto privateKey = ioTransaction->paymentKeysHandler()->getOwnPrivateKey();
         auto signature = sphincs::util::signData(*privateKey, dataForSign.get(), dataForSignBytesCount);
         
         // Clean up the private key
         delete privateKey;
         return signature;
     } catch (const NotFoundError &e) {
-        error() << "Can't get private key for the transaction " << transactionUUID.stringUUID()
-                << ". Details: " << e.what();
+        error() << "Can't get private payment key. Details: " << e.what();
         return std::nullopt;
     }
 }
@@ -613,8 +626,7 @@ void TrustLineKeychain::removeOutdatedCryptoData(IOTransaction::Shared ioTransac
                 outgoingReceipt->transactionUUID());
             ioTransaction->paymentTransactionsHandler()->deleteRecord(
                 outgoingReceipt->transactionUUID());
-            ioTransaction->paymentKeysHandler()->deleteKeyByTransactionUUID(
-                outgoingReceipt->transactionUUID());
+            // No per-transaction payment keys in single-key architecture
         }
         ioTransaction->ownKeysHandler()->deleteKeyByHashExceptSequenceNumber(
             outgoingReceipt->keyHash(),
@@ -631,8 +643,7 @@ void TrustLineKeychain::removeOutdatedCryptoData(IOTransaction::Shared ioTransac
                 incomingReceipt->transactionUUID());
             ioTransaction->paymentTransactionsHandler()->deleteRecord(
                 incomingReceipt->transactionUUID());
-            ioTransaction->paymentKeysHandler()->deleteKeyByTransactionUUID(
-                incomingReceipt->transactionUUID());
+            // No per-transaction payment keys in single-key architecture
         }
         ioTransaction->contractorKeysHandler()->deleteKeyByHashExceptSequenceNumber(
             incomingReceipt->keyHash(),
@@ -666,18 +677,7 @@ void TrustLineKeychain::removeOutdatedCryptoPaymentsData(
         if (!isReceiptsPresent(ioTransaction, transactionUUID)) {
             ioTransaction->paymentParticipantsVotesHandler()->deleteRecords(transactionUUID);
             ioTransaction->paymentTransactionsHandler()->deleteRecord(transactionUUID);
-            ioTransaction->paymentKeysHandler()->deleteKeyByTransactionUUID(transactionUUID);
-        }
-    }
-}
-
-void TrustLineKeychain::removeOutdatedPaymentsKeysData(
-    IOTransaction::Shared ioTransaction)
-{
-    auto paymentsTransactionsUUID = ioTransaction->paymentKeysHandler()->allTransactionUUIDs();
-    for (const auto &transactionUUID : paymentsTransactionsUUID) {
-        if (!ioTransaction->paymentTransactionsHandler()->isTransactionPresent(transactionUUID)) {
-            ioTransaction->paymentKeysHandler()->deleteKeyByTransactionUUID(transactionUUID);
+            // Single-key architecture: no per-transaction payment keys to delete
         }
     }
 }

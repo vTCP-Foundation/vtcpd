@@ -23,7 +23,8 @@ PaymentTransactionsHandlerSQLite::PaymentTransactionsHandlerSQLite(
                    " (uuid BLOB NOT NULL, "
                    "maximal_claiming_block_number BLOB NOT NULL, "
                    "observing_state INTEGER NOT NULL, "
-                   "recording_time INTEGER NOT NULL);";
+                   "recording_time INTEGER NOT NULL, "
+                   "payment_key_id INTEGER NOT NULL);";
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
     int rc = sqlite3_step(stmt.get());
@@ -35,6 +36,16 @@ PaymentTransactionsHandlerSQLite::PaymentTransactionsHandlerSQLite(
     // Create index on UUID for faster lookups
     query = "CREATE INDEX IF NOT EXISTS " + mTableName
             + "_uuid_idx on " + mTableName + " (uuid);";
+    // Create index on payment_key_id for faster joins
+    query = "CREATE INDEX IF NOT EXISTS " + mTableName
+            + "_payment_key_id_idx on " + mTableName + " (payment_key_id);";
+
+    SQLiteStatementRAII indexStmt2(mDataBase, query.c_str());
+    rc = sqlite3_step(indexStmt2.get());
+    if (rc != SQLITE_DONE) {
+        throw IOError("PaymentTransactionsHandlerSQLite::constructor: Failed to create payment_key_id index on table '" + mTableName + "'. "
+                      "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
 
     SQLiteStatementRAII indexStmt(mDataBase, query.c_str());
     rc = sqlite3_step(indexStmt.get());
@@ -53,7 +64,7 @@ void PaymentTransactionsHandlerSQLite::saveRecord(
     BlockNumber maximalClaimingBlockNumber)
 {
     string query = "INSERT INTO " + mTableName + " (uuid, maximal_claiming_block_number, "
-                   "observing_state, recording_time) VALUES(?, ?, ?, ?);";
+                   "observing_state, recording_time, payment_key_id) VALUES(?, ?, ?, ?, (SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1));";
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 

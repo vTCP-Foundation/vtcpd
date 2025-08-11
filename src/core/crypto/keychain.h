@@ -64,12 +64,16 @@ public:
         // todo memory::SecureSegment &memoryKey,
         Logger &logger) noexcept;
 
-    int init();
+    int init(IOTransaction::Shared ioTransaction);
+
+    // Ensure at least one reusable payment key exists; generate if absent.
+    void ensurePaymentKeyExists(IOTransaction::Shared ioTransaction);
 
     TrustLineKeychain keychain(
         const TrustLineID trustLineID)
     const;
 
+    // Deprecated: retained for compatibility; do not use in new code.
     sphincs::PublicKey::Shared generateAndSaveKeyPairForPaymentTransaction(
         IOTransaction::Shared ioTransaction,
         const TransactionUUID &transactionUUID);
@@ -92,7 +96,6 @@ public:
      */
     std::optional<sphincs::Signature::Shared> signPaymentTransaction(
         IOTransaction::Shared ioTransaction,
-        const TransactionUUID &transactionUUID,
         BytesShared dataForSign,
         size_t dataForSignBytesCount);
 
@@ -377,9 +380,6 @@ public:
         AuditNumber auditNumber);
 
     void removeOutdatedCryptoPaymentsData(
-        IOTransaction::Shared ioTransaction);
-
-    void removeOutdatedPaymentsKeysData(
         IOTransaction::Shared ioTransaction);
 
     bool isReceiptsPresent(

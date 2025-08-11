@@ -596,9 +596,8 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runCheckObservingBloc
     mBlockNumberObtainingInProcess = false;
 
     auto ioTransaction = mStorageHandler->beginTransaction();
-    mPublicKey = mKeysStore->generateAndSaveKeyPairForPaymentTransaction(
-                     ioTransaction,
-                     currentTransactionUUID());
+    mKeysStore->ensurePaymentKeyExists(ioTransaction);
+    mPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
     mParticipantsPublicKeysHashes.insert(
         make_pair(
             mContractorsManager->selfContractor()->mainAddress()->fullAddress(),

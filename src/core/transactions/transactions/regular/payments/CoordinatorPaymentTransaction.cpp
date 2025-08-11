@@ -1465,9 +1465,9 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
 
     mParticipantsPublicKeys.clear();
     auto ioTransaction = mStorageHandler->beginTransaction();
-    mPublicKey = mKeysStore->generateAndSaveKeyPairForPaymentTransaction(
-                     ioTransaction,
-                     currentTransactionUUID());
+    // Ensure reusable payment key exists and load it
+    mKeysStore->ensurePaymentKeyExists(ioTransaction);
+    mPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
     mParticipantsPublicKeys.insert(
         make_pair(
             kCoordinatorPaymentNodeID,
@@ -1964,7 +1964,6 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runVotesConsistenc
             auto ioTransaction = mStorageHandler->beginTransaction();
             auto signature = mKeysStore->signPaymentTransaction(
                                  ioTransaction,
-                                 currentTransactionUUID(),
                                  serializedOwnVotesData.first,
                                  serializedOwnVotesData.second);
 

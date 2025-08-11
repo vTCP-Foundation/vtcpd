@@ -23,17 +23,19 @@ public:
         Logger &logger);
 
     void saveOwnKey(
-        const TransactionUUID &transactionUUID,
         const PublicKey::Shared publicKey,
-        const PrivateKey *privateKey);
+        const PrivateKey *privateKey) override;
 
-    PrivateKey* getOwnPrivateKey(
-        const TransactionUUID &transactionUUID);
+    PrivateKey* getOwnPrivateKey() override;
 
-    void deleteKeyByTransactionUUID(
-        const TransactionUUID &transactionUUID);
+    PublicKey::Shared getOwnPublicKey() override;
 
-    vector<TransactionUUID> allTransactionUUIDs();
+    void deleteKeyByID(
+        const uint64_t id) override;
+
+    bool hasAnyKeys() override;
+
+    uint64_t latestKeyID() override;
 
 private:
     LoggerStream info() const;

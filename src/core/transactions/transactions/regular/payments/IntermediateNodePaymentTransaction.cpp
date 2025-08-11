@@ -841,9 +841,8 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
     }
 
     auto ioTransaction = mStorageHandler->beginTransaction();
-    mPublicKey = mKeysStore->generateAndSaveKeyPairForPaymentTransaction(
-                     ioTransaction,
-                     currentTransactionUUID());
+    mKeysStore->ensurePaymentKeyExists(ioTransaction);
+    mPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
     mParticipantsPublicKeysHashes.insert(
         make_pair(
             mContractorsManager->selfContractor()->mainAddress()->fullAddress(),

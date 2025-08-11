@@ -94,8 +94,8 @@ protected:
     Signature::Shared createTestSignature(const std::string& testData)
     {
         // Create a simple signature with fixed size data
-        std::vector<byte_t> sigData(Signature::kSize, 0);
-        size_t dataSize = std::min(testData.length(), static_cast<size_t>(Signature::kSize));
+        std::vector<byte_t> sigData(Signature::signatureSize(), 0);
+        size_t dataSize = std::min(testData.length(), static_cast<size_t>(Signature::signatureSize()));
         memcpy(sigData.data(), testData.c_str(), dataSize);
         
         return std::make_shared<Signature>(sigData.data());

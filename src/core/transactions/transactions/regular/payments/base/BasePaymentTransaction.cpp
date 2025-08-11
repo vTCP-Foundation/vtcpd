@@ -307,7 +307,6 @@ TransactionResult::SharedConst BasePaymentTransaction::runVotesCheckingStage()
 
         auto signature = mKeysStore->signPaymentTransaction(
                              ioTransaction,
-                             currentTransactionUUID(),
                              serializedOwnVotesData.first,
                              serializedOwnVotesData.second);
         if (!signature.has_value()) {

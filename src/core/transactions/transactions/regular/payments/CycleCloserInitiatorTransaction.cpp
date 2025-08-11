@@ -866,9 +866,8 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::sendFinalPathCon
 
     mParticipantsPublicKeys.clear();
     auto ioTransaction = mStorageHandler->beginTransaction();
-    mPublicKey = mKeysStore->generateAndSaveKeyPairForPaymentTransaction(
-                     ioTransaction,
-                     currentTransactionUUID());
+    mKeysStore->ensurePaymentKeyExists(ioTransaction);
+    mPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
     mParticipantsPublicKeys.insert(
         make_pair(
             kCoordinatorPaymentNodeID,
@@ -1139,7 +1138,6 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runVotesConsiste
             auto ioTransaction = mStorageHandler->beginTransaction();
             auto signature = mKeysStore->signPaymentTransaction(
                                  ioTransaction,
-                                 currentTransactionUUID(),
                                  serializedOwnVotesData.first,
                                  serializedOwnVotesData.second);
             if (!signature.has_value()) {

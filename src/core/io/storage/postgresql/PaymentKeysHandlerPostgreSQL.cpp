@@ -33,14 +33,14 @@ PaymentKeysHandlerPostgreSQL::PaymentKeysHandlerPostgreSQL(
     if (mTableName.empty()) throw ValueError("PaymentKeysHandlerPostgreSQL: table name empty");
 
     string query = "CREATE TABLE IF NOT EXISTS " + mTableName +
-                   " (transaction_uuid BYTEA NOT NULL, "
+                   " (id BIGSERIAL PRIMARY KEY, "
                    "public_key BYTEA NOT NULL, "
                    "private_key BYTEA NOT NULL);";
     PGresult *res = PQexec(mDataBase, query.c_str());
     checkCmd(mDataBase,res,"PaymentKeys::create table");
     PQclear(res);
 
-    query = "CREATE INDEX IF NOT EXISTS " + mTableName + "_transaction_uuid_idx ON " + mTableName + "(transaction_uuid);";
+    query = "CREATE INDEX IF NOT EXISTS " + mTableName + "_id_idx ON " + mTableName + "(id);";
     res = PQexec(mDataBase, query.c_str());
     checkCmd(mDataBase,res,"PaymentKeys::index uuid");
     PQclear(res);
@@ -50,7 +50,6 @@ PaymentKeysHandlerPostgreSQL::PaymentKeysHandlerPostgreSQL(
 }
 
 void PaymentKeysHandlerPostgreSQL::saveOwnKey(
-    const TransactionUUID &transactionUUID,
     const PublicKey::Shared publicKey,
     const PrivateKey *privateKey)
 {
@@ -58,18 +57,17 @@ void PaymentKeysHandlerPostgreSQL::saveOwnKey(
         throw ValueError("saveOwnKey: null key");
     }
     const string query = "INSERT INTO " + mTableName +
-                         "(transaction_uuid, public_key, private_key) VALUES ($1,$2,$3);";
-    const int kParams = 3;
+                         "(public_key, private_key) VALUES ($1,$2);";
+    const int kParams = 2;
     const char *params[kParams];
     int lengths[kParams];
-    int formats[kParams] = {1,1,1};
+    int formats[kParams] = {1,1};
 
-    params[0] = reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
-    params[1] = reinterpret_cast<const char*>(publicKey->data()); lengths[1]=publicKey->keySize();
+    params[0] = reinterpret_cast<const char*>(publicKey->data()); lengths[0]=publicKey->keySize();
 
     auto privateKeyData = privateKey->serialize();
     auto guard = privateKeyData.unlockAndInitGuard();
-    params[2] = reinterpret_cast<const char*>(guard.address()); lengths[2]=privateKey->privateKeySize();
+    params[1] = reinterpret_cast<const char*>(guard.address()); lengths[1]=privateKey->privateKeySize();
 
     PGresult *res = PQexecParams(mDataBase, query.c_str(), kParams, nullptr, params, lengths, formats, 0);
     checkCmd(mDataBase,res,"saveOwnKey");
@@ -79,13 +77,10 @@ void PaymentKeysHandlerPostgreSQL::saveOwnKey(
 #endif
 }
 
-PrivateKey* PaymentKeysHandlerPostgreSQL::getOwnPrivateKey(
-    const TransactionUUID &transactionUUID)
+PrivateKey* PaymentKeysHandlerPostgreSQL::getOwnPrivateKey()
 {
-    const string query = "SELECT private_key FROM " + mTableName + " WHERE transaction_uuid=$1 LIMIT 1;";
-    const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,1);
+    const string query = "SELECT private_key FROM " + mTableName + " ORDER BY id DESC LIMIT 1;";
+    PGresult *res = PQexec(mDataBase, query.c_str());
     checkTuples(mDataBase,res,"getOwnPrivateKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Private key not found"); }
     const unsigned char *privBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
@@ -94,30 +89,48 @@ PrivateKey* PaymentKeysHandlerPostgreSQL::getOwnPrivateKey(
     return privKey;
 }
 
-void PaymentKeysHandlerPostgreSQL::deleteKeyByTransactionUUID(
-    const TransactionUUID &transactionUUID)
+void PaymentKeysHandlerPostgreSQL::deleteKeyByID(
+    const uint64_t id)
 {
-    const string query = "DELETE FROM " + mTableName + " WHERE transaction_uuid=$1;";
-    const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
+    const string query = "DELETE FROM " + mTableName + " WHERE id=$1;";
+    const int kParams=1; const char *params[kParams]; int lengths[kParams]; int formats[kParams]={0};
+    string idStr = to_string(id); params[0]=idStr.c_str(); lengths[0]=0;
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),kParams,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"deleteKeyByUUID");
     PQclear(res);
 }
 
-vector<TransactionUUID> PaymentKeysHandlerPostgreSQL::allTransactionUUIDs()
+bool PaymentKeysHandlerPostgreSQL::hasAnyKeys()
 {
-    vector<TransactionUUID> result;
-    const string query = "SELECT transaction_uuid FROM " + mTableName + ";";
+    const string query = "SELECT COUNT(*) FROM " + mTableName + ";";
     PGresult *res = PQexec(mDataBase, query.c_str());
-    checkTuples(mDataBase,res,"allTransactionUUIDs");
-    int rows = PQntuples(res);
-    for (int i=0;i<rows;++i) {
-        const unsigned char *uuidBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,0));
-        result.emplace_back(uuidBytes);
-    }
+    checkTuples(mDataBase,res,"hasAnyKeys");
+    bool present = atoi(PQgetvalue(res,0,0))>0;
     PQclear(res);
-    return result;
+    return present;
+}
+
+PublicKey::Shared PaymentKeysHandlerPostgreSQL::getOwnPublicKey()
+{
+    const string query = "SELECT public_key FROM " + mTableName + " ORDER BY id DESC LIMIT 1;";
+    PGresult *res = PQexec(mDataBase, query.c_str());
+    checkTuples(mDataBase,res,"getOwnPublicKey");
+    if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Public key not found"); }
+    const unsigned char *pubBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    auto pubKey = make_shared<PublicKey>(reinterpret_cast<byte_t*>(const_cast<unsigned char*>(pubBytesConst)));
+    PQclear(res);
+    return pubKey;
+}
+
+uint64_t PaymentKeysHandlerPostgreSQL::latestKeyID()
+{
+    const string query = "SELECT id FROM " + mTableName + " ORDER BY id DESC LIMIT 1;";
+    PGresult *res = PQexec(mDataBase, query.c_str());
+    checkTuples(mDataBase,res,"latestKeyID");
+    if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("No keys found"); }
+    uint64_t id = static_cast<uint64_t>(strtoull(PQgetvalue(res,0,0), nullptr, 10));
+    PQclear(res);
+    return id;
 }
 
 LoggerStream PaymentKeysHandlerPostgreSQL::info() const { return mLog.info(logHeader()); }
