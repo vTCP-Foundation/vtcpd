@@ -28,7 +28,6 @@ target_compile_features(crypto
 
 # Find OpenSSL package (required for SPHINCS+ support)
 # SPHINCS+ SLH-DSA-SHA2-256s is available in OpenSSL 3.5+
-set(CMAKE_PREFIX_PATH "/usr/local/openssl" ${CMAKE_PREFIX_PATH})
 find_package(OpenSSL 3.5 REQUIRED)
 
 # Verify SPHINCS+ availability at configure time
@@ -40,15 +39,17 @@ endif()
 find_package(sodium QUIET)
 if(sodium_FOUND)
     target_link_libraries(crypto
+        PUBLIC
+            OpenSSL::Crypto
         PRIVATE
             sodium::sodium
-            OpenSSL::Crypto
     )
 else()
     target_link_libraries(crypto
+        PUBLIC
+            OpenSSL::Crypto
         PRIVATE
             sodium
-            OpenSSL::Crypto
     )
 endif()
 

@@ -222,47 +222,44 @@ void PrivateKey::generateRandom()
 
 void PrivateKey::generateFromSeed(const string& seedString)
 {
-    // For deterministic generation, derive seed material
-    byte_t seed[32];
-    SHA256(reinterpret_cast<const byte_t*>(seedString.c_str()), seedString.length(), seed);
-    
-    // Create SPHINCS+ key generation context
-    EVP_PKEY_CTX* pctx = EVP_PKEY_CTX_new_from_name(nullptr, getAlgorithmName(), nullptr);
-    if (pctx == nullptr) {
-        throw std::runtime_error("Failed to create SPHINCS+ key generation context. Ensure OpenSSL 3.5+ with SPHINCS+ support is available.");
+    // Deterministically expand seedString into 128 bytes using SHA-256(counter || seed)
+    // This avoids reliance on global RNG and guarantees reproducibility
+    byte_t expanded[kPrivateKeySize];
+    size_t produced = 0;
+    uint32_t counter = 0;
+    while (produced < kPrivateKeySize) {
+        // Prepare input: counter (big endian) || seed bytes
+        uint8_t inputPrefix[4];
+        inputPrefix[0] = static_cast<uint8_t>((counter >> 24) & 0xFF);
+        inputPrefix[1] = static_cast<uint8_t>((counter >> 16) & 0xFF);
+        inputPrefix[2] = static_cast<uint8_t>((counter >> 8) & 0xFF);
+        inputPrefix[3] = static_cast<uint8_t>(counter & 0xFF);
+
+        SHA256_CTX ctx;
+        SHA256_Init(&ctx);
+        SHA256_Update(&ctx, inputPrefix, sizeof(inputPrefix));
+        SHA256_Update(&ctx, reinterpret_cast<const byte_t*>(seedString.c_str()), seedString.length());
+        byte_t digest[SHA256_DIGEST_LENGTH];
+        SHA256_Final(digest, &ctx);
+
+        size_t toCopy = std::min(static_cast<size_t>(SHA256_DIGEST_LENGTH), kPrivateKeySize - produced);
+        memcpy(expanded + produced, digest, toCopy);
+        produced += toCopy;
+        counter++;
     }
-    
-    // Initialize key generation
-    if (EVP_PKEY_keygen_init(pctx) <= 0) {
-        EVP_PKEY_CTX_free(pctx);
-        throw std::runtime_error("Failed to initialize SPHINCS+ key generation");
+
+    // Write into secure memory
+    {
+        auto guard = mKeyData.unlockAndInitGuard();
+        memcpy(guard.address(), expanded, kPrivateKeySize);
     }
-    
-    // For deterministic behavior, seed the RNG
-    RAND_seed(seed, sizeof(seed));
-    
-    // Generate key pair
-    EVP_PKEY* pkey = nullptr;
-    if (EVP_PKEY_generate(pctx, &pkey) <= 0) {
-        EVP_PKEY_CTX_free(pctx);
-        throw std::runtime_error("Failed to generate SPHINCS+ key pair");
+
+    // Create EVP_PKEY from deterministic raw private key bytes
+    mEVPKey = EVP_PKEY_new_raw_private_key_ex(nullptr, getAlgorithmName(), nullptr, expanded, kPrivateKeySize);
+    if (mEVPKey == nullptr) {
+        throw std::runtime_error("Failed to create SPHINCS+ EVP_PKEY from deterministic raw key. Ensure OpenSSL 3.5+ with SPHINCS+ support is available.");
     }
-    
-    // Extract private key raw data
-    auto guard = mKeyData.unlockAndInitGuard();
-    byte_t* keyPtr = static_cast<byte_t*>(guard.address());
-    size_t keyLen = kPrivateKeySize;
-    
-    if (EVP_PKEY_get_raw_private_key(pkey, keyPtr, &keyLen) != 1 || keyLen != kPrivateKeySize) {
-        EVP_PKEY_free(pkey);
-        EVP_PKEY_CTX_free(pctx);
-        throw std::runtime_error("Failed to extract SPHINCS+ private key data");
-    }
-    
-    // Store the EVP key for later use
-    mEVPKey = pkey;
-    
-    EVP_PKEY_CTX_free(pctx);
+
     mIsValid = true;
 }
 

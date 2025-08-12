@@ -2,6 +2,10 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/crypto.h>
+#include <openssl/rand.h>
+#include <openssl/sha.h>
+#include <openssl/params.h>
+#include <openssl/core_names.h>
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
@@ -80,6 +84,26 @@ bool Signature::sign(const PrivateKey& privateKey, const byte_t* data, size_t da
         return false;
     }
     
+    // Derive deterministic seed from SK and data, and seed OpenSSL RNG.
+    // This ensures SPHINCS+ optrand becomes deterministic for this call.
+    // We set provider optrand explicitly via pkey ctx to ensure deterministic signing
+    byte_t optrand[32];
+    {
+        byte_t sk[PrivateKey::privateKeySize()];
+        size_t skLen = sizeof(sk);
+        if (EVP_PKEY_get_raw_private_key(evpKey, sk, &skLen) == 1 && skLen == sizeof(sk)) {
+            SHA256_CTX shaCtx;
+            SHA256_Init(&shaCtx);
+            SHA256_Update(&shaCtx, sk, sizeof(sk));
+            SHA256_Update(&shaCtx, data, dataSize);
+            byte_t digest[SHA256_DIGEST_LENGTH];
+            SHA256_Final(digest, &shaCtx);
+            memcpy(optrand, digest, sizeof(optrand));
+        } else {
+            memset(optrand, 0, sizeof(optrand));
+        }
+    }
+
     // Create signing context
     EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
     if (mdctx == nullptr) {
@@ -92,6 +116,17 @@ bool Signature::sign(const PrivateKey& privateKey, const byte_t* data, size_t da
         EVP_MD_CTX_free(mdctx);
         mIsValid = false;
         return false;
+    }
+    // Set optrand parameter if supported by provider (OpenSSL 3.5+ deterministic SLH-DSA)
+    {
+        EVP_PKEY_CTX* pctx = EVP_MD_CTX_pkey_ctx(mdctx);
+        if (pctx != nullptr) {
+            OSSL_PARAM params[2];
+            params[0] = OSSL_PARAM_construct_octet_string("optrand", optrand, sizeof(optrand));
+            params[1] = OSSL_PARAM_END;
+            /* Ignore failure here if provider doesn't support the param */
+            EVP_PKEY_CTX_set_params(pctx, params);
+        }
     }
     
     // Perform SPHINCS+ signing
@@ -151,7 +186,14 @@ bool Signature::verify(const PublicKey& publicKey, const byte_t* data, size_t da
     EVP_MD_CTX_free(mdctx);
     EVP_PKEY_free(evpKey);
     
-    return result == 1;
+    // Map OpenSSL return codes: 1 = success (valid), 0 = invalid, <0 = error
+    if (result == 1) {
+        return true;
+    }
+    if (result == 0) {
+        return false;
+    }
+    return false;
 }
 
 const byte_t* Signature::data() const

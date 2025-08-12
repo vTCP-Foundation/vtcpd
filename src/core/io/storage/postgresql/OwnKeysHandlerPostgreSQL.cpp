@@ -139,11 +139,11 @@ void OwnKeysHandlerPostgreSQL::invalidateKey(
     const Signature::Shared signature)
 {
     if (!signature) throw ValueError("invalidateKey: signature null");
-    const string query="UPDATE " + mTableName + " SET private_key=$1 WHERE trust_line_id=$2;";
-    const char *params[2]; int lengths[2]; int formats[2]={1,0};
-    params[0]=reinterpret_cast<const char*>(signature->data()); lengths[0]=signature->signatureSize();
-    string tlStr=to_string(trustLineID); params[1]=tlStr.c_str(); lengths[1]=0;
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,params,lengths,formats,0);
+    // In new single-key architecture, invalidation means deletion
+    const string query="DELETE FROM " + mTableName + " WHERE trust_line_id=$1;";
+    const char *params[1]; int lengths[1]={0}; int formats[1]={0};
+    string tlStr=to_string(trustLineID); params[0]=tlStr.c_str(); lengths[0]=0;
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"invalidateKey");
     if (PQcmdTuples(res)[0]=='0') { PQclear(res); throw ValueError("No rows affected"); }
     PQclear(res);
@@ -155,12 +155,12 @@ void OwnKeysHandlerPostgreSQL::invalidateKeyByHash(
     const Signature::Shared signature)
 {
     if (!keyHash || !signature) throw ValueError("invalidateKeyByHash: null param");
-    const string query="UPDATE " + mTableName + " SET private_key=$1 WHERE trust_line_id=$2 AND hash=$3;";
-    const char *params[3]; int lengths[3]; int formats[3]={1,0,1};
-    params[0]=reinterpret_cast<const char*>(signature->data()); lengths[0]=signature->signatureSize();
-    string tlStr=to_string(trustLineID); params[1]=tlStr.c_str(); lengths[1]=0;
-    params[2]=reinterpret_cast<const char*>(keyHash->data()); lengths[2]=KeyHash::kBytesSize;
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),3,nullptr,params,lengths,formats,0);
+    // In new single-key architecture, invalidation means deletion
+    const string query="DELETE FROM " + mTableName + " WHERE trust_line_id=$1 AND hash=$2;";
+    const char *params[2]; int lengths[2]={0,1}; int formats[2]={0,1};
+    string tlStr=to_string(trustLineID); params[0]=tlStr.c_str(); lengths[0]=0;
+    params[1]=reinterpret_cast<const char*>(keyHash->data()); lengths[1]=KeyHash::kBytesSize;
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"invalidateKeyByHash");
     if (PQcmdTuples(res)[0]=='0') { PQclear(res); throw ValueError("No rows affected"); }
     PQclear(res);
