@@ -180,7 +180,9 @@ TEST_F(SphincsSignatureTest, BasicVerification) {
     Signature sig;
     ASSERT_TRUE(sig.sign(*testKeyPair.first, testData));
     
-    bool result = sig.verify(*testKeyPair.second, testData);
+    const byte_t* dataBytes = reinterpret_cast<const byte_t*>(testData.c_str());
+    size_t dataSize = testData.length();
+    bool result = sig.verify(*testKeyPair.second, dataBytes, dataSize);
     EXPECT_TRUE(result);
 }
 
@@ -202,7 +204,9 @@ TEST_F(SphincsSignatureTest, VerificationWithWrongKey) {
     Signature sig;
     ASSERT_TRUE(sig.sign(*testKeyPair.first, testData));
     
-    bool result = sig.verify(*wrongKeyPair.second, testData);
+    const byte_t* dataBytes = reinterpret_cast<const byte_t*>(testData.c_str());
+    size_t dataSize = testData.length();
+    bool result = sig.verify(*wrongKeyPair.second, dataBytes, dataSize);
     EXPECT_FALSE(result);
 }
 
@@ -211,14 +215,18 @@ TEST_F(SphincsSignatureTest, VerificationWithTamperedData) {
     ASSERT_TRUE(sig.sign(*testKeyPair.first, testData));
     
     string tamperedData = testData + " TAMPERED";
-    bool result = sig.verify(*testKeyPair.second, tamperedData);
+    const byte_t* tamperedBytes = reinterpret_cast<const byte_t*>(tamperedData.c_str());
+    size_t tamperedSize = tamperedData.length();
+    bool result = sig.verify(*testKeyPair.second, tamperedBytes, tamperedSize);
     EXPECT_FALSE(result);
 }
 
 TEST_F(SphincsSignatureTest, VerificationWithInvalidSignature) {
     Signature invalidSig;
     
-    bool result = invalidSig.verify(*testKeyPair.second, testData);
+    const byte_t* dataBytes = reinterpret_cast<const byte_t*>(testData.c_str());
+    size_t dataSize = testData.length();
+    bool result = invalidSig.verify(*testKeyPair.second, dataBytes, dataSize);
     EXPECT_FALSE(result);
 }
 
@@ -228,7 +236,9 @@ TEST_F(SphincsSignatureTest, VerificationWithInvalidKey) {
     Signature sig;
     ASSERT_TRUE(sig.sign(*testKeyPair.first, testData));
     
-    bool result = sig.verify(invalidKey, testData);
+    const byte_t* dataBytes = reinterpret_cast<const byte_t*>(testData.c_str());
+    size_t dataSize = testData.length();
+    bool result = sig.verify(invalidKey, dataBytes, dataSize);
     EXPECT_FALSE(result);
 }
 
@@ -285,7 +295,9 @@ TEST_F(SphincsSignatureTest, SignatureSerialization) {
     EXPECT_EQ(original, deserialized);
     
     // Verify that deserialized signature still works
-    bool result = deserialized.verify(*testKeyPair.second, testData);
+    const byte_t* dataBytes = reinterpret_cast<const byte_t*>(testData.c_str());
+    size_t dataSize = testData.length();
+    bool result = deserialized.verify(*testKeyPair.second, dataBytes, dataSize);
     EXPECT_TRUE(result);
 }
 
@@ -324,7 +336,9 @@ TEST_F(SphincsSignatureTest, UtilSignData) {
     ASSERT_NE(signature, nullptr);
     EXPECT_TRUE(signature->isValid());
     
-    bool result = util::verifySignature(*testKeyPair.second, *signature, testData);
+    const byte_t* dataBytes = reinterpret_cast<const byte_t*>(testData.c_str());
+    size_t dataSize = testData.length();
+    bool result = signature->verify(*testKeyPair.second, dataBytes, dataSize);
     EXPECT_TRUE(result);
 }
 
@@ -337,7 +351,7 @@ TEST_F(SphincsSignatureTest, UtilSignDataWithByteArray) {
     ASSERT_NE(signature, nullptr);
     EXPECT_TRUE(signature->isValid());
     
-    bool result = util::verifySignature(*testKeyPair.second, *signature, dataBytes, dataSize);
+    bool result = signature->verify(*testKeyPair.second, dataBytes, dataSize);
     EXPECT_TRUE(result);
 }
 
@@ -345,12 +359,16 @@ TEST_F(SphincsSignatureTest, UtilVerifySignature) {
     auto signature = util::signData(*testKeyPair.first, testData);
     ASSERT_NE(signature, nullptr);
     
-    bool result = util::verifySignature(*testKeyPair.second, *signature, testData);
+    const byte_t* dataBytes = reinterpret_cast<const byte_t*>(testData.c_str());
+    size_t dataSize = testData.length();
+    bool result = signature->verify(*testKeyPair.second, dataBytes, dataSize);
     EXPECT_TRUE(result);
     
     // Test with wrong key
     auto wrongKeyPair = util::generateKeyPair();
-    bool wrongResult = util::verifySignature(*wrongKeyPair.second, *signature, testData);
+    const byte_t* dataBytes2 = reinterpret_cast<const byte_t*>(testData.c_str());
+    size_t dataSize2 = testData.length();
+    bool wrongResult = signature->verify(*wrongKeyPair.second, dataBytes2, dataSize2);
     EXPECT_FALSE(wrongResult);
 }
 

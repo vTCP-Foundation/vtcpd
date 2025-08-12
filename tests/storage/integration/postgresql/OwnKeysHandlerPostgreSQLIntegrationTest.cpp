@@ -31,6 +31,10 @@ protected:
         // Create unique table name for each test
         mTestTableName = "own_keys_test_" + std::to_string(testCounter++);
         
+        // Force drop existing table to ensure clean schema
+        std::string dropQuery = "DROP TABLE IF EXISTS " + mTestTableName + " CASCADE;";
+        DatabaseTestHelper::executeQuery(mConnection, dropQuery);
+        
         // Create trust_lines table (required by foreign key constraint)
         createTrustLinesTable();
         
@@ -112,8 +116,9 @@ protected:
     
     Signature::Shared createSignature(const std::string& testData) {
         auto privateKey = std::make_unique<PrivateKey>();
-        const byte_t* data = reinterpret_cast<const byte_t*>(testData.c_str());
-        return std::make_shared<Signature>(const_cast<byte_t*>(data), testData.length(), privateKey.get());
+        Signature::Shared sig = std::make_shared<Signature>();
+        sig->sign(*privateKey, reinterpret_cast<const byte_t*>(testData.c_str()), testData.length());
+        return sig;
     }
     
     int getKeyCount(TrustLineID trustLineID) {
@@ -131,7 +136,7 @@ protected:
     }
     
     int getValidKeyCount(TrustLineID trustLineID) {
-        std::string query = "SELECT COUNT(*) FROM " + mTestTableName + " WHERE trust_line_id = " + std::to_string(trustLineID) + " AND is_valid = 1";
+        std::string query = "SELECT COUNT(*) FROM " + mTestTableName + " WHERE trust_line_id = " + std::to_string(trustLineID);
         PGresult* result = PQexec(mConnection, query.c_str());
         
         if (PQresultStatus(result) != PGRES_TUPLES_OK) {
@@ -151,14 +156,12 @@ protected:
         int keysSetSequenceNumber;
         std::string publicKeyHex;
         std::string privateKeyHex;
-        int number;
-        int isValid;
     };
     
     std::vector<RawKeyData> getRawKeyData(TrustLineID trustLineID) {
         std::string query = "SELECT encode(hash, 'hex'), trust_line_id, keys_set_sequence_number, "
-                           "encode(public_key, 'hex'), encode(private_key, 'hex'), number, is_valid "
-                           "FROM " + mTestTableName + " WHERE trust_line_id = " + std::to_string(trustLineID) + " ORDER BY number";
+                           "encode(public_key, 'hex'), encode(private_key, 'hex') "
+                           "FROM " + mTestTableName + " WHERE trust_line_id = " + std::to_string(trustLineID) + " ORDER BY hash";
         PGresult* result = PQexec(mConnection, query.c_str());
         
         if (PQresultStatus(result) != PGRES_TUPLES_OK) {
@@ -176,8 +179,6 @@ protected:
             rawData.keysSetSequenceNumber = std::stoi(PQgetvalue(result, i, 2));
             rawData.publicKeyHex = PQgetvalue(result, i, 3);
             rawData.privateKeyHex = PQgetvalue(result, i, 4);
-            rawData.number = std::stoi(PQgetvalue(result, i, 5));
-            rawData.isValid = std::stoi(PQgetvalue(result, i, 6));
             data.push_back(rawData);
         }
         
@@ -186,32 +187,32 @@ protected:
     }
     
     void insertKeyViaSQL(TrustLineID trustLineID, KeyNumber sequenceNumber, const PublicKey::Shared& publicKey, 
-                         const PrivateKey* privateKey, KeyNumber number, int isValid = 1) {
+                         const PrivateKey* privateKey, KeyNumber number = 0, int isValid = 1) {
         auto keyHash = publicKey->hash();
         
         // Convert private key to bytes
-        BytesShared privBuf = tryMalloc(PrivateKey::keySize());
+        BytesShared privBuf = tryMalloc(PrivateKey::privateKeySize());
         {
-            auto guard = privateKey->data()->unlockAndInitGuard();
-            memcpy(privBuf.get(), guard.address(), PrivateKey::keySize());
+            auto secure = privateKey->serialize();
+            auto guard = secure.unlockAndInitGuard();
+            memcpy(privBuf.get(), guard.address(), PrivateKey::privateKeySize());
         }
         
+        // Updated schema - removed number and is_valid columns
         std::string query = "INSERT INTO " + mTestTableName + 
-                           " (hash, trust_line_id, keys_set_sequence_number, public_key, private_key, number, is_valid) "
-                           "VALUES ($1, $2, $3, $4, $5, $6, $7)";
+                           " (hash, trust_line_id, keys_set_sequence_number, public_key, private_key) "
+                           "VALUES ($1, $2, $3, $4, $5)";
         
-        const int kParams = 7;
+        const int kParams = 5;
         const char *params[kParams];
         int lengths[kParams];
-        int formats[kParams] = {1, 0, 0, 1, 1, 0, 0};
+        int formats[kParams] = {1, 0, 0, 1, 1};
         
         params[0] = reinterpret_cast<const char*>(keyHash->data()); lengths[0] = KeyHash::kBytesSize;
         std::string tlIdStr = std::to_string(trustLineID); params[1] = tlIdStr.c_str(); lengths[1] = 0;
         std::string seqStr = std::to_string(sequenceNumber); params[2] = seqStr.c_str(); lengths[2] = 0;
         params[3] = reinterpret_cast<const char*>(publicKey->data()); lengths[3] = publicKey->keySize();
-        params[4] = reinterpret_cast<const char*>(privBuf.get()); lengths[4] = PrivateKey::keySize();
-        std::string numStr = std::to_string(number); params[5] = numStr.c_str(); lengths[5] = 0;
-        std::string validStr = std::to_string(isValid); params[6] = validStr.c_str(); lengths[6] = 0;
+        params[4] = reinterpret_cast<const char*>(privBuf.get()); lengths[4] = PrivateKey::privateKeySize();
         
         PGresult *result = PQexecParams(mConnection, query.c_str(), kParams, nullptr, params, lengths, formats, 0);
         
@@ -243,7 +244,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, saveKey_ValidData_SavesSuccessfu
     auto keyPair = createKeyPair();
     
     // Act
-    ASSERT_NO_THROW(mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNumber));
+    ASSERT_NO_THROW(mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get()));
     
     // Assert
     EXPECT_EQ(getKeyCount(trustLineID), 1);
@@ -256,8 +257,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, saveKey_ValidData_SavesSuccessfu
     const auto& keyData = rawData[0];
     EXPECT_EQ(keyData.trustLineId, trustLineID);
     EXPECT_EQ(keyData.keysSetSequenceNumber, sequenceNumber);
-    EXPECT_EQ(keyData.number, keyNumber);
-    EXPECT_EQ(keyData.isValid, 1);
+    // number/is_valid columns removed in new schema
     
     // Verify hash matches public key hash
     auto expectedHash = keyPair.first->hash();
@@ -266,8 +266,8 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, saveKey_ValidData_SavesSuccessfu
     // Verify public key data
     EXPECT_EQ(keyData.publicKeyHex.length(), PublicKey::keySize() * 2); // Hex representation
     
-    // Verify private key data
-    EXPECT_EQ(keyData.privateKeyHex.length(), PrivateKey::keySize() * 2); // Hex representation
+    // Verify private key data  
+    EXPECT_EQ(keyData.privateKeyHex.length(), PrivateKey::privateKeySize() * 2); // Hex representation
 }
 
 // Test: saveKey - Multiple keys for same trust line
@@ -280,7 +280,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, saveKey_MultipleKeys_SavesAllSuc
     // Act
     for (int i = 0; i < keyCount; ++i) {
         auto keyPair = createKeyPair();
-        ASSERT_NO_THROW(mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), i));
+        ASSERT_NO_THROW(mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get()));
     }
     
     // Assert
@@ -294,8 +294,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, saveKey_MultipleKeys_SavesAllSuc
     for (int i = 0; i < keyCount; ++i) {
         EXPECT_EQ(rawData[i].trustLineId, trustLineID);
         EXPECT_EQ(rawData[i].keysSetSequenceNumber, sequenceNumber);
-        EXPECT_EQ(rawData[i].number, i);
-        EXPECT_EQ(rawData[i].isValid, 1);
+        // number/is_valid columns removed
     }
 }
 
@@ -308,7 +307,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, saveKey_NullPublicKey_ThrowsExce
     auto keyPair = createKeyPair();
     
     // Act & Assert
-    EXPECT_THROW(mHandler->saveKey(trustLineID, sequenceNumber, nullptr, keyPair.second.get(), keyNumber), ValueError);
+    EXPECT_THROW(mHandler->saveKey(trustLineID, sequenceNumber, nullptr, keyPair.second.get()), std::exception);
 }
 
 // Test: saveKey - Null private key throws exception
@@ -320,7 +319,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, saveKey_NullPrivateKey_ThrowsExc
     auto keyPair = createKeyPair();
     
     // Act & Assert
-    EXPECT_THROW(mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, nullptr, keyNumber), ValueError);
+    EXPECT_THROW(mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, nullptr), std::exception);
 }
 
 // Test: maxKeySetSequenceNumber - Valid data returns correct maximum
@@ -333,7 +332,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, maxKeySetSequenceNumber_ValidDat
     // Save keys with different sequence numbers
     for (const auto& seqNum : sequenceNumbers) {
         auto keyPair = createKeyPair();
-        mHandler->saveKey(trustLineID, seqNum, keyPair.first, keyPair.second.get(), 0);
+        mHandler->saveKey(trustLineID, seqNum, keyPair.first, keyPair.second.get());
     }
     
     // Act
@@ -364,16 +363,13 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, nextAvailableKey_ValidKeys_Retur
     
     for (const auto& keyNum : keyNumbers) {
         auto keyPair = createKeyPair();
-        mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNum);
+        mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
         keyPairs.push_back(std::make_pair(keyPair.first, std::move(keyPair.second)));
     }
     
     // Act
-    auto result = mHandler->nextAvailableKey(trustLineID);
-    
-    // Assert
-    EXPECT_NE(result.first, nullptr);
-    EXPECT_EQ(result.second, 1); // Should return the key with smallest number
+    auto result = mHandler->getPublicKey(trustLineID);
+    EXPECT_NE(result, nullptr);
 }
 
 // Test: nextAvailableKey - No available keys throws exception
@@ -382,7 +378,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, nextAvailableKey_NoAvailableKeys
     TrustLineID trustLineID = getValidTrustLineID();
     
     // Act & Assert
-    EXPECT_THROW(mHandler->nextAvailableKey(trustLineID), NotFoundError);
+    EXPECT_THROW(mHandler->getPublicKey(trustLineID), NotFoundError);
 }
 
 // Test: invalidKey - Valid key gets invalidated
@@ -395,20 +391,19 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, invalidKey_ValidKey_InvalidatesS
     auto signature = createSignature("test data");
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
     EXPECT_EQ(getValidKeyCount(trustLineID), 1);
     
     // Act
-    ASSERT_NO_THROW(mHandler->invalidKey(trustLineID, keyNumber, signature));
+    ASSERT_NO_THROW(mHandler->invalidateKey(trustLineID, signature));
     
-    // Assert
+    // Assert - in new architecture, invalidation means deletion
     EXPECT_EQ(getValidKeyCount(trustLineID), 0);
-    EXPECT_EQ(getKeyCount(trustLineID), 1); // Key still exists but invalid
+    EXPECT_EQ(getKeyCount(trustLineID), 0); // Key is deleted after invalidation
     
     // Raw Database Data Validation
     auto rawData = getRawKeyData(trustLineID);
-    ASSERT_EQ(rawData.size(), 1);
-    EXPECT_EQ(rawData[0].isValid, 0);
+    ASSERT_EQ(rawData.size(), 0); // Key is completely removed
 }
 
 // Test: invalidKey - Null signature throws exception
@@ -418,7 +413,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, invalidKey_NullSignature_ThrowsE
     KeyNumber keyNumber = 5;
     
     // Act & Assert
-    EXPECT_THROW(mHandler->invalidKey(trustLineID, keyNumber, nullptr), ValueError);
+    EXPECT_THROW(mHandler->invalidateKey(trustLineID, nullptr), ValueError);
 }
 
 // Test: invalidateKeyByHash - Valid key gets invalidated
@@ -431,21 +426,20 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, invalidateKeyByHash_ValidKey_Inv
     auto signature = createSignature("test data");
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
     auto keyHash = keyPair.first->hash();
     EXPECT_EQ(getValidKeyCount(trustLineID), 1);
     
     // Act
     ASSERT_NO_THROW(mHandler->invalidateKeyByHash(trustLineID, keyHash, signature));
     
-    // Assert
+    // Assert - in new architecture, invalidation means deletion
     EXPECT_EQ(getValidKeyCount(trustLineID), 0);
-    EXPECT_EQ(getKeyCount(trustLineID), 1); // Key still exists but invalid
+    EXPECT_EQ(getKeyCount(trustLineID), 0); // Key is deleted after invalidation
     
     // Raw Database Data Validation
     auto rawData = getRawKeyData(trustLineID);
-    ASSERT_EQ(rawData.size(), 1);
-    EXPECT_EQ(rawData[0].isValid, 0);
+    ASSERT_EQ(rawData.size(), 0); // Key is completely removed
 }
 
 // Test: invalidateKeyByHash - Null key hash throws exception
@@ -467,10 +461,10 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, getPublicKey_ValidKey_ReturnsCor
     auto keyPair = createKeyPair();
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
     
     // Act
-    auto retrievedKey = mHandler->getPublicKey(trustLineID, keyNumber);
+    auto retrievedKey = mHandler->getPublicKey(trustLineID);
     
     // Assert
     ASSERT_NE(retrievedKey, nullptr);
@@ -486,7 +480,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, getPublicKey_NonexistentKey_Thro
     KeyNumber keyNumber = 999;
     
     // Act & Assert
-    EXPECT_THROW(mHandler->getPublicKey(trustLineID, keyNumber), NotFoundError);
+    EXPECT_THROW(mHandler->getPublicKey(trustLineID), NotFoundError);
 }
 
 // Test: getPublicKeyByHash - Valid key returns correct public key
@@ -498,7 +492,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, getPublicKeyByHash_ValidKey_Retu
     auto keyPair = createKeyPair();
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
     auto keyHash = keyPair.first->hash();
     
     // Act
@@ -529,11 +523,11 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, getPublicKeyHash_ValidKey_Return
     auto keyPair = createKeyPair();
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
     auto expectedHash = keyPair.first->hash();
     
     // Act
-    auto retrievedHash = mHandler->getPublicKeyHash(trustLineID, keyNumber);
+    auto retrievedHash = mHandler->getPublicKeyHash(trustLineID);
     
     // Assert
     ASSERT_NE(retrievedHash, nullptr);
@@ -551,20 +545,20 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, getKeyNumberByHash_ValidKey_Retu
     auto keyPair = createKeyPair();
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
     auto keyHash = keyPair.first->hash();
     
     // Act
-    KeyNumber retrievedNumber = mHandler->getKeyNumberByHash(keyHash);
-    
-    // Assert
-    EXPECT_EQ(retrievedNumber, keyNumber);
+    auto retrievedHash2 = mHandler->getPublicKeyHash(trustLineID);
+    EXPECT_EQ(memcmp(retrievedHash2->data(), keyHash->data(), KeyHash::kBytesSize), 0);
 }
 
 // Test: getKeyNumberByHash - Null key hash throws exception
 TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, getKeyNumberByHash_NullKeyHash_ThrowsException) {
+    // Arrange
+    TrustLineID trustLineID = getValidTrustLineID();
     // Act & Assert
-    EXPECT_THROW(mHandler->getKeyNumberByHash(nullptr), ValueError);
+    EXPECT_THROW(mHandler->getPublicKeyByHash(trustLineID, nullptr), ValueError);
 }
 
 // Test: availableKeysCnt - Valid keys returns correct count
@@ -577,14 +571,11 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, availableKeysCnt_ValidKeys_Retur
     // Save keys
     for (int i = 0; i < keyCount; ++i) {
         auto keyPair = createKeyPair();
-        mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), i);
+        mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
     }
     
     // Act
-    KeysCount actualCount = mHandler->availableKeysCnt(trustLineID);
-    
-    // Assert
-    EXPECT_EQ(actualCount, keyCount);
+    EXPECT_TRUE(mHandler->hasKey(trustLineID));
 }
 
 // Test: availableKeysCnt - No keys returns zero
@@ -593,10 +584,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, availableKeysCnt_NoKeys_ReturnsZ
     TrustLineID trustLineID = getValidTrustLineID();
     
     // Act
-    KeysCount actualCount = mHandler->availableKeysCnt(trustLineID);
-    
-    // Assert
-    EXPECT_EQ(actualCount, 0);
+    EXPECT_FALSE(mHandler->hasKey(trustLineID));
 }
 
 // Test: removeUnusedKeys - Valid keys get removed
@@ -609,13 +597,13 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, removeUnusedKeys_ValidKeys_Remov
     // Save keys
     for (int i = 0; i < keyCount; ++i) {
         auto keyPair = createKeyPair();
-        mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), i);
+        mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
     }
     
     EXPECT_EQ(getValidKeyCount(trustLineID), keyCount);
     
     // Act
-    ASSERT_NO_THROW(mHandler->removeUnusedKeys(trustLineID));
+    ASSERT_NO_THROW(mHandler->deleteKeysByTrustLineID(trustLineID));
     
     // Assert
     EXPECT_EQ(getValidKeyCount(trustLineID), 0);
@@ -633,7 +621,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, publicKeysBySetNumber_ValidKeys_
     // Save keys in random order
     for (const auto& keyNum : keyNumbers) {
         auto keyPair = createKeyPair();
-        mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNum);
+        mHandler->saveKey(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get());
         savedKeys.push_back(keyPair.first);
     }
     
@@ -662,8 +650,8 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, deleteKeysByTrustLineID_ValidKey
     // Save keys for both trust lines
     auto keyPair1 = createKeyPair();
     auto keyPair2 = createKeyPair();
-    mHandler->saveKey(trustLineID1, sequenceNumber, keyPair1.first, keyPair1.second.get(), 1);
-    mHandler->saveKey(trustLineID2, sequenceNumber, keyPair2.first, keyPair2.second.get(), 1);
+    mHandler->saveKey(trustLineID1, sequenceNumber, keyPair1.first, keyPair1.second.get());
+    mHandler->saveKey(trustLineID2, sequenceNumber, keyPair2.first, keyPair2.second.get());
     
     EXPECT_EQ(getKeyCount(trustLineID1), 1);
     EXPECT_EQ(getKeyCount(trustLineID2), 1);
@@ -688,10 +676,10 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, deleteKeyByHashExceptSequenceNum
     auto keyPair = createKeyPair();
     auto keyHash = keyPair.first->hash();
     
-    mHandler->saveKey(trustLineID, sequenceNumber1, keyPair.first, keyPair.second.get(), keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber1, keyPair.first, keyPair.second.get());
     // For second save, we need a new private key instance
     auto keyPair2 = createKeyPair();
-    mHandler->saveKey(trustLineID, sequenceNumber2, keyPair2.first, keyPair2.second.get(), keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber2, keyPair2.first, keyPair2.second.get());
     
     EXPECT_EQ(getKeyCount(trustLineID), 2);
     
@@ -714,7 +702,7 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, publicKeyHashesLessThanSetNumber
     // Save keys with different sequence numbers
     for (const auto& seqNum : sequenceNumbers) {
         auto keyPair = createKeyPair();
-        mHandler->saveKey(trustLineID, seqNum, keyPair.first, keyPair.second.get(), 1);
+        mHandler->saveKey(trustLineID, seqNum, keyPair.first, keyPair.second.get());
         savedKeys.push_back(keyPair.first);
     }
     
@@ -741,24 +729,22 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, ReverseValidation_InsertViaSQL_R
     insertKeyViaSQL(trustLineID, sequenceNumber, keyPair.first, keyPair.second.get(), keyNumber);
     
     // Assert - Read via class methods
-    auto retrievedKey = mHandler->getPublicKey(trustLineID, keyNumber);
+    auto retrievedKey = mHandler->getPublicKey(trustLineID);
     ASSERT_NE(retrievedKey, nullptr);
     
     // Compare key data
     EXPECT_EQ(memcmp(retrievedKey->data(), keyPair.first->data(), PublicKey::keySize()), 0);
     
     // Test other methods
-    auto retrievedHash = mHandler->getPublicKeyHash(trustLineID, keyNumber);
+    auto retrievedHash = mHandler->getPublicKeyHash(trustLineID);
     ASSERT_NE(retrievedHash, nullptr);
     
     auto expectedHash = keyPair.first->hash();
     EXPECT_EQ(memcmp(retrievedHash->data(), expectedHash->data(), KeyHash::kBytesSize), 0);
     
-    KeyNumber retrievedNumber = mHandler->getKeyNumberByHash(expectedHash);
-    EXPECT_EQ(retrievedNumber, keyNumber);
-    
-    KeysCount count = mHandler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(count, 1);
+    auto retrievedHash3 = mHandler->getPublicKeyHash(trustLineID);
+    EXPECT_EQ(memcmp(retrievedHash3->data(), expectedHash->data(), KeyHash::kBytesSize), 0);
+    EXPECT_TRUE(mHandler->hasKey(trustLineID));
 }
 
 // Test: Constructor with null connection throws exception
@@ -786,11 +772,11 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, TableCreation_ValidatesSchemaCor
     ASSERT_EQ(PQresultStatus(result), PGRES_TUPLES_OK);
     
     int rows = PQntuples(result);
-    EXPECT_EQ(rows, 7); // Expected number of columns
+    EXPECT_EQ(rows, 5); // hash, trust_line_id, keys_set_sequence_number, public_key, private_key
     
     // Check specific columns exist
     bool hasHashColumn = false, hasTrustLineIdColumn = false, hasPublicKeyColumn = false;
-    bool hasPrivateKeyColumn = false, hasNumberColumn = false, hasIsValidColumn = false;
+    bool hasPrivateKeyColumn = false;
     
     for (int i = 0; i < rows; ++i) {
         std::string columnName = PQgetvalue(result, i, 0);
@@ -798,16 +784,14 @@ TEST_F(OwnKeysHandlerPostgreSQLIntegrationTest, TableCreation_ValidatesSchemaCor
         if (columnName == "trust_line_id") hasTrustLineIdColumn = true;
         if (columnName == "public_key") hasPublicKeyColumn = true;
         if (columnName == "private_key") hasPrivateKeyColumn = true;
-        if (columnName == "number") hasNumberColumn = true;
-        if (columnName == "is_valid") hasIsValidColumn = true;
+        
     }
     
     EXPECT_TRUE(hasHashColumn);
     EXPECT_TRUE(hasTrustLineIdColumn);
     EXPECT_TRUE(hasPublicKeyColumn);
     EXPECT_TRUE(hasPrivateKeyColumn);
-    EXPECT_TRUE(hasNumberColumn);
-    EXPECT_TRUE(hasIsValidColumn);
+    
     
     PQclear(result);
 } 

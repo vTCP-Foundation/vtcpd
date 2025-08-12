@@ -159,8 +159,9 @@ protected:
     
     Signature::Shared createTestSignature(const std::string& testData) {
         auto privateKey = std::make_unique<PrivateKey>();
-        const byte_t* data = reinterpret_cast<const byte_t*>(testData.c_str());
-        return std::make_shared<Signature>(const_cast<byte_t*>(data), testData.length(), privateKey.get());
+        Signature::Shared sig = std::make_shared<Signature>();
+        sig->sign(*privateKey, reinterpret_cast<const byte_t*>(testData.c_str()), testData.length());
+        return sig;
     }
     
     TrustLineAmount createTestAmount(long long value) {

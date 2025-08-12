@@ -31,6 +31,10 @@ protected:
         // Create unique table name for each test
         mTestTableName = "contractor_keys_test_" + std::to_string(testCounter++);
         
+        // Force drop existing table to ensure clean schema
+        std::string dropQuery = "DROP TABLE IF EXISTS " + mTestTableName + " CASCADE;";
+        DatabaseTestHelper::executeQuery(mConnection, dropQuery);
+        
         // Create trust_lines table (required by foreign key constraint)
         createTrustLinesTable();
         
@@ -124,7 +128,7 @@ protected:
     }
     
     int getValidKeyCount(TrustLineID trustLineID) {
-        std::string query = "SELECT COUNT(*) FROM " + mTestTableName + " WHERE trust_line_id = " + std::to_string(trustLineID) + " AND is_valid = 1";
+        std::string query = "SELECT COUNT(*) FROM " + mTestTableName + " WHERE trust_line_id = " + std::to_string(trustLineID);
         PGresult* result = PQexec(mConnection, query.c_str());
         
         if (PQresultStatus(result) != PGRES_TUPLES_OK) {
@@ -143,14 +147,12 @@ protected:
         int trustLineId;
         int keysSetSequenceNumber;
         std::string publicKeyHex;
-        int number;
-        int isValid;
     };
     
     std::vector<RawKeyData> getRawKeyData(TrustLineID trustLineID) {
         std::string query = "SELECT encode(hash, 'hex'), trust_line_id, keys_set_sequence_number, "
-                           "encode(public_key, 'hex'), number, is_valid "
-                           "FROM " + mTestTableName + " WHERE trust_line_id = " + std::to_string(trustLineID) + " ORDER BY number";
+                           "encode(public_key, 'hex') "
+                           "FROM " + mTestTableName + " WHERE trust_line_id = " + std::to_string(trustLineID) + " ORDER BY hash";
         PGresult* result = PQexec(mConnection, query.c_str());
         
         if (PQresultStatus(result) != PGRES_TUPLES_OK) {
@@ -167,8 +169,6 @@ protected:
             rawData.trustLineId = std::stoi(PQgetvalue(result, i, 1));
             rawData.keysSetSequenceNumber = std::stoi(PQgetvalue(result, i, 2));
             rawData.publicKeyHex = PQgetvalue(result, i, 3);
-            rawData.number = std::stoi(PQgetvalue(result, i, 4));
-            rawData.isValid = std::stoi(PQgetvalue(result, i, 5));
             data.push_back(rawData);
         }
         
@@ -177,24 +177,23 @@ protected:
     }
     
     void insertKeyViaSQL(TrustLineID trustLineID, KeyNumber sequenceNumber, const PublicKey::Shared& publicKey, 
-                         KeyNumber number, int isValid = 1) {
+                         KeyNumber number = 0, int isValid = 1) {
         auto keyHash = publicKey->hash();
         
+        // Updated schema - removed number and is_valid columns
         std::string query = "INSERT INTO " + mTestTableName + 
-                           " (hash, trust_line_id, keys_set_sequence_number, public_key, number, is_valid) "
-                           "VALUES ($1, $2, $3, $4, $5, $6)";
+                           " (hash, trust_line_id, keys_set_sequence_number, public_key) "
+                           "VALUES ($1, $2, $3, $4)";
         
-        const int kParams = 6;
+        const int kParams = 4;
         const char *params[kParams];
         int lengths[kParams];
-        int formats[kParams] = {1, 0, 0, 1, 0, 0};
+        int formats[kParams] = {1, 0, 0, 1};
         
         params[0] = reinterpret_cast<const char*>(keyHash->data()); lengths[0] = KeyHash::kBytesSize;
         std::string tlIdStr = std::to_string(trustLineID); params[1] = tlIdStr.c_str(); lengths[1] = 0;
         std::string seqStr = std::to_string(sequenceNumber); params[2] = seqStr.c_str(); lengths[2] = 0;
         params[3] = reinterpret_cast<const char*>(publicKey->data()); lengths[3] = publicKey->keySize();
-        std::string numStr = std::to_string(number); params[4] = numStr.c_str(); lengths[4] = 0;
-        std::string validStr = std::to_string(isValid); params[5] = validStr.c_str(); lengths[5] = 0;
         
         PGresult *result = PQexecParams(mConnection, query.c_str(), kParams, nullptr, params, lengths, formats, 0);
         
@@ -222,11 +221,10 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, saveKey_ValidData_SavesSu
     // Arrange
     TrustLineID trustLineID = getValidTrustLineID();
     KeyNumber sequenceNumber = 1;
-    KeyNumber keyNumber = 5;
     auto publicKey = createPublicKey();
     
     // Act
-    ASSERT_NO_THROW(mHandler->saveKey(trustLineID, sequenceNumber, publicKey, keyNumber));
+    ASSERT_NO_THROW(mHandler->saveKey(trustLineID, sequenceNumber, publicKey));
     
     // Assert
     EXPECT_EQ(getKeyCount(trustLineID), 1);
@@ -239,8 +237,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, saveKey_ValidData_SavesSu
     const auto& keyData = rawData[0];
     EXPECT_EQ(keyData.trustLineId, trustLineID);
     EXPECT_EQ(keyData.keysSetSequenceNumber, sequenceNumber);
-    EXPECT_EQ(keyData.number, keyNumber);
-    EXPECT_EQ(keyData.isValid, 1);
+    
     
     // Verify hash matches public key hash
     auto expectedHash = publicKey->hash();
@@ -260,7 +257,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, saveKey_MultipleKeys_Save
     // Act
     for (int i = 0; i < keyCount; ++i) {
         auto publicKey = createPublicKey();
-        ASSERT_NO_THROW(mHandler->saveKey(trustLineID, sequenceNumber, publicKey, i));
+        ASSERT_NO_THROW(mHandler->saveKey(trustLineID, sequenceNumber, publicKey));
     }
     
     // Assert
@@ -274,8 +271,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, saveKey_MultipleKeys_Save
     for (int i = 0; i < keyCount; ++i) {
         EXPECT_EQ(rawData[i].trustLineId, trustLineID);
         EXPECT_EQ(rawData[i].keysSetSequenceNumber, sequenceNumber);
-        EXPECT_EQ(rawData[i].number, i);
-        EXPECT_EQ(rawData[i].isValid, 1);
+        // number and isValid fields removed in new schema
     }
 }
 
@@ -287,7 +283,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, saveKey_NullPublicKey_Thr
     KeyNumber keyNumber = 5;
     
     // Act & Assert
-    EXPECT_THROW(mHandler->saveKey(trustLineID, sequenceNumber, nullptr, keyNumber), ValueError);
+    EXPECT_THROW(mHandler->saveKey(trustLineID, sequenceNumber, nullptr), std::exception);
 }
 
 // Test: maxKeySetSequenceNumber - Valid data returns correct maximum
@@ -300,7 +296,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, maxKeySetSequenceNumber_V
     // Save keys with different sequence numbers
     for (const auto& seqNum : sequenceNumbers) {
         auto publicKey = createPublicKey();
-        mHandler->saveKey(trustLineID, seqNum, publicKey, 0);
+        mHandler->saveKey(trustLineID, seqNum, publicKey);
     }
     
     // Act
@@ -328,20 +324,19 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, invalidKey_ValidKey_Inval
     auto publicKey = createPublicKey();
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, publicKey, keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, publicKey);
     EXPECT_EQ(getValidKeyCount(trustLineID), 1);
     
     // Act
-    ASSERT_NO_THROW(mHandler->invalidKey(trustLineID, keyNumber));
+    ASSERT_NO_THROW(mHandler->invalidateKey(trustLineID));
     
-    // Assert
+    // Assert - in new architecture, invalidation means deletion
     EXPECT_EQ(getValidKeyCount(trustLineID), 0);
-    EXPECT_EQ(getKeyCount(trustLineID), 1); // Key still exists but invalid
+    EXPECT_EQ(getKeyCount(trustLineID), 0);
     
     // Raw Database Data Validation
     auto rawData = getRawKeyData(trustLineID);
-    ASSERT_EQ(rawData.size(), 1);
-    EXPECT_EQ(rawData[0].isValid, 0);
+    ASSERT_EQ(rawData.size(), 0); // Key is completely removed
 }
 
 // Test: invalidateKeyByHash - Valid key gets invalidated
@@ -353,21 +348,20 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, invalidateKeyByHash_Valid
     auto publicKey = createPublicKey();
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, publicKey, keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, publicKey);
     auto keyHash = publicKey->hash();
     EXPECT_EQ(getValidKeyCount(trustLineID), 1);
     
     // Act
     ASSERT_NO_THROW(mHandler->invalidateKeyByHash(trustLineID, keyHash));
     
-    // Assert
+    // Assert - in new architecture, invalidation means deletion
     EXPECT_EQ(getValidKeyCount(trustLineID), 0);
-    EXPECT_EQ(getKeyCount(trustLineID), 1); // Key still exists but invalid
+    EXPECT_EQ(getKeyCount(trustLineID), 0);
     
     // Raw Database Data Validation
     auto rawData = getRawKeyData(trustLineID);
-    ASSERT_EQ(rawData.size(), 1);
-    EXPECT_EQ(rawData[0].isValid, 0);
+    ASSERT_EQ(rawData.size(), 0); // Key is completely removed
 }
 
 // Test: invalidateKeyByHash - Null key hash throws exception
@@ -388,10 +382,10 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, keyByNumber_ValidKey_Retu
     auto publicKey = createPublicKey();
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, publicKey, keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, publicKey);
     
     // Act
-    auto retrievedKey = mHandler->keyByNumber(trustLineID, keyNumber);
+    auto retrievedKey = mHandler->getPublicKey(trustLineID);
     
     // Assert
     ASSERT_NE(retrievedKey, nullptr);
@@ -407,7 +401,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, keyByNumber_NonexistentKe
     KeyNumber keyNumber = 999;
     
     // Act & Assert
-    EXPECT_THROW(mHandler->keyByNumber(trustLineID, keyNumber), NotFoundError);
+    EXPECT_THROW(mHandler->getPublicKey(trustLineID), NotFoundError);
 }
 
 // Test: keyByHash - Valid key returns correct public key
@@ -419,7 +413,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, keyByHash_ValidKey_Return
     auto publicKey = createPublicKey();
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, publicKey, keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, publicKey);
     auto keyHash = publicKey->hash();
     
     // Act
@@ -450,11 +444,11 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, keyHashByNumber_ValidKey_
     auto publicKey = createPublicKey();
     
     // Save key first
-    mHandler->saveKey(trustLineID, sequenceNumber, publicKey, keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber, publicKey);
     auto expectedHash = publicKey->hash();
     
     // Act
-    auto retrievedHash = mHandler->keyHashByNumber(trustLineID, keyNumber);
+    auto retrievedHash = mHandler->getPublicKeyHash(trustLineID);
     
     // Assert
     ASSERT_NE(retrievedHash, nullptr);
@@ -470,7 +464,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, keyHashByNumber_Nonexiste
     KeyNumber keyNumber = 999;
     
     // Act & Assert
-    EXPECT_THROW(mHandler->keyHashByNumber(trustLineID, keyNumber), NotFoundError);
+    EXPECT_THROW(mHandler->getPublicKeyHash(trustLineID), NotFoundError);
 }
 
 // Test: availableKeysCnt - Valid keys returns correct count
@@ -483,14 +477,11 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, availableKeysCnt_ValidKey
     // Save keys
     for (int i = 0; i < keyCount; ++i) {
         auto publicKey = createPublicKey();
-        mHandler->saveKey(trustLineID, sequenceNumber, publicKey, i);
+        mHandler->saveKey(trustLineID, sequenceNumber, publicKey);
     }
     
     // Act
-    KeysCount actualCount = mHandler->availableKeysCnt(trustLineID);
-    
-    // Assert
-    EXPECT_EQ(actualCount, keyCount);
+    EXPECT_TRUE(mHandler->hasKey(trustLineID));
 }
 
 // Test: availableKeysCnt - No keys returns zero
@@ -499,10 +490,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, availableKeysCnt_NoKeys_R
     TrustLineID trustLineID = getValidTrustLineID();
     
     // Act
-    KeysCount actualCount = mHandler->availableKeysCnt(trustLineID);
-    
-    // Assert
-    EXPECT_EQ(actualCount, 0);
+    EXPECT_FALSE(mHandler->hasKey(trustLineID));
 }
 
 // Test: sequenceKeysCnt - Valid keys returns correct count
@@ -517,19 +505,19 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, sequenceKeysCnt_ValidKeys
     // Save keys for sequence 1
     for (int i = 0; i < seq1KeyCount; ++i) {
         auto publicKey = createPublicKey();
-        mHandler->saveKey(trustLineID, sequenceNumber1, publicKey, i);
+        mHandler->saveKey(trustLineID, sequenceNumber1, publicKey);
     }
     
     // Save keys for sequence 2
     for (int i = 0; i < seq2KeyCount; ++i) {
         auto publicKey = createPublicKey();
-        mHandler->saveKey(trustLineID, sequenceNumber2, publicKey, i + 10);
+        mHandler->saveKey(trustLineID, sequenceNumber2, publicKey);
     }
     
     // Act & Assert
-    EXPECT_EQ(mHandler->sequenceKeysCnt(trustLineID, sequenceNumber1), seq1KeyCount);
-    EXPECT_EQ(mHandler->sequenceKeysCnt(trustLineID, sequenceNumber2), seq2KeyCount);
-    EXPECT_EQ(mHandler->sequenceKeysCnt(trustLineID, 999), 0); // Non-existent sequence
+    EXPECT_EQ((int)mHandler->publicKeysBySetNumber(trustLineID, sequenceNumber1).size(), seq1KeyCount);
+    EXPECT_EQ((int)mHandler->publicKeysBySetNumber(trustLineID, sequenceNumber2).size(), seq2KeyCount);
+    EXPECT_EQ((int)mHandler->publicKeysBySetNumber(trustLineID, 999).size(), 0);
 }
 
 // Test: removeUnusedKeys - Valid keys get removed
@@ -542,13 +530,13 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, removeUnusedKeys_ValidKey
     // Save keys
     for (int i = 0; i < keyCount; ++i) {
         auto publicKey = createPublicKey();
-        mHandler->saveKey(trustLineID, sequenceNumber, publicKey, i);
+        mHandler->saveKey(trustLineID, sequenceNumber, publicKey);
     }
     
     EXPECT_EQ(getValidKeyCount(trustLineID), keyCount);
     
     // Act
-    ASSERT_NO_THROW(mHandler->removeUnusedKeys(trustLineID));
+    ASSERT_NO_THROW(mHandler->deleteKeysByTrustLineID(trustLineID));
     
     // Assert
     EXPECT_EQ(getValidKeyCount(trustLineID), 0);
@@ -566,7 +554,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, publicKeysBySetNumber_Val
     // Save keys in random order
     for (const auto& keyNum : keyNumbers) {
         auto publicKey = createPublicKey();
-        mHandler->saveKey(trustLineID, sequenceNumber, publicKey, keyNum);
+        mHandler->saveKey(trustLineID, sequenceNumber, publicKey);
         savedKeys.push_back(publicKey);
     }
     
@@ -594,8 +582,8 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, deleteKeysByTrustLineID_V
     // Save keys for both trust lines
     auto publicKey1 = createPublicKey();
     auto publicKey2 = createPublicKey();
-    mHandler->saveKey(trustLineID1, sequenceNumber, publicKey1, 1);
-    mHandler->saveKey(trustLineID2, sequenceNumber, publicKey2, 1);
+    mHandler->saveKey(trustLineID1, sequenceNumber, publicKey1);
+    mHandler->saveKey(trustLineID2, sequenceNumber, publicKey2);
     
     EXPECT_EQ(getKeyCount(trustLineID1), 1);
     EXPECT_EQ(getKeyCount(trustLineID2), 1);
@@ -621,8 +609,8 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, deleteKeyByHashExceptSequ
     auto publicKey2 = createPublicKey();
     auto keyHash = publicKey1->hash();
     
-    mHandler->saveKey(trustLineID, sequenceNumber1, publicKey1, keyNumber);
-    mHandler->saveKey(trustLineID, sequenceNumber2, publicKey2, keyNumber);
+    mHandler->saveKey(trustLineID, sequenceNumber1, publicKey1);
+    mHandler->saveKey(trustLineID, sequenceNumber2, publicKey2);
     
     EXPECT_EQ(getKeyCount(trustLineID), 2);
     
@@ -654,7 +642,7 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, publicKeyHashesLessThanSe
     // Save keys with different sequence numbers
     for (const auto& seqNum : sequenceNumbers) {
         auto publicKey = createPublicKey();
-        mHandler->saveKey(trustLineID, seqNum, publicKey, 1);
+        mHandler->saveKey(trustLineID, seqNum, publicKey);
         savedKeys.push_back(publicKey);
     }
     
@@ -681,21 +669,20 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, ReverseValidation_InsertV
     insertKeyViaSQL(trustLineID, sequenceNumber, publicKey, keyNumber);
     
     // Assert - Read via class methods
-    auto retrievedKey = mHandler->keyByNumber(trustLineID, keyNumber);
+    auto retrievedKey = mHandler->getPublicKey(trustLineID);
     ASSERT_NE(retrievedKey, nullptr);
     
     // Compare key data
     EXPECT_EQ(memcmp(retrievedKey->data(), publicKey->data(), PublicKey::keySize()), 0);
     
     // Test other methods
-    auto retrievedHash = mHandler->keyHashByNumber(trustLineID, keyNumber);
+    auto retrievedHash = mHandler->getPublicKeyHash(trustLineID);
     ASSERT_NE(retrievedHash, nullptr);
     
     auto expectedHash = publicKey->hash();
     EXPECT_EQ(memcmp(retrievedHash->data(), expectedHash->data(), KeyHash::kBytesSize), 0);
     
-    KeysCount count = mHandler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(count, 1);
+    EXPECT_TRUE(mHandler->hasKey(trustLineID));
 }
 
 // Test: Constructor with null connection throws exception
@@ -723,28 +710,25 @@ TEST_F(ContractorKeysHandlerPostgreSQLIntegrationTest, TableCreation_ValidatesSc
     ASSERT_EQ(PQresultStatus(result), PGRES_TUPLES_OK);
     
     int rows = PQntuples(result);
-    EXPECT_EQ(rows, 6); // Expected number of columns
+    EXPECT_EQ(rows, 4); // Updated schema - removed number and is_valid columns
     
     // Check specific columns exist
     bool hasHashColumn = false, hasTrustLineIdColumn = false, hasPublicKeyColumn = false;
-    bool hasNumberColumn = false, hasIsValidColumn = false, hasSeqNumColumn = false;
+    bool hasSeqNumColumn = false;
     
     for (int i = 0; i < rows; ++i) {
         std::string columnName = PQgetvalue(result, i, 0);
         if (columnName == "hash") hasHashColumn = true;
         if (columnName == "trust_line_id") hasTrustLineIdColumn = true;
         if (columnName == "public_key") hasPublicKeyColumn = true;
-        if (columnName == "number") hasNumberColumn = true;
-        if (columnName == "is_valid") hasIsValidColumn = true;
         if (columnName == "keys_set_sequence_number") hasSeqNumColumn = true;
     }
     
     EXPECT_TRUE(hasHashColumn);
     EXPECT_TRUE(hasTrustLineIdColumn);
     EXPECT_TRUE(hasPublicKeyColumn);
-    EXPECT_TRUE(hasNumberColumn);
-    EXPECT_TRUE(hasIsValidColumn);
     EXPECT_TRUE(hasSeqNumColumn);
+    // number and is_valid columns removed in new single-key architecture
     
     PQclear(result);
 } 

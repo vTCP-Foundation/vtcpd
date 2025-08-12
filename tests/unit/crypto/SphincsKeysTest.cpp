@@ -41,9 +41,13 @@ TEST_F(SphincsKeysTest, PublicKeyFromData) {
 }
 
 TEST_F(SphincsKeysTest, PublicKeyFromValidHexString) {
-    // Create a valid hex string (64 characters for 32 bytes)
-    string hexString = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    
+    // Create a valid hex string (128 characters for 64 bytes)
+    string hexString;
+    hexString.reserve(PublicKey::keySize() * 2);
+    const string block = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; // 64 chars
+    hexString += block; // first 64
+    hexString += block; // second 64 -> total 128
+
     PublicKey key(hexString);
     EXPECT_TRUE(key.isValid());
     EXPECT_EQ(key.toString(), hexString);

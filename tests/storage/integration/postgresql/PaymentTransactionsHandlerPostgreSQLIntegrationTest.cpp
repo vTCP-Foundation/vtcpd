@@ -34,6 +34,13 @@ protected:
         // Create unique table name for each test
         mTableName = "payment_transactions_test_" + std::to_string(testCounter++);
         
+        // Force drop existing table to ensure clean schema
+        std::string dropQuery = "DROP TABLE IF EXISTS " + mTableName + " CASCADE;";
+        DatabaseTestHelper::executeQuery(mConnection, dropQuery);
+        
+        // Create payment_keys table (required by foreign key constraint)
+        createPaymentKeysTable();
+        
         // Create PaymentTransactionsHandlerPostgreSQL instance
         mHandler = std::make_unique<PaymentTransactionsHandlerPostgreSQL>(
             mConnection, mTableName, mLogger);
@@ -55,6 +62,35 @@ protected:
         } catch (const std::exception& e) {
             // Continue cleanup even if some operations fail
             std::cerr << "Cleanup warning: " << e.what() << std::endl;
+        }
+    }
+    
+    void createPaymentKeysTable() {
+        try {
+            // Drop existing payment_keys table to ensure clean state
+            std::string dropQuery = "DROP TABLE IF EXISTS payment_keys CASCADE;";
+            DatabaseTestHelper::executeQuery(mConnection, dropQuery);
+            
+            // Create payment_keys table with the new schema
+            std::string createQuery = "CREATE TABLE payment_keys ("
+                                     "id BIGSERIAL PRIMARY KEY, "
+                                     "public_key BYTEA NOT NULL, "
+                                     "private_key BYTEA NOT NULL);";
+            DatabaseTestHelper::executeQuery(mConnection, createQuery);
+            
+            // Create index
+            std::string indexQuery = "CREATE INDEX IF NOT EXISTS payment_keys_id_idx ON payment_keys(id);";
+            DatabaseTestHelper::executeQuery(mConnection, indexQuery);
+            
+            // Insert a dummy payment key for tests (required by foreign key constraint)
+            std::string insertQuery = "INSERT INTO payment_keys (public_key, private_key) VALUES "
+                                     "(decode('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', 'hex'), "
+                                     "decode('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', 'hex'));";
+            DatabaseTestHelper::executeQuery(mConnection, insertQuery);
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to create payment_keys table: " << e.what() << std::endl;
+            throw;
         }
     }
 
@@ -417,7 +453,7 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, SchemaValidation_Cor
     PGresult *result = PQexec(mConnection, query.c_str());
     EXPECT_EQ(PQresultStatus(result), PGRES_TUPLES_OK);
     
-    EXPECT_EQ(PQntuples(result), 4);
+    EXPECT_EQ(PQntuples(result), 5); // Updated schema includes payment_key_id
     
     // Verify column names and types
     EXPECT_STREQ(PQgetvalue(result, 0, 0), "uuid");
@@ -431,6 +467,9 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, SchemaValidation_Cor
     
     EXPECT_STREQ(PQgetvalue(result, 3, 0), "recording_time");
     EXPECT_STREQ(PQgetvalue(result, 3, 1), "bigint");
+    
+    EXPECT_STREQ(PQgetvalue(result, 4, 0), "payment_key_id");
+    EXPECT_STREQ(PQgetvalue(result, 4, 1), "bigint");
     
     PQclear(result);
 }
@@ -481,8 +520,8 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, ReverseValidation_Di
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 54321;
     
-    // Direct SQL insert
-    std::string insertQuery = "INSERT INTO " + mTableName + " (uuid, maximal_claiming_block_number, observing_state, recording_time) VALUES ($1, $2, $3, $4);";
+    // Direct SQL insert - updated schema includes payment_key_id
+    std::string insertQuery = "INSERT INTO " + mTableName + " (uuid, maximal_claiming_block_number, observing_state, recording_time, payment_key_id) VALUES ($1, $2, $3, $4, (SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1));";
     
     const char *params[4];
     int lengths[4];

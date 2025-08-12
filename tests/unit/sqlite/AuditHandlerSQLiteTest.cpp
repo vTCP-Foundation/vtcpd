@@ -82,9 +82,9 @@ protected:
     }
     
     Signature::Shared generateTestSignature() {
-        byte_t signatureData[Signature::kSize];
-        std::fill(signatureData, signatureData + Signature::kSize, 0xCD);
-        return make_shared<Signature>(signatureData);
+        byte_t sigBuf[Signature::signatureSize()];
+        std::fill(sigBuf, sigBuf + Signature::signatureSize(), 0xCD);
+        return make_shared<Signature>(sigBuf);
     }
     
     TrustLineAmount generateTestAmount() {

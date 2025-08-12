@@ -62,8 +62,8 @@ protected:
     }
     
     Signature::Shared generateTestSignature() {
-        byte_t signatureData[Signature::kSize];
-        fill(signatureData, signatureData + Signature::kSize, 0xCD);
+        byte_t signatureData[Signature::signatureSize()];
+        fill(signatureData, signatureData + Signature::signatureSize(), 0xCD);
         return make_shared<Signature>(signatureData);
     }
     

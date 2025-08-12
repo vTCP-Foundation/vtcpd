@@ -12,7 +12,7 @@
 #include "../../../src/core/common/exceptions/NotFoundError.h"
 #include "../../../src/core/common/exceptions/ValueError.h"
 #include "../../../src/core/logger/Logger.h"
-#include "../fixtures/TestDataFactory.h"
+// Removed TestDataFactory dependency
 
 using namespace std;
 using namespace testing;
@@ -32,9 +32,6 @@ protected:
         // Create Logger
         logger = make_unique<Logger>(Logger::LogLevel::DEBUG);
         
-        // Create test data factory
-        testDataFactory = make_unique<TestDataFactory>();
-        
         // Create handler
         handler = make_unique<PaymentKeysHandlerSQLite>(
             db, 
@@ -46,7 +43,7 @@ protected:
     void TearDown() override {
         handler.reset();
         logger.reset();
-        testDataFactory.reset();
+        
         
         if (db) {
             sqlite3_close(db);
@@ -58,27 +55,23 @@ protected:
     // Helper methods
     PublicKey::Shared generateTestPublicKey() {
         // Generate a simple test public key
-        byte keyData[kPublicKeySize];
-        fill(keyData, keyData + kPublicKeySize, 0xAB);
+        byte keyData[PublicKey::keySize()];
+        fill(keyData, keyData + PublicKey::keySize(), 0xAB);
         return make_shared<PublicKey>(keyData);
     }
     
     PrivateKey* generateTestPrivateKey() {
         // Generate a simple test private key
-        byte keyData[kPrivateKeySize];
-        fill(keyData, keyData + kPrivateKeySize, 0xCD);
+        byte keyData[PrivateKey::privateKeySize()];
+        fill(keyData, keyData + PrivateKey::privateKeySize(), 0xCD);
         return new PrivateKey(keyData);
-    }
-    
-    TransactionUUID generateTestTransactionUUID() {
-        return testDataFactory->generateTransactionUUID();
     }
     
     filesystem::path tempDir;
     filesystem::path testDbPath;
     sqlite3* db = nullptr;
     unique_ptr<Logger> logger;
-    unique_ptr<TestDataFactory> testDataFactory;
+    
     unique_ptr<PaymentKeysHandlerSQLite> handler;
 };
 
@@ -115,28 +108,24 @@ TEST_F(PaymentKeysHandlerSQLiteTest, Constructor_EmptyTableName_ThrowsException)
 
 // saveOwnKey Tests
 TEST_F(PaymentKeysHandlerSQLiteTest, SaveOwnKey_ValidParameters_SavesSuccessfully) {
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
     PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
     
     EXPECT_NO_THROW(
-        handler->saveOwnKey(transactionUUID, publicKey, privateKey)
+        handler->saveOwnKey(publicKey, privateKey)
     );
     
     // Verify key was saved
-    vector<TransactionUUID> uuids = handler->allTransactionUUIDs();
-    EXPECT_EQ(uuids.size(), 1);
-    EXPECT_EQ(uuids[0], transactionUUID);
+    EXPECT_TRUE(handler->hasAnyKeys());
     
     delete privateKey;
 }
 
 TEST_F(PaymentKeysHandlerSQLiteTest, SaveOwnKey_NullPublicKey_ThrowsException) {
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
     PrivateKey* privateKey = generateTestPrivateKey();
     
     EXPECT_THROW(
-        handler->saveOwnKey(transactionUUID, nullptr, privateKey),
+        handler->saveOwnKey(nullptr, privateKey),
         ValueError
     );
     
@@ -144,11 +133,10 @@ TEST_F(PaymentKeysHandlerSQLiteTest, SaveOwnKey_NullPublicKey_ThrowsException) {
 }
 
 TEST_F(PaymentKeysHandlerSQLiteTest, SaveOwnKey_NullPrivateKey_ThrowsException) {
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
     PublicKey::Shared publicKey = generateTestPublicKey();
     
     EXPECT_THROW(
-        handler->saveOwnKey(transactionUUID, publicKey, nullptr),
+        handler->saveOwnKey(publicKey, nullptr),
         ValueError
     );
 }
@@ -176,25 +164,19 @@ TEST_F(PaymentKeysHandlerSQLiteTest, SaveOwnKey_DuplicateTransactionUUID_ThrowsE
 
 TEST_F(PaymentKeysHandlerSQLiteTest, SaveOwnKey_MultipleKeys_SavesSuccessfully) {
     const int numKeys = 5;
-    vector<TransactionUUID> transactionUUIDs;
     
     for (int i = 0; i < numKeys; ++i) {
-        TransactionUUID transactionUUID = generateTestTransactionUUID();
         PublicKey::Shared publicKey = generateTestPublicKey();
         PrivateKey* privateKey = generateTestPrivateKey();
         
-        transactionUUIDs.push_back(transactionUUID);
-        
         EXPECT_NO_THROW(
-            handler->saveOwnKey(transactionUUID, publicKey, privateKey)
+            handler->saveOwnKey(publicKey, privateKey)
         );
         
         delete privateKey;
     }
     
-    // Verify all keys were saved
-    vector<TransactionUUID> savedUUIDs = handler->allTransactionUUIDs();
-    EXPECT_EQ(savedUUIDs.size(), numKeys);
+    EXPECT_TRUE(handler->hasAnyKeys());
     
     // Verify all UUIDs are present
     for (const auto& uuid : transactionUUIDs) {
@@ -204,15 +186,14 @@ TEST_F(PaymentKeysHandlerSQLiteTest, SaveOwnKey_MultipleKeys_SavesSuccessfully) 
 
 // getOwnPrivateKey Tests
 TEST_F(PaymentKeysHandlerSQLiteTest, GetOwnPrivateKey_ExistingKey_ReturnsKey) {
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
     PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
     
     // Save key
-    handler->saveOwnKey(transactionUUID, publicKey, privateKey);
+    handler->saveOwnKey(publicKey, privateKey);
     
     // Retrieve key
-    PrivateKey* retrievedKey = handler->getOwnPrivateKey(transactionUUID);
+    PrivateKey* retrievedKey = handler->getOwnPrivateKey();
     EXPECT_NE(retrievedKey, nullptr);
     
     delete privateKey;
@@ -220,65 +201,49 @@ TEST_F(PaymentKeysHandlerSQLiteTest, GetOwnPrivateKey_ExistingKey_ReturnsKey) {
 }
 
 TEST_F(PaymentKeysHandlerSQLiteTest, GetOwnPrivateKey_NonExistentKey_ThrowsNotFoundError) {
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
-    
-    EXPECT_THROW(
-        handler->getOwnPrivateKey(transactionUUID),
-        NotFoundError
-    );
+    EXPECT_THROW(handler->getOwnPrivateKey(), NotFoundError);
 }
 
 TEST_F(PaymentKeysHandlerSQLiteTest, GetOwnPrivateKey_AfterDeletion_ThrowsNotFoundError) {
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
     PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
     
     // Save key
-    handler->saveOwnKey(transactionUUID, publicKey, privateKey);
+    handler->saveOwnKey(publicKey, privateKey);
     
     // Delete key
-    handler->deleteKeyByTransactionUUID(transactionUUID);
+    auto id = handler->latestKeyID();
+    handler->deleteKeyByID(id);
     
     // Try to retrieve key
-    EXPECT_THROW(
-        handler->getOwnPrivateKey(transactionUUID),
-        NotFoundError
-    );
+    EXPECT_THROW(handler->getOwnPrivateKey(), NotFoundError);
     
     delete privateKey;
 }
 
 // deleteKeyByTransactionUUID Tests
-TEST_F(PaymentKeysHandlerSQLiteTest, DeleteKeyByTransactionUUID_ExistingKey_DeletesSuccessfully) {
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
+TEST_F(PaymentKeysHandlerSQLiteTest, DeleteKeyByID_ExistingKey_DeletesSuccessfully) {
     PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
     
     // Save key
-    handler->saveOwnKey(transactionUUID, publicKey, privateKey);
+    handler->saveOwnKey(publicKey, privateKey);
     
     // Verify key exists
-    vector<TransactionUUID> uuidsBefore = handler->allTransactionUUIDs();
-    EXPECT_EQ(uuidsBefore.size(), 1);
+    EXPECT_TRUE(handler->hasAnyKeys());
     
     // Delete key
-    EXPECT_NO_THROW(
-        handler->deleteKeyByTransactionUUID(transactionUUID)
-    );
+    auto id = handler->latestKeyID();
+    EXPECT_NO_THROW(handler->deleteKeyByID(id));
     
     // Verify key is deleted
-    vector<TransactionUUID> uuidsAfter = handler->allTransactionUUIDs();
-    EXPECT_EQ(uuidsAfter.size(), 0);
+    EXPECT_FALSE(handler->hasAnyKeys());
     
     delete privateKey;
 }
 
-TEST_F(PaymentKeysHandlerSQLiteTest, DeleteKeyByTransactionUUID_NonExistentKey_DoesNotThrow) {
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
-    
-    EXPECT_NO_THROW(
-        handler->deleteKeyByTransactionUUID(transactionUUID)
-    );
+TEST_F(PaymentKeysHandlerSQLiteTest, DeleteKeyByID_NonExistentKey_DoesNotThrow) {
+    EXPECT_NO_THROW(handler->deleteKeyByID(999999ULL));
 }
 
 TEST_F(PaymentKeysHandlerSQLiteTest, DeleteKeyByTransactionUUID_MultipleCalls_DoesNotThrow) {
@@ -290,109 +255,49 @@ TEST_F(PaymentKeysHandlerSQLiteTest, DeleteKeyByTransactionUUID_MultipleCalls_Do
     handler->saveOwnKey(transactionUUID, publicKey, privateKey);
     
     // Delete multiple times
-    EXPECT_NO_THROW(handler->deleteKeyByTransactionUUID(transactionUUID));
-    EXPECT_NO_THROW(handler->deleteKeyByTransactionUUID(transactionUUID));
-    EXPECT_NO_THROW(handler->deleteKeyByTransactionUUID(transactionUUID));
+    auto id = handler->latestKeyID();
+    EXPECT_NO_THROW(handler->deleteKeyByID(id));
+    EXPECT_NO_THROW(handler->deleteKeyByID(id));
+    EXPECT_NO_THROW(handler->deleteKeyByID(id));
     
     delete privateKey;
 }
 
 // allTransactionUUIDs Tests
-TEST_F(PaymentKeysHandlerSQLiteTest, AllTransactionUUIDs_NoKeys_ReturnsEmptyVector) {
-    vector<TransactionUUID> uuids = handler->allTransactionUUIDs();
-    EXPECT_TRUE(uuids.empty());
-}
-
-TEST_F(PaymentKeysHandlerSQLiteTest, AllTransactionUUIDs_WithKeys_ReturnsAllUUIDs) {
-    const int numKeys = 5;
-    vector<TransactionUUID> expectedUUIDs;
-    
-    // Save multiple keys
-    for (int i = 0; i < numKeys; ++i) {
-        TransactionUUID transactionUUID = generateTestTransactionUUID();
-        PublicKey::Shared publicKey = generateTestPublicKey();
-        PrivateKey* privateKey = generateTestPrivateKey();
-        
-        expectedUUIDs.push_back(transactionUUID);
-        handler->saveOwnKey(transactionUUID, publicKey, privateKey);
-        
-        delete privateKey;
-    }
-    
-    // Retrieve all UUIDs
-    vector<TransactionUUID> retrievedUUIDs = handler->allTransactionUUIDs();
-    EXPECT_EQ(retrievedUUIDs.size(), numKeys);
-    
-    // Verify all expected UUIDs are present
-    for (const auto& uuid : expectedUUIDs) {
-        EXPECT_NE(find(retrievedUUIDs.begin(), retrievedUUIDs.end(), uuid), retrievedUUIDs.end());
-    }
-}
-
-TEST_F(PaymentKeysHandlerSQLiteTest, AllTransactionUUIDs_AfterPartialDeletion_ReturnsRemainingUUIDs) {
-    const int numKeys = 5;
-    vector<TransactionUUID> transactionUUIDs;
-    
-    // Save multiple keys
-    for (int i = 0; i < numKeys; ++i) {
-        TransactionUUID transactionUUID = generateTestTransactionUUID();
-        PublicKey::Shared publicKey = generateTestPublicKey();
-        PrivateKey* privateKey = generateTestPrivateKey();
-        
-        transactionUUIDs.push_back(transactionUUID);
-        handler->saveOwnKey(transactionUUID, publicKey, privateKey);
-        
-        delete privateKey;
-    }
-    
-    // Delete half of the keys
-    for (int i = 0; i < numKeys / 2; ++i) {
-        handler->deleteKeyByTransactionUUID(transactionUUIDs[i]);
-    }
-    
-    // Retrieve remaining UUIDs
-    vector<TransactionUUID> remainingUUIDs = handler->allTransactionUUIDs();
-    EXPECT_EQ(remainingUUIDs.size(), numKeys - numKeys / 2);
-    
-    // Verify deleted UUIDs are not present
-    for (int i = 0; i < numKeys / 2; ++i) {
-        EXPECT_EQ(find(remainingUUIDs.begin(), remainingUUIDs.end(), transactionUUIDs[i]), remainingUUIDs.end());
-    }
-    
-    // Verify remaining UUIDs are present
-    for (int i = numKeys / 2; i < numKeys; ++i) {
-        EXPECT_NE(find(remainingUUIDs.begin(), remainingUUIDs.end(), transactionUUIDs[i]), remainingUUIDs.end());
-    }
+// hasAnyKeys + latestKeyID
+TEST_F(PaymentKeysHandlerSQLiteTest, HasAnyKeysAndLatestID_Workflow) {
+    EXPECT_FALSE(handler->hasAnyKeys());
+    PublicKey::Shared publicKey = generateTestPublicKey();
+    PrivateKey* privateKey = generateTestPrivateKey();
+    handler->saveOwnKey(publicKey, privateKey);
+    EXPECT_TRUE(handler->hasAnyKeys());
+    auto id = handler->latestKeyID();
+    EXPECT_GT(id, 0ULL);
+    handler->deleteKeyByID(id);
+    EXPECT_FALSE(handler->hasAnyKeys());
+    delete privateKey;
 }
 
 // Integration Tests
 TEST_F(PaymentKeysHandlerSQLiteTest, Integration_SaveRetrieveDelete_WorksCorrectly) {
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
+    
     PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
     
     // Save key
     EXPECT_NO_THROW(
-        handler->saveOwnKey(transactionUUID, publicKey, privateKey)
+        handler->saveOwnKey(publicKey, privateKey)
     );
     
     // Retrieve key
-    PrivateKey* retrievedKey = handler->getOwnPrivateKey(transactionUUID);
+    PrivateKey* retrievedKey = handler->getOwnPrivateKey();
     EXPECT_NE(retrievedKey, nullptr);
     
-    // Verify UUID is in list
-    vector<TransactionUUID> uuids = handler->allTransactionUUIDs();
-    EXPECT_EQ(uuids.size(), 1);
-    EXPECT_EQ(uuids[0], transactionUUID);
-    
     // Delete key
-    EXPECT_NO_THROW(
-        handler->deleteKeyByTransactionUUID(transactionUUID)
-    );
+    auto id = handler->latestKeyID();
+    EXPECT_NO_THROW(handler->deleteKeyByID(id));
     
-    // Verify key is deleted
-    uuids = handler->allTransactionUUIDs();
-    EXPECT_TRUE(uuids.empty());
+    EXPECT_FALSE(handler->hasAnyKeys());
     
     delete privateKey;
     delete retrievedKey;
@@ -400,44 +305,38 @@ TEST_F(PaymentKeysHandlerSQLiteTest, Integration_SaveRetrieveDelete_WorksCorrect
 
 TEST_F(PaymentKeysHandlerSQLiteTest, Integration_MultipleKeysLifecycle_WorksCorrectly) {
     const int numKeys = 10;
-    vector<TransactionUUID> transactionUUIDs;
     vector<PrivateKey*> privateKeys;
     
     // Save multiple keys
     for (int i = 0; i < numKeys; ++i) {
-        TransactionUUID transactionUUID = generateTestTransactionUUID();
         PublicKey::Shared publicKey = generateTestPublicKey();
         PrivateKey* privateKey = generateTestPrivateKey();
         
-        transactionUUIDs.push_back(transactionUUID);
         privateKeys.push_back(privateKey);
         
         EXPECT_NO_THROW(
-            handler->saveOwnKey(transactionUUID, publicKey, privateKey)
+            handler->saveOwnKey(publicKey, privateKey)
         );
     }
     
     // Verify all keys exist
-    vector<TransactionUUID> allUUIDs = handler->allTransactionUUIDs();
-    EXPECT_EQ(allUUIDs.size(), numKeys);
+    EXPECT_TRUE(handler->hasAnyKeys());
     
     // Retrieve all keys
     for (int i = 0; i < numKeys; ++i) {
-        PrivateKey* retrievedKey = handler->getOwnPrivateKey(transactionUUIDs[i]);
+        PrivateKey* retrievedKey = handler->getOwnPrivateKey();
         EXPECT_NE(retrievedKey, nullptr);
         delete retrievedKey;
     }
     
     // Delete all keys
     for (int i = 0; i < numKeys; ++i) {
-        EXPECT_NO_THROW(
-            handler->deleteKeyByTransactionUUID(transactionUUIDs[i])
-        );
+        auto id = handler->latestKeyID();
+        EXPECT_NO_THROW(handler->deleteKeyByID(id));
     }
     
     // Verify all keys are deleted
-    allUUIDs = handler->allTransactionUUIDs();
-    EXPECT_TRUE(allUUIDs.empty());
+    EXPECT_FALSE(handler->hasAnyKeys());
     
     // Cleanup
     for (auto* key : privateKeys) {
@@ -473,7 +372,8 @@ TEST_F(PaymentKeysHandlerSQLiteTest, Performance_BulkOperations_CompletesInReaso
     
     // Bulk delete
     for (int i = 0; i < numKeys; ++i) {
-        handler->deleteKeyByTransactionUUID(transactionUUIDs[i]);
+        auto id2 = handler->latestKeyID();
+        handler->deleteKeyByID(id2);
     }
     
     auto end = chrono::high_resolution_clock::now();
@@ -494,23 +394,17 @@ TEST_F(PaymentKeysHandlerSQLiteTest, ErrorHandling_CorruptedDatabase_ThrowsIOErr
     sqlite3_close(db);
     db = nullptr;
     
-    TransactionUUID transactionUUID = generateTestTransactionUUID();
     PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
     
     // Operations should throw IOError
     EXPECT_THROW(
-        handler->saveOwnKey(transactionUUID, publicKey, privateKey),
+        handler->saveOwnKey(publicKey, privateKey),
         IOError
     );
     
     EXPECT_THROW(
-        handler->getOwnPrivateKey(transactionUUID),
-        IOError
-    );
-    
-    EXPECT_THROW(
-        handler->allTransactionUUIDs(),
+        handler->getOwnPrivateKey(),
         IOError
     );
     
