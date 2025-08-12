@@ -2,6 +2,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <openssl/crypto.h>
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
@@ -91,7 +92,9 @@ bool PublicKey::operator==(const PublicKey& other) const
     if (!mIsValid || !other.mIsValid) {
         return false;
     }
-    return memcmp(mKeyData, other.mKeyData, kKeySize) == 0;
+    // Use constant-time comparison to prevent timing attacks in key lookup/authentication scenarios
+    // where timing could reveal which keys are being compared or authentication success/failure
+    return CRYPTO_memcmp(mKeyData, other.mKeyData, kKeySize) == 0;
 }
 
 bool PublicKey::operator!=(const PublicKey& other) const
@@ -401,7 +404,9 @@ const string KeyHash::toString() const
 
 bool operator==(const KeyHash &kh1, const KeyHash &kh2)
 {
-    return memcmp(kh1.mData, kh2.mData, KeyHash::kBytesSize) == 0;
+    // Use constant-time comparison for key hashes used in database lookups and key management
+    // to prevent timing-based key enumeration attacks
+    return CRYPTO_memcmp(kh1.mData, kh2.mData, KeyHash::kBytesSize) == 0;
 }
 
 bool operator!=(const KeyHash &kh1, const KeyHash &kh2)

@@ -4,6 +4,15 @@
 #include "memory.h"
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <openssl/opensslv.h>
+
+// -----------------------------------------------------------------------------
+// Compile-time requirement: ensure OpenSSL version provides SPHINCS+ (SLH-DSA)
+// -----------------------------------------------------------------------------
+#if OPENSSL_VERSION_MAJOR < 3 || (OPENSSL_VERSION_MAJOR == 3 && OPENSSL_VERSION_MINOR < 5)
+#error "OpenSSL 3.5 or later with SPHINCS+ (SLH-DSA) support is required"
+#endif
+
 #include <memory>
 #include <string>
 #include <cstring>
@@ -19,6 +28,16 @@ using namespace std;
  * This class provides a consistent way to hash and identify SPHINCS+ public keys.
  * It generates a 32-byte SHA-256 hash of the public key data for use in
  * database storage, key lookups, and audit operations.
+ * 
+ * @note Security:
+ * - Uses constant-time comparisons (CRYPTO_memcmp) to prevent timing-based key enumeration
+ * - SHA-256 provides collision resistance for key identification
+ * - Fixed-size 32-byte output prevents length-extension attacks
+ * 
+ * @note Thread Safety:
+ * - KeyHash objects are immutable after construction
+ * - All operations are thread-safe for concurrent read access
+ * - Hash comparisons can be performed concurrently
  */
 class KeyHash
 {
@@ -90,6 +109,26 @@ constexpr const char* getAlgorithmName() {
  * - Deterministic signatures (same input + key = same signature)
  * - Small signature size variant (256s)
  * - Full compatibility with OpenSSL EVP interface
+ * 
+ * @section Security Security Considerations
+ * - Private keys use secure memory allocation via libsodium
+ * - All sensitive operations use constant-time comparisons (CRYPTO_memcmp)
+ * - Private key data is automatically wiped on destruction using OPENSSL_cleanse
+ * - Copy operations on private keys are disabled to prevent accidental duplication
+ * - Key derivation uses cryptographically secure random number generation
+ * - No pre-hashing is performed - data is passed directly to SPHINCS+ algorithm
+ * 
+ * @section Threading Thread Safety
+ * - Individual key objects are NOT thread-safe for concurrent modification
+ * - Multiple threads can safely read from the same key object simultaneously
+ * - Key generation functions can be called concurrently from multiple threads
+ * - EVP_PKEY operations are protected by OpenSSL's internal synchronization
+ * - SecureSegment operations use RAII guards for safe concurrent access patterns
+ * 
+ * @section Requirements System Requirements
+ * - OpenSSL 3.5+ with SPHINCS+ (SLH-DSA) support
+ * - libsodium for secure memory management
+ * - C++17 or later for proper RAII and move semantics
  */
 class BaseKey
 {
@@ -109,6 +148,16 @@ protected:
 /**
  * @brief SPHINCS+ Public Key class
  * Provides deterministic public key operations using OpenSSL EVP interface
+ * 
+ * @note Security:
+ * - Uses constant-time comparisons to prevent timing attacks in authentication scenarios
+ * - Public key hashing uses SHA-256 for consistent identification
+ * - Input validation prevents malformed keys from being processed
+ * 
+ * @note Thread Safety:
+ * - PublicKey objects are thread-safe for read operations
+ * - Concurrent modifications require external synchronization
+ * - Hash operations can be called concurrently
  */
 class PublicKey : public BaseKey
 {
@@ -206,6 +255,18 @@ private:
 /**
  * @brief SPHINCS+ Private Key class
  * Provides secure private key storage and deterministic key operations using real SPHINCS+
+ * 
+ * @warning Security Critical:
+ * - This class stores cryptographic private keys in secure memory
+ * - Copy constructor and assignment operator are deliberately disabled
+ * - Always verify isValid() before using key operations
+ * - Private key data is automatically wiped on destruction
+ * - Use SecureSegment for serialization to maintain memory protection
+ * 
+ * @note Thread Safety:
+ * - Individual PrivateKey instances are NOT thread-safe
+ * - Do not share PrivateKey objects between threads without external synchronization
+ * - Key generation and EVP operations are thread-safe at the OpenSSL level
  */
 class PrivateKey : public BaseKey
 {

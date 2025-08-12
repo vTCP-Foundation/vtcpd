@@ -1,6 +1,7 @@
 #include "sphincsscheme.h"
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <openssl/crypto.h>
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
@@ -177,7 +178,9 @@ bool Signature::operator==(const Signature& other) const
     if (!mIsValid || !other.mIsValid) {
         return false;
     }
-    return memcmp(mSignatureData, other.mSignatureData, kSignatureSize) == 0;
+    // Use constant-time comparison for signatures to prevent timing attacks that could
+    // reveal signature validation success/failure or leak information about signature content
+    return CRYPTO_memcmp(mSignatureData, other.mSignatureData, kSignatureSize) == 0;
 }
 
 bool Signature::operator!=(const Signature& other) const
