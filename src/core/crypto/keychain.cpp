@@ -255,11 +255,6 @@ bool TrustLineKeychain::saveOutgoingPaymentReceipt(IOTransaction::Shared ioTrans
         auto ownKeyHash =
             ioTransaction->ownKeysHandler()->getPublicKeyHash(mTrustLineID);
 
-        if (ioTransaction->outgoingPaymentReceiptHandler()->isContainsKeyHash(ownKeyHash)) {
-            warning() << "Outgoing receipt already exists";
-            return false;
-        }
-
         ioTransaction->outgoingPaymentReceiptHandler()->saveRecord(
             mTrustLineID, auditNumber, transactionUUID, ownKeyHash, amount);
 

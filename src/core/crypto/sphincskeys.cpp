@@ -71,7 +71,7 @@ PublicKey& PublicKey::operator=(const PublicKey& other)
     return *this;
 }
 
-const byte_t* PublicKey::data() const
+const byte_t* PublicKey::data() const noexcept
 {
     return mKeyData.data();
 }
@@ -134,7 +134,7 @@ const KeyHash::Shared PublicKey::hash() const
     return make_shared<KeyHash>(hashBuffer);
 }
 
-bool PublicKey::isValid() const
+bool PublicKey::isValid() const noexcept
 {
     return mIsValid;
 }
@@ -303,7 +303,7 @@ PublicKey::Shared PrivateKey::derivePublicKey() const
     return make_shared<PublicKey>(pubKeyData);
 }
 
-bool PrivateKey::isValid() const
+bool PrivateKey::isValid() const noexcept
 {
     return mIsValid;
 }
@@ -386,7 +386,7 @@ KeyHash::KeyHash(byte_t* buffer)
     std::copy(buffer, buffer + kBytesSize, mData.begin());
 }
 
-const byte_t* KeyHash::data() const
+const byte_t* KeyHash::data() const noexcept
 {
     return mData.data();
 }

@@ -176,7 +176,7 @@ bool Signature::verify(const PublicKey& publicKey, const byte_t* data, size_t da
     return false;
 }
 
-const byte_t* Signature::data() const
+const byte_t* Signature::data() const noexcept
 {
     return mSignatureData.data();
 }
@@ -210,7 +210,7 @@ bool Signature::operator!=(const Signature& other) const
     return !(*this == other);
 }
 
-bool Signature::isValid() const
+bool Signature::isValid() const noexcept
 {
     return mIsValid;
 }

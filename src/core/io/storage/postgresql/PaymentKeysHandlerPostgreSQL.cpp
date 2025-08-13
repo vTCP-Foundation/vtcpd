@@ -1,6 +1,8 @@
 #include "PaymentKeysHandlerPostgreSQL.h"
 #include "../../../common/exceptions/ValueError.h"
 #include <sstream>
+#include <vector>
+#include <cstdlib>
 
 using namespace std;
 
@@ -83,10 +85,35 @@ PrivateKey* PaymentKeysHandlerPostgreSQL::getOwnPrivateKey()
     PGresult *res = PQexec(mDataBase, query.c_str());
     checkTuples(mDataBase,res,"getOwnPrivateKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Private key not found"); }
-    const unsigned char *privBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
-    auto privKey = new PrivateKey(reinterpret_cast<byte_t*>(const_cast<unsigned char*>(privBytesConst)));
-    PQclear(res);
-    return privKey;
+    
+    // Get raw data from PostgreSQL
+    int dataLength = PQgetlength(res, 0, 0);
+    const unsigned char *rawData = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    
+    // Check if data is in hex format (starts with \x and has 2*keySize + 2 length)
+    if (dataLength == static_cast<int>(PrivateKey::privateKeySize() * 2 + 2) && 
+        rawData[0] == '\\' && rawData[1] == 'x') {
+        // Convert from hex format
+        std::vector<byte_t> binaryData(PrivateKey::privateKeySize());
+        for (size_t i = 0; i < PrivateKey::privateKeySize(); ++i) {
+            char hex[3] = {static_cast<char>(rawData[2 + i*2]), static_cast<char>(rawData[3 + i*2]), '\0'};
+            binaryData[i] = static_cast<byte_t>(strtoul(hex, nullptr, 16));
+        }
+        auto privKey = new PrivateKey(binaryData.data());
+        PQclear(res);
+        return privKey;
+    } else if (dataLength == static_cast<int>(PrivateKey::privateKeySize())) {
+        // Data is already in binary format
+        auto privKey = new PrivateKey(reinterpret_cast<byte_t*>(const_cast<unsigned char*>(rawData)));
+        PQclear(res);
+        return privKey;
+    } else {
+        PQclear(res);
+        throw IOError("Invalid private key data length: expected " + 
+                     to_string(PrivateKey::privateKeySize()) + " or " + 
+                     to_string(PrivateKey::privateKeySize() * 2 + 2) + 
+                     ", got " + to_string(dataLength));
+    }
 }
 
 void PaymentKeysHandlerPostgreSQL::deleteKeyByID(
@@ -116,10 +143,35 @@ PublicKey::Shared PaymentKeysHandlerPostgreSQL::getOwnPublicKey()
     PGresult *res = PQexec(mDataBase, query.c_str());
     checkTuples(mDataBase,res,"getOwnPublicKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Public key not found"); }
-    const unsigned char *pubBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
-    auto pubKey = make_shared<PublicKey>(reinterpret_cast<byte_t*>(const_cast<unsigned char*>(pubBytesConst)));
-    PQclear(res);
-    return pubKey;
+    
+    // Get raw data from PostgreSQL
+    int dataLength = PQgetlength(res, 0, 0);
+    const unsigned char *rawData = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    
+    // Check if data is in hex format (starts with \x and has 2*keySize + 2 length)
+    if (dataLength == static_cast<int>(PublicKey::keySize() * 2 + 2) && 
+        rawData[0] == '\\' && rawData[1] == 'x') {
+        // Convert from hex format
+        std::vector<byte_t> binaryData(PublicKey::keySize());
+        for (size_t i = 0; i < PublicKey::keySize(); ++i) {
+            char hex[3] = {static_cast<char>(rawData[2 + i*2]), static_cast<char>(rawData[3 + i*2]), '\0'};
+            binaryData[i] = static_cast<byte_t>(strtoul(hex, nullptr, 16));
+        }
+        auto pubKey = make_shared<PublicKey>(binaryData.data());
+        PQclear(res);
+        return pubKey;
+    } else if (dataLength == static_cast<int>(PublicKey::keySize())) {
+        // Data is already in binary format
+        auto pubKey = make_shared<PublicKey>(reinterpret_cast<byte_t*>(const_cast<unsigned char*>(rawData)));
+        PQclear(res);
+        return pubKey;
+    } else {
+        PQclear(res);
+        throw IOError("Invalid public key data length: expected " + 
+                     to_string(PublicKey::keySize()) + " or " + 
+                     to_string(PublicKey::keySize() * 2 + 2) + 
+                     ", got " + to_string(dataLength));
+    }
 }
 
 uint64_t PaymentKeysHandlerPostgreSQL::latestKeyID()
