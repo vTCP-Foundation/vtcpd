@@ -1,11 +1,14 @@
 #include "sphincskeys.h"
+#include "sphincsscheme.h"
 #include <openssl/evp.h>
+#include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <openssl/crypto.h>
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
+#include <algorithm>
 
 namespace crypto {
 namespace sphincs {
@@ -14,22 +17,22 @@ namespace sphincs {
 
 PublicKey::PublicKey() : mIsValid(false)
 {
-    memset(mKeyData, 0, kKeySize);
+    mKeyData.fill(0);
 }
 
 PublicKey::PublicKey(const byte_t* keyData) : mIsValid(true)
 {
     if (keyData == nullptr) {
         mIsValid = false;
-        memset(mKeyData, 0, kKeySize);
+        mKeyData.fill(0);
         return;
     }
-    memcpy(mKeyData, keyData, kKeySize);
+    std::copy(keyData, keyData + kKeySize, mKeyData.begin());
 }
 
 PublicKey::PublicKey(const string& keyString) : mIsValid(false)
 {
-    memset(mKeyData, 0, kKeySize);
+    mKeyData.fill(0);
     
     if (keyString.length() != kKeySize * 2) {
         return; // Invalid hex string length
@@ -49,20 +52,20 @@ PublicKey::PublicKey(const string& keyString) : mIsValid(false)
         }
         mIsValid = true;
     } catch (const std::exception&) {
-        memset(mKeyData, 0, kKeySize);
+        mKeyData.fill(0);
         mIsValid = false;
     }
 }
 
 PublicKey::PublicKey(const PublicKey& other) : mIsValid(other.mIsValid)
 {
-    memcpy(mKeyData, other.mKeyData, kKeySize);
+    mKeyData = other.mKeyData;
 }
 
 PublicKey& PublicKey::operator=(const PublicKey& other)
 {
     if (this != &other) {
-        memcpy(mKeyData, other.mKeyData, kKeySize);
+        mKeyData = other.mKeyData;
         mIsValid = other.mIsValid;
     }
     return *this;
@@ -70,7 +73,7 @@ PublicKey& PublicKey::operator=(const PublicKey& other)
 
 const byte_t* PublicKey::data() const
 {
-    return mKeyData;
+    return mKeyData.data();
 }
 
 string PublicKey::toString() const
@@ -94,7 +97,7 @@ bool PublicKey::operator==(const PublicKey& other) const
     }
     // Use constant-time comparison to prevent timing attacks in key lookup/authentication scenarios
     // where timing could reveal which keys are being compared or authentication success/failure
-    return CRYPTO_memcmp(mKeyData, other.mKeyData, kKeySize) == 0;
+    return CRYPTO_memcmp(mKeyData.data(), other.mKeyData.data(), kKeySize) == 0;
 }
 
 bool PublicKey::operator!=(const PublicKey& other) const
@@ -109,7 +112,7 @@ string PublicKey::hashString() const
     }
     
     byte_t hash[SHA256_DIGEST_LENGTH];
-    SHA256(mKeyData, kKeySize, hash);
+    SHA256(mKeyData.data(), kKeySize, hash);
     
     stringstream ss;
     ss << hex << setfill('0');
@@ -126,7 +129,7 @@ const KeyHash::Shared PublicKey::hash() const
     }
     
     byte_t hashBuffer[KeyHash::kBytesSize];
-    SHA256(mKeyData, kKeySize, hashBuffer);
+    SHA256(mKeyData.data(), kKeySize, hashBuffer);
     
     return make_shared<KeyHash>(hashBuffer);
 }
@@ -141,7 +144,7 @@ void PublicKey::serialize(byte_t* buffer) const
     if (buffer == nullptr) {
         throw std::invalid_argument("Buffer cannot be null");
     }
-    memcpy(buffer, mKeyData, kKeySize);
+    std::copy(mKeyData.begin(), mKeyData.end(), buffer);
 }
 
 void PublicKey::deserialize(const byte_t* buffer)
@@ -149,7 +152,7 @@ void PublicKey::deserialize(const byte_t* buffer)
     if (buffer == nullptr) {
         throw std::invalid_argument("Buffer cannot be null");
     }
-    memcpy(mKeyData, buffer, kKeySize);
+    std::copy(buffer, buffer + kKeySize, mKeyData.begin());
     mIsValid = true;
 }
 
@@ -183,40 +186,36 @@ PrivateKey::~PrivateKey()
 
 void PrivateKey::generateRandom()
 {
-    // Create SPHINCS+ key generation context
-    EVP_PKEY_CTX* pctx = EVP_PKEY_CTX_new_from_name(nullptr, getAlgorithmName(), nullptr);
-    if (pctx == nullptr) {
-        throw std::runtime_error("Failed to create SPHINCS+ key generation context. Ensure OpenSSL 3.5+ with SPHINCS+ support is available.");
+    // Create SPHINCS+ key generation context (RAII-protected)
+    EVPKeyContextPtr pctx(EVP_PKEY_CTX_new_from_name(nullptr, getAlgorithmName(), nullptr));
+    if (!pctx) {
+        throw std::runtime_error(sphincs::util::getOpenSSLError("Failed to create SPHINCS+ key generation context. Ensure OpenSSL 3.5+ with SPHINCS+ support is available."));
     }
     
     // Initialize key generation
-    if (EVP_PKEY_keygen_init(pctx) <= 0) {
-        EVP_PKEY_CTX_free(pctx);
-        throw std::runtime_error("Failed to initialize SPHINCS+ key generation");
+    if (EVP_PKEY_keygen_init(pctx.get()) <= 0) {
+        throw std::runtime_error(sphincs::util::getOpenSSLError("Failed to initialize SPHINCS+ key generation"));
     }
     
-    // Generate key pair
-    EVP_PKEY* pkey = nullptr;
-    if (EVP_PKEY_generate(pctx, &pkey) <= 0) {
-        EVP_PKEY_CTX_free(pctx);
-        throw std::runtime_error("Failed to generate SPHINCS+ key pair");
+    // Generate key pair (RAII-protected)
+    EVP_PKEY* raw_pkey = nullptr;
+    if (EVP_PKEY_generate(pctx.get(), &raw_pkey) <= 0) {
+        throw std::runtime_error(sphincs::util::getOpenSSLError("Failed to generate SPHINCS+ key pair"));
     }
+    EVPKeyPtr pkey(raw_pkey);  // Wrap in RAII immediately
     
-    // Extract private key raw data
+    // Extract private key raw data - if this throws, pkey is automatically cleaned up
     auto guard = mKeyData.unlockAndInitGuard();
     byte_t* keyPtr = static_cast<byte_t*>(guard.address());
     size_t keyLen = kPrivateKeySize;
     
-    if (EVP_PKEY_get_raw_private_key(pkey, keyPtr, &keyLen) != 1 || keyLen != kPrivateKeySize) {
-        EVP_PKEY_free(pkey);
-        EVP_PKEY_CTX_free(pctx);
-        throw std::runtime_error("Failed to extract SPHINCS+ private key data");
+    if (EVP_PKEY_get_raw_private_key(pkey.get(), keyPtr, &keyLen) != 1 || keyLen != kPrivateKeySize) {
+        throw std::runtime_error(sphincs::util::getOpenSSLError("Failed to extract SPHINCS+ private key data"));
     }
     
-    // Store the EVP key for later use
-    mEVPKey = pkey;
+    // Store the EVP key for later use (transfer ownership)
+    mEVPKey = pkey.release();
     
-    EVP_PKEY_CTX_free(pctx);
     mIsValid = true;
 }
 
@@ -237,6 +236,9 @@ void PrivateKey::generateFromSeed(const string& seedString)
 
         SHA256_CTX ctx;
         SHA256_Init(&ctx);
+        // Domain separation constant prevents collisions between counter sequences and seed strings.
+        // Without this, a seed string that equals a binary counter could collide with different inputs.
+        SHA256_Update(&ctx, "VTCPD-SPHINCS-SEED", strlen("VTCPD-SPHINCS-SEED"));
         SHA256_Update(&ctx, inputPrefix, sizeof(inputPrefix));
         SHA256_Update(&ctx, reinterpret_cast<const byte_t*>(seedString.c_str()), seedString.length());
         byte_t digest[SHA256_DIGEST_LENGTH];
@@ -257,7 +259,7 @@ void PrivateKey::generateFromSeed(const string& seedString)
     // Create EVP_PKEY from deterministic raw private key bytes
     mEVPKey = EVP_PKEY_new_raw_private_key_ex(nullptr, getAlgorithmName(), nullptr, expanded, kPrivateKeySize);
     if (mEVPKey == nullptr) {
-        throw std::runtime_error("Failed to create SPHINCS+ EVP_PKEY from deterministic raw key. Ensure OpenSSL 3.5+ with SPHINCS+ support is available.");
+        throw std::runtime_error(sphincs::util::getOpenSSLError("Failed to create SPHINCS+ EVP_PKEY from deterministic raw key. Ensure OpenSSL 3.5+ with SPHINCS+ support is available."));
     }
 
     mIsValid = true;
@@ -273,7 +275,7 @@ void PrivateKey::initFromData(const byte_t* keyData)
     // Create EVP_PKEY from raw SPHINCS+ key data
     mEVPKey = EVP_PKEY_new_raw_private_key_ex(nullptr, getAlgorithmName(), nullptr, keyData, kPrivateKeySize);
     if (mEVPKey == nullptr) {
-        throw std::runtime_error("Failed to create SPHINCS+ EVP_PKEY from raw data. Ensure OpenSSL 3.5+ with SPHINCS+ support is available.");
+        throw std::runtime_error(sphincs::util::getOpenSSLError("Failed to create SPHINCS+ EVP_PKEY from raw data. Ensure OpenSSL 3.5+ with SPHINCS+ support is available."));
     }
     
     mIsValid = true;
@@ -342,7 +344,7 @@ void PrivateKey::deserialize(const memory::SecureSegment& secureData)
     const byte_t* keyPtr = static_cast<const byte_t*>(srcGuard.address());
     mEVPKey = EVP_PKEY_new_raw_private_key_ex(nullptr, getAlgorithmName(), nullptr, keyPtr, kPrivateKeySize);
     if (mEVPKey == nullptr) {
-        throw std::runtime_error("Failed to recreate SPHINCS+ EVP_PKEY from deserialized data. Ensure OpenSSL 3.5+ with SPHINCS+ support is available.");
+        throw std::runtime_error(sphincs::util::getOpenSSLError("Failed to recreate SPHINCS+ EVP_PKEY from deserialized data. Ensure OpenSSL 3.5+ with SPHINCS+ support is available."));
     }
     
     mIsValid = true;
@@ -361,7 +363,7 @@ EVP_PKEY* PrivateKey::getEVPKey() const
         
         mEVPKey = EVP_PKEY_new_raw_private_key_ex(nullptr, getAlgorithmName(), nullptr, keyPtr, kPrivateKeySize);
         if (mEVPKey == nullptr) {
-            throw std::runtime_error("Failed to create SPHINCS+ EVP_PKEY from private key data. Ensure OpenSSL 3.5+ with SPHINCS+ support is available.");
+            throw std::runtime_error(sphincs::util::getOpenSSLError("Failed to create SPHINCS+ EVP_PKEY from private key data. Ensure OpenSSL 3.5+ with SPHINCS+ support is available."));
         }
     }
     
@@ -381,12 +383,12 @@ void PrivateKey::secureWipe()
 
 KeyHash::KeyHash(byte_t* buffer)
 {
-    memcpy(mData, buffer, kBytesSize);
+    std::copy(buffer, buffer + kBytesSize, mData.begin());
 }
 
 const byte_t* KeyHash::data() const
 {
-    return mData;
+    return mData.data();
 }
 
 const string KeyHash::toString() const
@@ -403,7 +405,7 @@ bool operator==(const KeyHash &kh1, const KeyHash &kh2)
 {
     // Use constant-time comparison for key hashes used in database lookups and key management
     // to prevent timing-based key enumeration attacks
-    return CRYPTO_memcmp(kh1.mData, kh2.mData, KeyHash::kBytesSize) == 0;
+    return CRYPTO_memcmp(kh1.mData.data(), kh2.mData.data(), KeyHash::kBytesSize) == 0;
 }
 
 bool operator!=(const KeyHash &kh1, const KeyHash &kh2)

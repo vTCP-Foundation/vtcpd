@@ -15,7 +15,38 @@
 
 #include <memory>
 #include <string>
+#include <array>
 #include <cstring>
+#include <type_traits>
+
+// RAII wrappers for OpenSSL handles to prevent memory leaks
+struct EVPKeyDeleter
+{
+    void operator()(EVP_PKEY* p) const
+    {
+        if (p) EVP_PKEY_free(p);
+    }
+};
+
+struct EVPMDContextDeleter
+{
+    void operator()(EVP_MD_CTX* p) const
+    {
+        if (p) EVP_MD_CTX_free(p);
+    }
+};
+
+struct EVPKeyContextDeleter
+{
+    void operator()(EVP_PKEY_CTX* p) const
+    {
+        if (p) EVP_PKEY_CTX_free(p);
+    }
+};
+
+using EVPKeyPtr = std::unique_ptr<EVP_PKEY, EVPKeyDeleter>;
+using EVPMDContextPtr = std::unique_ptr<EVP_MD_CTX, EVPMDContextDeleter>;
+using EVPKeyContextPtr = std::unique_ptr<EVP_PKEY_CTX, EVPKeyContextDeleter>;
 
 namespace crypto {
 namespace sphincs {
@@ -24,16 +55,16 @@ using namespace std;
 
 /**
  * @brief Hash of a SPHINCS+ public key for identification and storage
- * 
+ *
  * This class provides a consistent way to hash and identify SPHINCS+ public keys.
  * It generates a 32-byte SHA-256 hash of the public key data for use in
  * database storage, key lookups, and audit operations.
- * 
+ *
  * @note Security:
  * - Uses constant-time comparisons (CRYPTO_memcmp) to prevent timing-based key enumeration
  * - SHA-256 provides collision resistance for key identification
  * - Fixed-size 32-byte output prevents length-extension attacks
- * 
+ *
  * @note Thread Safety:
  * - KeyHash objects are immutable after construction
  * - All operations are thread-safe for concurrent read access
@@ -67,7 +98,7 @@ public:
      * @brief Get raw hash data
      * @return Pointer to hash bytes
      */
-    const byte_t* data() const;
+    const byte_t* data() const noexcept;
 
     /**
      * @brief Convert hash to hex string representation
@@ -89,27 +120,28 @@ public:
     static constexpr size_t kBytesSize = 32; // SHA-256 hash size
 
 private:
-    byte_t mData[kBytesSize];
+    std::array<byte_t, kBytesSize> mData;
 };
 
 /**
  * @brief Get the SPHINCS+ algorithm name
  * @return "SLH-DSA-SHA2-256s" - the SPHINCS+ algorithm used
  */
-constexpr const char* getAlgorithmName() {
+constexpr const char* getAlgorithmName()
+{
     return "SLH-DSA-SHA2-256s";
 }
 
 /**
  * @brief Base class for SPHINCS+ keys providing common functionality
- * 
+ *
  * This implementation uses the real SPHINCS+ SLH-DSA-SHA2-256s algorithm
  * from OpenSSL 3.5+, providing:
  * - True post-quantum cryptographic security
  * - Deterministic signatures (same input + key = same signature)
  * - Small signature size variant (256s)
  * - Full compatibility with OpenSSL EVP interface
- * 
+ *
  * @section Security Security Considerations
  * - Private keys use secure memory allocation via libsodium
  * - All sensitive operations use constant-time comparisons (CRYPTO_memcmp)
@@ -117,14 +149,14 @@ constexpr const char* getAlgorithmName() {
  * - Copy operations on private keys are disabled to prevent accidental duplication
  * - Key derivation uses cryptographically secure random number generation
  * - No pre-hashing is performed - data is passed directly to SPHINCS+ algorithm
- * 
+ *
  * @section Threading Thread Safety
  * - Individual key objects are NOT thread-safe for concurrent modification
  * - Multiple threads can safely read from the same key object simultaneously
  * - Key generation functions can be called concurrently from multiple threads
  * - EVP_PKEY operations are protected by OpenSSL's internal synchronization
  * - SecureSegment operations use RAII guards for safe concurrent access patterns
- * 
+ *
  * @section Requirements System Requirements
  * - OpenSSL 3.5+ with SPHINCS+ (SLH-DSA) support
  * - libsodium for secure memory management
@@ -148,12 +180,12 @@ protected:
 /**
  * @brief SPHINCS+ Public Key class
  * Provides deterministic public key operations using OpenSSL EVP interface
- * 
+ *
  * @note Security:
  * - Uses constant-time comparisons to prevent timing attacks in authentication scenarios
  * - Public key hashing uses SHA-256 for consistent identification
  * - Input validation prevents malformed keys from being processed
- * 
+ *
  * @note Thread Safety:
  * - PublicKey objects are thread-safe for read operations
  * - Concurrent modifications require external synchronization
@@ -200,7 +232,7 @@ public:
      * @brief Get raw key data
      * @return Pointer to key bytes
      */
-    const byte_t* data() const;
+    const byte_t* data() const noexcept;
 
     /**
      * @brief Convert key to hex string representation
@@ -233,36 +265,38 @@ public:
     /**
      * @brief Check if key is valid/initialized
      */
-    bool isValid() const;
+    bool isValid() const noexcept;
 
     /**
      * @brief Serialize key to byte array
      * @param buffer Output buffer (must be at least keySize() bytes)
+     * @throws std::invalid_argument if buffer is null
      */
     void serialize(byte_t* buffer) const;
 
     /**
      * @brief Deserialize key from byte array
      * @param buffer Input buffer (must be at least keySize() bytes)
+     * @throws std::invalid_argument if buffer is null
      */
     void deserialize(const byte_t* buffer);
 
 private:
-    byte_t mKeyData[kKeySize];
+    std::array<byte_t, kKeySize> mKeyData;
     bool mIsValid;
 };
 
 /**
  * @brief SPHINCS+ Private Key class
  * Provides secure private key storage and deterministic key operations using real SPHINCS+
- * 
+ *
  * @warning Security Critical:
  * - This class stores cryptographic private keys in secure memory
  * - Copy constructor and assignment operator are deliberately disabled
  * - Always verify isValid() before using key operations
  * - Private key data is automatically wiped on destruction
  * - Use SecureSegment for serialization to maintain memory protection
- * 
+ *
  * @note Thread Safety:
  * - Individual PrivateKey instances are NOT thread-safe
  * - Do not share PrivateKey objects between threads without external synchronization
@@ -322,17 +356,19 @@ public:
     /**
      * @brief Check if private key is valid/initialized
      */
-    bool isValid() const;
+    bool isValid() const noexcept;
 
     /**
      * @brief Serialize private key to secure memory segment
      * @return Secure memory segment containing key data
+     * @throws std::runtime_error if key is invalid or serialization fails
      */
-    memory::SecureSegment serialize() const;
+    [[nodiscard]] memory::SecureSegment serialize() const;
 
     /**
      * @brief Deserialize private key from secure memory segment
      * @param secureData Secure memory segment containing key data
+     * @throws std::runtime_error if deserialization fails or OpenSSL errors occur
      */
     void deserialize(const memory::SecureSegment& secureData);
 
