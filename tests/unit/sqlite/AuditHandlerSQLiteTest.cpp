@@ -185,7 +185,7 @@ TEST_F(AuditHandlerSQLiteTest, SaveFullAudit_NullOwnKeyHash_ThrowsException) {
             ownKeysSetHash, contractorKeysSetHash,
             incomingAmount, outgoingAmount, balance
         ),
-        ValueError
+        IOError
     );
 }
 

@@ -6,16 +6,25 @@ add_executable(unit_tests
     crypto/SphincsKeysTest.cpp
     crypto/SphincsSignatureTest.cpp
     crypto/SphincsMemoryLeakTest.cpp
-    sqlite/HistoryStorageSQLiteTest.cpp
-    sqlite/SQLiteStatementRAIITest.cpp
     sqlite/AddressHandlerSQLiteTest.cpp
     sqlite/AuditHandlerSQLiteTest.cpp
     sqlite/AuditRulesHandlerSQLiteTest.cpp
+    sqlite/ContractorKeysHandlerSQLiteTest.cpp
     sqlite/ContractorsHandlerSQLiteTest.cpp
     sqlite/FeaturesHandlerSQLiteTest.cpp
+    sqlite/HistoryStorageSQLiteTest.cpp
     sqlite/IncomingPaymentReceiptHandlerSQLiteTest.cpp
     sqlite/IOTransactionSQLiteTest.cpp
     sqlite/OutgoingPaymentReceiptHandlerSQLiteTest.cpp
+    sqlite/OwnKeysHandlerSQLiteTest.cpp
+    sqlite/PaymentKeysHandlerSQLiteTest.cpp
+    sqlite/PaymentParticipantsVotesHandlerSQLiteTest.cpp
+    sqlite/PaymentTransactionsHandlerSQLiteTest.cpp
+    sqlite/SQLiteStatementRAIITest.cpp
+    sqlite/StorageHandlerSQLiteTest.cpp
+    sqlite/TransactionsHandlerSQLiteTest.cpp
+    sqlite/TrustLineHandlerSQLiteTest.cpp
+    postgresql/PaymentKeysHandlerPostgreSQLUnitTest.cpp
 )
 
 # Include directories for tests
@@ -23,6 +32,11 @@ target_include_directories(unit_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/tests
 )
+
+# Force OpenSSL 3.5+ include/lib paths for unit tests build (requested)
+# These complement the configure-time flags and ensure headers/libs are preferred
+target_compile_options(unit_tests PRIVATE -isystem /usr/local/openssl/include)
+target_link_directories(unit_tests PRIVATE /usr/local/openssl/lib)
 
 # Link libraries
 target_link_libraries(unit_tests PRIVATE
@@ -40,6 +54,9 @@ target_link_libraries(unit_tests PRIVATE
     crypto
     trust_lines
     settings
+    # Ensure OpenSSL symbols are resolved against the specified installation
+    ssl
+    crypto
 )
 
 # Set C++ standard
@@ -62,5 +79,5 @@ if(ENABLE_TEST_SANITIZERS)
     endif()
 endif()
 
-# Discover tests
-gtest_discover_tests(unit_tests)
+# Register unit tests as a single CTest entry to avoid NOT_BUILT placeholder
+add_test(NAME unit_tests COMMAND $<TARGET_FILE:unit_tests>)

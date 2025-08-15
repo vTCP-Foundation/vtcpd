@@ -2,6 +2,7 @@
 #define VTCPD_TESTDATAFACTORY_H
 
 #include "../../../src/core/io/storage/sqlite/StorageHandlerSQLite.h"
+#include "../../../src/core/network/messages/Message.hpp"
 #include "../../../src/core/common/Types.h"
 #include "../../../src/core/common/memory/MemoryUtils.h"
 #include "../../../src/core/transactions/transactions/base/TransactionUUID.h"
@@ -13,6 +14,9 @@
 #include <random>
 
 using namespace std;
+
+// Backward-compatible alias removed in core: map KeysSetSequenceNumber to KeyNumber for tests
+using KeysSetSequenceNumber = KeyNumber;
 
 /**
  * Factory class for creating test data objects for all SQLite handler tests.
