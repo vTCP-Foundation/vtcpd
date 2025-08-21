@@ -97,8 +97,6 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
     auto keyChain = mKeysStore->keychain(
                         mTrustLines->trustLineID(mContractorID));
     try {
-        keyChain.removeUnusedOwnKeys(
-            ioTransaction);
         keyChain.generateKeyPair(
             ioTransaction);
         info() << "All keys saved";
@@ -164,8 +162,6 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runCommandPub
     auto keyChain = mKeysStore->keychain(
                         mTrustLines->trustLineID(mContractorID));
     try {
-        keyChain.removeUnusedOwnKeys(
-            ioTransaction);
         keyChain.generateKeyPair(
             ioTransaction);
         info() << "All keys saved";

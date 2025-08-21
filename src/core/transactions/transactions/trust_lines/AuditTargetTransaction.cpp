@@ -247,10 +247,6 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
                 mContractorID,
                 TrustLine::Archived,
                 ioTransaction);
-            keyChain.removeUnusedOwnKeys(ioTransaction);
-            mTrustLines->setIsOwnKeysPresent(mContractorID, false);
-            keyChain.removeUnusedContractorKeys(ioTransaction);
-            mTrustLines->setIsContractorKeysPresent(mContractorID, false);
             info() << "Trust Line become empty";
         } else {
             info() << "All data saved. Now TL is ready for using";

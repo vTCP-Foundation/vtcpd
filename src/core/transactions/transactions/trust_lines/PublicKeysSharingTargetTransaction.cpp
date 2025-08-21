@@ -74,8 +74,6 @@ TransactionResult::SharedConst PublicKeysSharingTargetTransaction::runPublicKeyR
     auto keyChain = mKeysStore->keychain(
                         mTrustLines->trustLineID(mContractorID));
     try {
-        mTrustLines->setIsContractorKeysPresent(mContractorID, false);
-        keyChain.removeUnusedContractorKeys(ioTransaction);
         mCurrentKeysSetSequenceNumber = ioTransaction->contractorKeysHandler()->maxKeySetSequenceNumber(
                                             mTrustLines->trustLineID(mContractorID));
         mCurrentKeysSetSequenceNumber++;

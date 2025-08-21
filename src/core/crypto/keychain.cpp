@@ -187,9 +187,9 @@ bool TrustLineKeychain::ownKeysPresent(IOTransaction::Shared ioTransaction)
 bool TrustLineKeychain::isInitialAuditCondition(
     IOTransaction::Shared ioTransaction)
 {
-    bool ownKeyPresent = ioTransaction->ownKeysHandler()->hasKey(mTrustLineID);
-    bool contractorKeyPresent = ioTransaction->contractorKeysHandler()->hasKey(mTrustLineID);
-    return ownKeyPresent && contractorKeyPresent;
+    AuditNumber currentAuditNumber = ioTransaction->auditHandler()->getActualAuditFull(mTrustLineID)->auditNumber();
+    info() << "currentAuditNumber " << currentAuditNumber;
+    return currentAuditNumber == 1;
 }
 
 sphincs::Signature::Shared TrustLineKeychain::sign(
@@ -233,16 +233,6 @@ bool TrustLineKeychain::checkSign(IOTransaction::Shared ioTransaction,
                   << e.what();
         return false;
     }
-}
-
-void TrustLineKeychain::removeUnusedContractorKeys(IOTransaction::Shared ioTransaction)
-{
-    // No-op: Single key architecture doesn't require key cleanup
-}
-
-void TrustLineKeychain::removeUnusedOwnKeys(IOTransaction::Shared ioTransaction)
-{
-    // No-op: Single key architecture doesn't require key cleanup
 }
 
 bool TrustLineKeychain::saveOutgoingPaymentReceipt(IOTransaction::Shared ioTransaction,

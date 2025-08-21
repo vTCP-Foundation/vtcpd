@@ -369,10 +369,6 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runResponsePro
                 mContractorID,
                 TrustLine::Archived,
                 ioTransaction);
-            keyChain.removeUnusedOwnKeys(ioTransaction);
-            mTrustLines->setIsOwnKeysPresent(mContractorID, false);
-            keyChain.removeUnusedContractorKeys(ioTransaction);
-            mTrustLines->setIsContractorKeysPresent(mContractorID, false);
             info() << "Trust Line become empty";
             try {
                 mEventsInterfaceManager->writeEvent(

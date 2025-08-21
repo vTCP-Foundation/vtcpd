@@ -242,12 +242,6 @@ public:
         const size_t size,
         const sphincs::Signature::Shared signature);
 
-    void removeUnusedContractorKeys(
-        IOTransaction::Shared ioTransaction);
-
-    void removeUnusedOwnKeys(
-        IOTransaction::Shared ioTransaction);
-
     bool saveOutgoingPaymentReceipt(
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber,
