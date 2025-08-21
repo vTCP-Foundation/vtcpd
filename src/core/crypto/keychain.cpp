@@ -289,24 +289,14 @@ void TrustLineKeychain::saveFullAudit(IOTransaction::Shared ioTransaction,
                                       const AuditNumber auditNumber,
                                       const sphincs::Signature::Shared ownSignature,
                                       const sphincs::Signature::Shared contractorSignature,
-                                      const sphincs::KeyHash::Shared ownKeysSetHash,
-                                      const sphincs::KeyHash::Shared contractorKeysSetHash,
                                       const TrustLineAmount& incomingAmount,
                                       const TrustLineAmount& outgoingAmount,
                                       const TrustLineBalance& balance)
 {
-    auto ownKeyHash = ioTransaction->ownKeysHandler()->getPublicKeyHash(mTrustLineID);
-    auto contractorKeyHash = ioTransaction->contractorKeysHandler()->getPublicKeyHash(
-                                 mTrustLineID);
-
     ioTransaction->auditHandler()->saveFullAudit(auditNumber,
             mTrustLineID,
-            ownKeyHash,
             ownSignature,
-            contractorKeyHash,
             contractorSignature,
-            ownKeysSetHash,
-            contractorKeysSetHash,
             incomingAmount,
             outgoingAmount,
             balance);
@@ -315,20 +305,13 @@ void TrustLineKeychain::saveFullAudit(IOTransaction::Shared ioTransaction,
 void TrustLineKeychain::saveOwnAuditPart(IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber,
         const sphincs::Signature::Shared ownSignature,
-        const sphincs::KeyHash::Shared ownKeysSetHash,
-        const sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount& incomingAmount,
         const TrustLineAmount& outgoingAmount,
         const TrustLineBalance& balance)
 {
-    auto ownKeyHash = ioTransaction->ownKeysHandler()->getPublicKeyHash(mTrustLineID);
-
     ioTransaction->auditHandler()->saveOwnAuditPart(auditNumber,
             mTrustLineID,
-            ownKeyHash,
             ownSignature,
-            ownKeysSetHash,
-            contractorKeysSetHash,
             incomingAmount,
             outgoingAmount,
             balance);
@@ -347,11 +330,8 @@ void TrustLineKeychain::saveContractorAuditPart(IOTransaction::Shared ioTransact
         const AuditNumber auditNumber,
         const sphincs::Signature::Shared contractorSignature)
 {
-    auto contractorKeyHash = ioTransaction->contractorKeysHandler()->getPublicKeyHash(
-                                 mTrustLineID);
-
     ioTransaction->auditHandler()->saveContractorAuditPart(
-        auditNumber, mTrustLineID, contractorKeyHash, contractorSignature);
+        auditNumber, mTrustLineID, contractorSignature);
 }
 
 bool TrustLineKeychain::isAuditWasCancelled(IOTransaction::Shared ioTransaction,
@@ -438,21 +418,18 @@ AuditRecord::Shared TrustLineKeychain::actualFullAudit(IOTransaction::Shared ioT
 bool TrustLineKeychain::checkOwnConflictedSignature(IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size,
-        const sphincs::Signature::Shared ownSignature,
-        sphincs::KeyHash::Shared ownKeyHash)
+        const sphincs::Signature::Shared ownSignature)
 {
-    auto publicKey = ioTransaction->ownKeysHandler()->getPublicKeyByHash(mTrustLineID, ownKeyHash);
+    auto publicKey = ioTransaction->ownKeysHandler()->getPublicKey(mTrustLineID);
     return ownSignature->verify(*publicKey, data.get(), size);
 }
 
 bool TrustLineKeychain::checkContractorConflictedSignature(IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size,
-        const sphincs::Signature::Shared contractorSignature,
-        sphincs::KeyHash::Shared contractorKeyHash)
+        const sphincs::Signature::Shared contractorSignature)
 {
-    auto publicKey =
-        ioTransaction->contractorKeysHandler()->keyByHash(mTrustLineID, contractorKeyHash);
+    auto publicKey = ioTransaction->contractorKeysHandler()->getPublicKey(mTrustLineID);
     return contractorSignature->verify(*publicKey, data.get(), size);
 }
 
@@ -495,21 +472,11 @@ void TrustLineKeychain::acceptAudit(IOTransaction::Shared ioTransaction,
 {
     ioTransaction->auditHandler()->saveFullAudit(auditRecord->auditNumber(),
             mTrustLineID,
-            auditRecord->contractorKeyHash(),
-            auditRecord->contractorSignature(),
-            auditRecord->ownKeyHash(),
             auditRecord->ownSignature(),
-            auditRecord->ownKeysSetHash(),
-            auditRecord->contractorKeysSetHash(),
-            auditRecord->outgoingAmount(),
+            auditRecord->contractorSignature(),
             auditRecord->incomingAmount(),
+            auditRecord->outgoingAmount(),
             auditRecord->balance() * (-1));
-
-    ioTransaction->ownKeysHandler()->invalidateKeyByHash(
-        mTrustLineID, auditRecord->contractorKeyHash(), auditRecord->contractorSignature());
-
-    ioTransaction->contractorKeysHandler()->invalidateKeyByHash(
-        mTrustLineID, auditRecord->ownKeyHash());
 }
 
 void TrustLineKeychain::acceptReceipts(IOTransaction::Shared ioTransaction,
@@ -548,37 +515,8 @@ sphincs::Signature::Shared TrustLineKeychain::getCurrentAuditSignature(
     return auditRecord->ownSignature();
 }
 
-sphincs::KeyHash::Shared TrustLineKeychain::ownPublicKeysHash(
-    IOTransaction::Shared ioTransaction) const
-{
-    auto currentKeysSetSequenceNumber =
-        ioTransaction->ownKeysHandler()->maxKeySetSequenceNumber(mTrustLineID);
-    auto ownPublicKey = ioTransaction->ownKeysHandler()->getPublicKey(
-                            mTrustLineID);
-    auto keyHash = make_shared<sphincs::KeyHash>(ownPublicKey->data());
-    return keyHash;
-}
 
-sphincs::KeyHash::Shared TrustLineKeychain::contractorPublicKeysHash(
-    IOTransaction::Shared ioTransaction) const
-{
-    auto currentKeysSetSequenceNumber =
-        ioTransaction->contractorKeysHandler()->maxKeySetSequenceNumber(mTrustLineID);
-    auto contractorPublicKey = ioTransaction->contractorKeysHandler()->getPublicKey(
-                                   mTrustLineID);
-    auto keyHash = make_shared<sphincs::KeyHash>(contractorPublicKey->data());
-    return keyHash;
-}
 
-pair<bool, bool> TrustLineKeychain::checkKeysSetAppropriate(IOTransaction::Shared ioTransaction,
-        sphincs::KeyHash::Shared auditOwnKeysSetHash,
-        sphincs::KeyHash::Shared auditContractorKeysSetHash) const
-{
-    auto ownKeysSetHash = ownPublicKeysHash(ioTransaction);
-    auto contractorKeysSetHash = contractorPublicKeysHash(ioTransaction);
-    return make_pair(*auditOwnKeysSetHash == *ownKeysSetHash,
-                     *auditContractorKeysSetHash == *contractorKeysSetHash);
-}
 
 void TrustLineKeychain::removeAllTrustLineData(IOTransaction::Shared ioTransaction)
 {
@@ -641,12 +579,6 @@ void TrustLineKeychain::removeOutdatedCryptoData(IOTransaction::Shared ioTransac
         ioTransaction->auditHandler()->deleteAuditByNumber(
             mTrustLineID,
             audit->auditNumber());
-        ioTransaction->ownKeysHandler()->deleteKeyByHashExceptSequenceNumber(
-            audit->ownKeyHash(),
-            currentOwnKeysSetSequenceNumber);
-        ioTransaction->contractorKeysHandler()->deleteKeyByHashExceptSequenceNumber(
-            audit->contractorKeyHash(),
-            currentContractorKeysSetSequenceNumber);
     }
 
     removeOutdatedKeys(
@@ -681,8 +613,7 @@ void TrustLineKeychain::removeOutdatedKeys(IOTransaction::Shared ioTransaction,
     auto ownKeyHashes = ioTransaction->ownKeysHandler()->publicKeyHashesLessThanSetNumber(
                             mTrustLineID, currentKeysSetSequenceNumber);
     for (auto& ownKeyHash : ownKeyHashes) {
-        if (!ioTransaction->outgoingPaymentReceiptHandler()->isContainsKeyHash(ownKeyHash) and
-                !ioTransaction->auditHandler()->isContainsKeyHash(ownKeyHash)) {
+        if (!ioTransaction->outgoingPaymentReceiptHandler()->isContainsKeyHash(ownKeyHash)) {
             ioTransaction->ownKeysHandler()->deleteKeyByHashExceptSequenceNumber(
                 ownKeyHash, currentKeysSetSequenceNumber + 1);
         }
@@ -693,8 +624,7 @@ void TrustLineKeychain::removeOutdatedKeys(IOTransaction::Shared ioTransaction,
             mTrustLineID, currentKeysSetSequenceNumber);
     for (auto& contractorKeyHash : contractorKeyHashes) {
         if (!ioTransaction->incomingPaymentReceiptHandler()->isContainsKeyHash(
-                    contractorKeyHash) and
-                !ioTransaction->auditHandler()->isContainsKeyHash(contractorKeyHash)) {
+                    contractorKeyHash)) {
             ioTransaction->contractorKeysHandler()->deleteKeyByHashExceptSequenceNumber(
                 contractorKeyHash, currentKeysSetSequenceNumber + 1);
         }

@@ -154,11 +154,7 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runInitializatio
     auto keyChain = mKeysStore->keychain(
                         mTrustLines->trustLineID(mContractorID));
     try {
-        auto ownPublicKeysHash = keyChain.ownPublicKeysHash(ioTransaction);
-        auto contractorPublicKeysHash = keyChain.contractorPublicKeysHash(ioTransaction);
-        auto serializedAuditData = getOwnSerializedAuditData(
-                                       ownPublicKeysHash,
-                                       contractorPublicKeysHash);
+        auto serializedAuditData = getOwnSerializedAuditData();
         mOwnSignature = keyChain.sign(
                                         ioTransaction,
                                         serializedAuditData.first,
@@ -168,8 +164,6 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runInitializatio
             ioTransaction,
             mAuditNumber,
             mOwnSignature,
-            ownPublicKeysHash,
-            contractorPublicKeysHash,
             mTrustLines->incomingTrustAmount(
                 mContractorID),
             mTrustLines->outgoingTrustAmount(
@@ -378,9 +372,7 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runResponseProce
             BaseTransaction::SetOutgoingTrustLineTransaction);
 #endif
 
-        auto contractorSerializedAuditData = getContractorSerializedAuditData(
-                keyChain.ownPublicKeysHash(ioTransaction),
-                keyChain.contractorPublicKeysHash(ioTransaction));
+        auto contractorSerializedAuditData = getContractorSerializedAuditData();
         if (!keyChain.checkSign(
                     ioTransaction,
                     contractorSerializedAuditData.first,
@@ -573,11 +565,7 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::initializeAudit(
     auto keyChain = mKeysStore->keychain(
                         mTrustLines->trustLineID(mContractorID));
     try {
-        auto ownPublicKeysHash = keyChain.ownPublicKeysHash(ioTransaction);
-        auto contractorPublicKeysHash = keyChain.contractorPublicKeysHash(ioTransaction);
-        auto serializedAuditData = getOwnSerializedAuditData(
-                                       ownPublicKeysHash,
-                                       contractorPublicKeysHash);
+        auto serializedAuditData = getOwnSerializedAuditData();
         mOwnSignature = keyChain.sign(
                                         ioTransaction,
                                         serializedAuditData.first,
@@ -587,8 +575,6 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::initializeAudit(
             ioTransaction,
             mAuditNumber,
             mOwnSignature,
-            ownPublicKeysHash,
-            contractorPublicKeysHash,
             mTrustLines->incomingTrustAmount(
                 mContractorID),
             mTrustLines->outgoingTrustAmount(

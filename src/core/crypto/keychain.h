@@ -261,8 +261,6 @@ public:
         const AuditNumber auditNumber,
         const sphincs::Signature::Shared ownSignature,
         const sphincs::Signature::Shared contractorSignature,
-        const sphincs::KeyHash::Shared ownKeysSetHash,
-        const sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance);
@@ -271,8 +269,6 @@ public:
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber,
         const sphincs::Signature::Shared ownSignature,
-        const sphincs::KeyHash::Shared ownKeysSetHash,
-        const sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance);
@@ -311,15 +307,13 @@ public:
         IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size,
-        const sphincs::Signature::Shared ownSignature,
-        sphincs::KeyHash::Shared ownKeyHash);
+        const sphincs::Signature::Shared ownSignature);
 
     bool checkContractorConflictedSignature(
         IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size,
-        const sphincs::Signature::Shared contractorSignature,
-        sphincs::KeyHash::Shared contractorKeyHash);
+        const sphincs::Signature::Shared contractorSignature);
 
     vector<ReceiptRecord::Shared> incomingReceipts(
         IOTransaction::Shared ioTransaction,
@@ -355,16 +349,6 @@ public:
     sphincs::Signature::Shared getCurrentAuditSignature(
         IOTransaction::Shared ioTransaction);
 
-    sphincs::KeyHash::Shared ownPublicKeysHash(
-        IOTransaction::Shared ioTransaction) const;
-
-    sphincs::KeyHash::Shared contractorPublicKeysHash(
-        IOTransaction::Shared ioTransaction) const;
-
-    pair<bool, bool> checkKeysSetAppropriate(
-        IOTransaction::Shared ioTransaction,
-        sphincs::KeyHash::Shared ownKeysSetHash,
-        sphincs::KeyHash::Shared contractorKeysSetHash) const;
 
     void removeAllTrustLineData(
         IOTransaction::Shared ioTransaction);

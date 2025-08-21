@@ -63,13 +63,9 @@ protected:
     TransactionResult::SharedConst sendAuditErrorConfirmation(
         ConfirmationMessage::OperationState errorState);
 
-    pair<BytesShared, size_t> getOwnSerializedAuditData(
-        crypto::sphincs::KeyHash::Shared ownPublicKeysHash,
-        crypto::sphincs::KeyHash::Shared contractorPublicKeysHash);
+    pair<BytesShared, size_t> getOwnSerializedAuditData();
 
-    pair<BytesShared, size_t> getContractorSerializedAuditData(
-        crypto::sphincs::KeyHash::Shared ownPublicKeysHash,
-        crypto::sphincs::KeyHash::Shared contractorPublicKeysHash);
+    pair<BytesShared, size_t> getContractorSerializedAuditData();
 
 protected:
     static const uint32_t kWaitMillisecondsForResponse = 20000;

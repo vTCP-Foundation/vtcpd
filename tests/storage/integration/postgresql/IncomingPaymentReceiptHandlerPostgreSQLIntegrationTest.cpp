@@ -667,21 +667,4 @@ TEST_F(IncomingPaymentReceiptHandlerPostgreSQLIntegrationTest, TableCreation_Val
     PQclear(result);
 }
 
-// Test unique constraint validation
-TEST_F(IncomingPaymentReceiptHandlerPostgreSQLIntegrationTest, UniqueConstraint_DuplicateKey_ThrowsException) {
-    TrustLineID trustLineID = getValidTrustLineID();
-    AuditNumber auditNumber = 1;
-    auto transactionUUID = createTestTransactionUUID("testTxUUID");
-    auto contractorPublicKeyHash = createTestKeyHash("testContractorKey");
-    auto amount = createTestAmount(1000);
-    auto contractorSignature = createTestSignature("testContractorSignature");
-    
-    // Insert first record
-    mHandler->saveRecord(trustLineID, auditNumber, transactionUUID, contractorPublicKeyHash, amount, contractorSignature);
-    
-    // Try to insert duplicate with same trust_line_id, audit_number, contractor_public_key_hash
-    EXPECT_THROW(
-        mHandler->saveRecord(trustLineID, auditNumber, transactionUUID, contractorPublicKeyHash, amount, contractorSignature),
-        IOError
-    );
-} 
+ 

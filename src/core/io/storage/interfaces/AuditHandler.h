@@ -24,12 +24,8 @@ public:
     virtual void saveFullAudit(
         AuditNumber number,
         TrustLineID trustLineID,
-        sphincs::KeyHash::Shared ownKeyHash,
         sphincs::Signature::Shared ownSignature,
-        sphincs::KeyHash::Shared contractorKeyHash,
         sphincs::Signature::Shared contractorSignature,
-        sphincs::KeyHash::Shared ownKeysSetHash,
-        sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance) = 0;
@@ -37,10 +33,7 @@ public:
     virtual void saveOwnAuditPart(
         AuditNumber number,
         TrustLineID trustLineID,
-        sphincs::KeyHash::Shared ownKeyHash,
         sphincs::Signature::Shared ownSignature,
-        sphincs::KeyHash::Shared ownKeysSetHash,
-        sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance) = 0;
@@ -48,7 +41,6 @@ public:
     virtual void saveContractorAuditPart(
         AuditNumber number,
         TrustLineID trustLineID,
-        sphincs::KeyHash::Shared contractorKeyHash,
         sphincs::Signature::Shared contractorSignature) = 0;
 
     virtual const AuditRecord::Shared getActualAudit(
@@ -71,8 +63,6 @@ public:
         TrustLineID trustLineID,
         AuditNumber auditNumber) = 0;
 
-    virtual bool isContainsKeyHash(
-        sphincs::KeyHash::Shared keyHash) const = 0;
 };
 
 #endif //VTCPD_INTERFACES_AUDITHANDLER_H 

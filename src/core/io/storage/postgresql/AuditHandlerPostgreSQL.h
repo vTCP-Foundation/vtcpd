@@ -24,12 +24,8 @@ public:
     void saveFullAudit(
         AuditNumber number,
         TrustLineID trustLineID,
-        sphincs::KeyHash::Shared ownKeyHash,
         sphincs::Signature::Shared ownSignature,
-        sphincs::KeyHash::Shared contractorKeyHash,
         sphincs::Signature::Shared contractorSignature,
-        sphincs::KeyHash::Shared ownKeysSetHash,
-        sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance) override;
@@ -37,10 +33,7 @@ public:
     void saveOwnAuditPart(
         AuditNumber number,
         TrustLineID trustLineID,
-        sphincs::KeyHash::Shared ownKeyHash,
         sphincs::Signature::Shared ownSignature,
-        sphincs::KeyHash::Shared ownKeysSetHash,
-        sphincs::KeyHash::Shared contractorKeysSetHash,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance) override;
@@ -48,7 +41,6 @@ public:
     void saveContractorAuditPart(
         AuditNumber number,
         TrustLineID trustLineID,
-        sphincs::KeyHash::Shared contractorKeyHash,
         sphincs::Signature::Shared contractorSignature) override;
 
     const AuditRecord::Shared getActualAudit(
@@ -71,8 +63,6 @@ public:
         TrustLineID trustLineID,
         AuditNumber auditNumber) override;
 
-    bool isContainsKeyHash(
-        sphincs::KeyHash::Shared keyHash) const override;
 
 private:
     LoggerStream info() const;

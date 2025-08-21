@@ -10,12 +10,8 @@ AuditRecord::AuditRecord(
     mIncomingAmount(incomingAmount),
     mOutgoingAmount(outgoingAmount),
     mBalance(balance),
-    mOwnKeyHash(nullptr),
     mOwnSignature(nullptr),
-    mContractorKeyHash(nullptr),
-    mContractorSignature(nullptr),
-    mOwnKeysSetHash(nullptr),
-    mContractorKeysSetHash(nullptr)
+    mContractorSignature(nullptr)
 {
 }
 
@@ -24,23 +20,15 @@ AuditRecord::AuditRecord(
     TrustLineAmount &incomingAmount,
     TrustLineAmount &outgoingAmount,
     TrustLineBalance &balance,
-    sphincs::KeyHash::Shared ownKeyHash,
     sphincs::Signature::Shared ownSignature,
-    sphincs::KeyHash::Shared contractorKeyHash,
-    sphincs::Signature::Shared contractorSignature,
-    sphincs::KeyHash::Shared ownKeysSetHash,
-    sphincs::KeyHash::Shared contractorKeysSetHash) :
+    sphincs::Signature::Shared contractorSignature) :
 
     mAuditNumber(auditNumber),
     mIncomingAmount(incomingAmount),
     mOutgoingAmount(outgoingAmount),
     mBalance(balance),
-    mOwnKeyHash(ownKeyHash),
     mOwnSignature(ownSignature),
-    mContractorKeyHash(contractorKeyHash),
-    mContractorSignature(contractorSignature),
-    mOwnKeysSetHash(ownKeysSetHash),
-    mContractorKeysSetHash(contractorKeysSetHash)
+    mContractorSignature(contractorSignature)
 {
 }
 
@@ -72,17 +60,9 @@ AuditRecord::AuditRecord(
     mBalance = bytesToTrustLineBalance(balanceBytes);
     bytesBufferOffset += kTrustLineBalanceSerializeBytesCount;
 
-    mOwnKeyHash = make_shared<sphincs::KeyHash>(
-                      buffer + bytesBufferOffset);
-    bytesBufferOffset += sphincs::KeyHash::kBytesSize;
-
     mOwnSignature = make_shared<sphincs::Signature>(
                         buffer + bytesBufferOffset);
     bytesBufferOffset += sphincs::Signature::signatureSize();
-
-    mContractorKeyHash = make_shared<sphincs::KeyHash>(
-                             buffer + bytesBufferOffset);
-    bytesBufferOffset += sphincs::KeyHash::kBytesSize;
 
     mContractorSignature = make_shared<sphincs::Signature>(
                                buffer + bytesBufferOffset);
@@ -108,34 +88,14 @@ const TrustLineBalance &AuditRecord::balance() const
     return mBalance;
 }
 
-const sphincs::KeyHash::Shared AuditRecord::ownKeyHash() const
-{
-    return mOwnKeyHash;
-}
-
 const sphincs::Signature::Shared AuditRecord::ownSignature() const
 {
     return mOwnSignature;
 }
 
-const sphincs::KeyHash::Shared AuditRecord::contractorKeyHash() const
-{
-    return mContractorKeyHash;
-}
-
 const sphincs::Signature::Shared AuditRecord::contractorSignature() const
 {
     return mContractorSignature;
-}
-
-const sphincs::KeyHash::Shared AuditRecord::ownKeysSetHash() const
-{
-    return mOwnKeysSetHash;
-}
-
-const sphincs::KeyHash::Shared AuditRecord::contractorKeysSetHash() const
-{
-    return mContractorKeysSetHash;
 }
 
 void AuditRecord::setContractorSignature(
@@ -149,17 +109,6 @@ bool AuditRecord::isPendingState() const
     return mContractorSignature == nullptr;
 }
 
-void AuditRecord::setOwnKeysSetHash(
-    sphincs::KeyHash::Shared ownKeysSetHash)
-{
-    mOwnKeysSetHash = ownKeysSetHash;
-}
-
-void AuditRecord::setContractorKeysSetHash(
-    sphincs::KeyHash::Shared contractorKeysSetHash)
-{
-    mContractorKeysSetHash = contractorKeysSetHash;
-}
 
 BytesShared AuditRecord::serializeToBytes()
 {
@@ -198,25 +147,13 @@ BytesShared AuditRecord::serializeToBytes()
 
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
-        mOwnKeyHash->data(),
-        sphincs::KeyHash::kBytesSize);
-    dataBytesOffset += sphincs::KeyHash::kBytesSize;
-
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
         mOwnSignature->data(),
         sphincs::Signature::signatureSize());
     dataBytesOffset += sphincs::Signature::signatureSize();
 
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
-        mContractorKeyHash->data(),
-        sphincs::KeyHash::kBytesSize);
-    dataBytesOffset += sphincs::KeyHash::kBytesSize;
-
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        mContractorKeyHash->data(),
+        mContractorSignature->data(),
         sphincs::Signature::signatureSize());
 
     return dataBytesShared;
@@ -299,7 +236,7 @@ BytesShared AuditRecord::serializeToCheckSignatureByContractor()
 
 const size_t AuditRecord::recordSize()
 {
-    return sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + kTrustLineBalanceSerializeBytesCount + sphincs::KeyHash::kBytesSize + sphincs::Signature::signatureSize() + sphincs::KeyHash::kBytesSize + sphincs::Signature::signatureSize();
+    return sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + kTrustLineBalanceSerializeBytesCount + sphincs::Signature::signatureSize() + sphincs::Signature::signatureSize();
 }
 
 const size_t AuditRecord::recordSizeForSignatureChecking()

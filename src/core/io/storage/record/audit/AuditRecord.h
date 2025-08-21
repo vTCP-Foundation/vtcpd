@@ -26,12 +26,8 @@ public:
         TrustLineAmount &incomingAmount,
         TrustLineAmount &outgoingAmount,
         TrustLineBalance &balance,
-        sphincs::KeyHash::Shared ownKeyHash,
         sphincs::Signature::Shared ownSignature,
-        sphincs::KeyHash::Shared contractorKeyHash,
-        sphincs::Signature::Shared contractorSignature,
-        sphincs::KeyHash::Shared ownKeysSetHash,
-        sphincs::KeyHash::Shared contractorKeysSetHash);
+        sphincs::Signature::Shared contractorSignature);
 
     AuditRecord(
         byte_t* buffer);
@@ -44,28 +40,15 @@ public:
 
     const TrustLineBalance &balance() const;
 
-    const sphincs::KeyHash::Shared ownKeyHash() const;
-
     const sphincs::Signature::Shared ownSignature() const;
 
-    const sphincs::KeyHash::Shared contractorKeyHash() const;
-
     const sphincs::Signature::Shared contractorSignature() const;
-
-    const sphincs::KeyHash::Shared ownKeysSetHash() const;
-
-    const sphincs::KeyHash::Shared contractorKeysSetHash() const;
 
     void setContractorSignature(
         sphincs::Signature::Shared signature);
 
     bool isPendingState() const;
 
-    void setOwnKeysSetHash(
-        sphincs::KeyHash::Shared ownKeysSetHash);
-
-    void setContractorKeysSetHash(
-        sphincs::KeyHash::Shared contractorKeysSetHash);
 
     BytesShared serializeToBytes();
 
@@ -82,12 +65,8 @@ private:
     TrustLineAmount mIncomingAmount;
     TrustLineAmount mOutgoingAmount;
     TrustLineBalance mBalance;
-    sphincs::KeyHash::Shared mOwnKeyHash;
     sphincs::Signature::Shared mOwnSignature;
-    sphincs::KeyHash::Shared mContractorKeyHash;
     sphincs::Signature::Shared mContractorSignature;
-    sphincs::KeyHash::Shared mOwnKeysSetHash;
-    sphincs::KeyHash::Shared mContractorKeysSetHash;
 };
 
 #endif // VTCPD_AUDITRECORD_H

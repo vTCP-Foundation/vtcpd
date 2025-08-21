@@ -105,8 +105,7 @@ TransactionResult::SharedConst ConflictResolverContractorTransaction::run()
                         ioTransaction,
                         mMessage->auditRecord()->serializeToCheckSignatureByContractor(),
                         AuditRecord::recordSizeForSignatureChecking(),
-                        mMessage->auditRecord()->contractorSignature(),
-                        mMessage->auditRecord()->contractorKeyHash())) {
+                        mMessage->auditRecord()->contractorSignature())) {
                 warning() << "Own audit data sent by contractor is incorrect";
                 sendMessage<ConflictResolverResponseMessage>(
                     mContractorID,
@@ -135,8 +134,7 @@ TransactionResult::SharedConst ConflictResolverContractorTransaction::run()
                         ioTransaction,
                         mMessage->auditRecord()->serializeToCheckSignatureByInitiator(),
                         AuditRecord::recordSizeForSignatureChecking(),
-                        mMessage->auditRecord()->ownSignature(),
-                        mMessage->auditRecord()->ownKeyHash())) {
+                        mMessage->auditRecord()->ownSignature())) {
                 warning() << "Own audit data sent by contractor is incorrect";
                 sendMessage<ConflictResolverResponseMessage>(
                     mContractorID,

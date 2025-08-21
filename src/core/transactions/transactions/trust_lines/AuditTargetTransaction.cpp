@@ -193,9 +193,7 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
             closeOutgoingTrustLine(ioTransaction);
         }
 
-        auto contractorSerializedAuditData = getContractorSerializedAuditData(
-                keyChain.ownPublicKeysHash(ioTransaction),
-                keyChain.contractorPublicKeysHash(ioTransaction));
+        auto contractorSerializedAuditData = getContractorSerializedAuditData();
 
         if (!keyChain.checkSign(
                     ioTransaction,
@@ -208,11 +206,7 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
         }
         info() << "Signature is correct";
 
-        auto ownPublicKeysHash = keyChain.ownPublicKeysHash(ioTransaction);
-        auto contractorPublicKeysHash = keyChain.contractorPublicKeysHash(ioTransaction);
-        auto serializedAuditData = getOwnSerializedAuditData(
-                                       ownPublicKeysHash,
-                                       contractorPublicKeysHash);
+        auto serializedAuditData = getOwnSerializedAuditData();
         mOwnSignature = keyChain.sign(
                                         ioTransaction,
                                         serializedAuditData.first,
@@ -223,8 +217,6 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
             mAuditNumber,
             mOwnSignature,
             mMessage->signature(),
-            ownPublicKeysHash,
-            contractorPublicKeysHash,
             mTrustLines->incomingTrustAmount(
                 mContractorID),
             mTrustLines->outgoingTrustAmount(
