@@ -160,6 +160,11 @@ int Core::initSubsystems()
         return initCode;
     }
 
+    initCode = initExchangeRatesManager();
+    if (initCode != 0) {
+        return initCode;
+    }
+
     initCode = initTransactionsManager(conf);
     if (initCode != 0) {
         return initCode;
@@ -376,6 +381,7 @@ int Core::initTransactionsManager(
                                    *mLog,
                                    mSubsystemsController.get(),
                                    mTrustLinesInfluenceController.get(),
+                                   mExchangeRatesManager.get(),
                                    mSettings->hopsCount(&conf));
         info() << "Transactions handler is successfully initialised";
         return 0;
@@ -557,6 +563,20 @@ int Core::initFeaturesManager(
                                mStorageHandler.get(),
                                *mLog);
         info() << "Features Manager is successfully initialized";
+        return 0;
+    } catch (const std::exception &e) {
+        mLog->logException("Core", e);
+        return -1;
+    }
+}
+
+int Core::initExchangeRatesManager()
+{
+    try {
+        mExchangeRatesManager = make_unique<ExchangeRatesManager>(
+                                    mIOCtx,
+                                    *mLog);
+        info() << "Exchange Rates Manager is successfully initialized";
         return 0;
     } catch (const std::exception &e) {
         mLog->logException("Core", e);

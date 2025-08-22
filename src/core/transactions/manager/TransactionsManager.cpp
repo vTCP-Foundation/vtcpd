@@ -19,6 +19,7 @@ TransactionsManager::TransactionsManager(
     Logger &logger,
     SubsystemsController *subsystemsController,
     TrustLinesInfluenceController *trustLinesInfluenceController,
+    ExchangeRatesManager *exchangeRatesManager,
     uint8_t hops_count) :
 
     mIOCtx(IOCtx),
@@ -34,6 +35,7 @@ TransactionsManager::TransactionsManager(
     mLog(logger),
     mSubsystemsController(subsystemsController),
     mTrustLinesInfluenceController(trustLinesInfluenceController),
+    mExchangeRatesManager(exchangeRatesManager),
     mHopsCnt(hops_count),
     isPaymentTransactionsAllowedDueToObserving(true),
     mCyclesRunningParameters(cyclesRunningParameters),
@@ -404,6 +406,27 @@ void TransactionsManager::processCommand(
     } else if (command->identifier() == RemoveOutdatedCryptoDataCommand::identifier()) {
         launchRemoveOutdatedCryptoDataTransaction(
             static_pointer_cast<RemoveOutdatedCryptoDataCommand>(
+                command));
+
+    } else if (command->identifier() == SetExchangeRateCommand::identifier()) {
+        launchSetExchangeRateTransaction(
+            static_pointer_cast<SetExchangeRateCommand>(
+                command));
+    } else if (command->identifier() == GetExchangeRateCommand::identifier()) {
+        launchGetExchangeRateTransaction(
+            static_pointer_cast<GetExchangeRateCommand>(
+                command));
+    } else if (command->identifier() == ListExchangeRatesCommand::identifier()) {
+        launchListExchangeRatesTransaction(
+            static_pointer_cast<ListExchangeRatesCommand>(
+                command));
+    } else if (command->identifier() == RemoveExchangeRateCommand::identifier()) {
+        launchRemoveExchangeRateTransaction(
+            static_pointer_cast<RemoveExchangeRateCommand>(
+                command));
+    } else if (command->identifier() == ClearExchangeRatesCommand::identifier()) {
+        launchClearExchangeRatesTransaction(
+            static_pointer_cast<ClearExchangeRatesCommand>(
                 command));
 
     } else {
@@ -2965,6 +2988,76 @@ void TransactionsManager::onSerializeTransaction(
             "Unexpected transaction type identifier " + to_string(kTransactionTypeId));
     }
     }
+}
+
+void TransactionsManager::launchSetExchangeRateTransaction(
+    SetExchangeRateCommand::Shared command)
+{
+    auto transaction = make_shared<SetExchangeRateTransaction>(
+                           command,
+                           mExchangeRatesManager,
+                           mLog);
+    prepareAndSchedule(
+        transaction,
+        true,
+        false,
+        false);
+}
+
+void TransactionsManager::launchGetExchangeRateTransaction(
+    GetExchangeRateCommand::Shared command)
+{
+    auto transaction = make_shared<GetExchangeRateTransaction>(
+                           command,
+                           mExchangeRatesManager,
+                           mLog);
+    prepareAndSchedule(
+        transaction,
+        true,
+        false,
+        false);
+}
+
+void TransactionsManager::launchListExchangeRatesTransaction(
+    ListExchangeRatesCommand::Shared command)
+{
+    auto transaction = make_shared<ListExchangeRatesTransaction>(
+                           command,
+                           mExchangeRatesManager,
+                           mLog);
+    prepareAndSchedule(
+        transaction,
+        true,
+        false,
+        false);
+}
+
+void TransactionsManager::launchRemoveExchangeRateTransaction(
+    RemoveExchangeRateCommand::Shared command)
+{
+    auto transaction = make_shared<RemoveExchangeRateTransaction>(
+                           command,
+                           mExchangeRatesManager,
+                           mLog);
+    prepareAndSchedule(
+        transaction,
+        true,
+        false,
+        false);
+}
+
+void TransactionsManager::launchClearExchangeRatesTransaction(
+    ClearExchangeRatesCommand::Shared command)
+{
+    auto transaction = make_shared<ClearExchangeRatesTransaction>(
+                           command,
+                           mExchangeRatesManager,
+                           mLog);
+    prepareAndSchedule(
+        transaction,
+        true,
+        false,
+        false);
 }
 
 string TransactionsManager::logHeader()

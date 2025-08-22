@@ -320,6 +320,31 @@ pair<bool, BaseUserCommand::Shared> CommandsParser::tryParseCommand(
                        uuid,
                        buffer);
 
+        } else if (identifier == SetExchangeRateCommand::identifier()) {
+            return newCommand<SetExchangeRateCommand>(
+                       uuid,
+                       buffer);
+                       
+        } else if (identifier == ClearExchangeRatesCommand::identifier()) {
+            return newCommand<ClearExchangeRatesCommand>(
+                       uuid,
+                       buffer);
+
+        } else if (identifier == GetExchangeRateCommand::identifier()) {
+            return newCommand<GetExchangeRateCommand>(
+                       uuid,
+                       buffer);
+
+        } else if (identifier == ListExchangeRatesCommand::identifier()) {
+            return newCommand<ListExchangeRatesCommand>(
+                       uuid,
+                       buffer);
+
+        } else if (identifier == RemoveExchangeRateCommand::identifier()) {
+            return newCommand<RemoveExchangeRateCommand>(
+                       uuid,
+                       buffer);
+
         } else {
             return commandError(
                        uuid,

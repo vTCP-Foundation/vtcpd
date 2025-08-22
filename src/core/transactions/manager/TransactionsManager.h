@@ -4,6 +4,7 @@
 #include "../scheduler/TransactionsScheduler.h"
 #include "../../interface/results_interface/interface/ResultsInterface.h"
 #include "../../interface/commands_interface/commands/ErrorUserCommand.h"
+#include "../../rates/manager/ExchangeRatesManager.h"
 
 /*
  * Transactions
@@ -85,6 +86,12 @@
 #include "../transactions/general/PongReactionTransaction.h"
 #include "../transactions/general/RemoveOutdatedCryptoDataTransaction.h"
 
+#include "../transactions/rates/SetExchangeRateTransaction.h"
+#include "../transactions/rates/GetExchangeRateTransaction.h"
+#include "../transactions/rates/ListExchangeRatesTransaction.h"
+#include "../transactions/rates/RemoveExchangeRateTransaction.h"
+#include "../transactions/rates/ClearExchangeRatesTransaction.h"
+
 #include <boost/signals2.hpp>
 
 #include <string>
@@ -125,6 +132,7 @@ public:
         Logger &logger,
         SubsystemsController *subsystemsController,
         TrustLinesInfluenceController *trustLinesInfluenceController,
+        ExchangeRatesManager *exchangeRatesManager,
 		uint8_t hops_count);
 
     void processCommand(
@@ -380,6 +388,24 @@ protected: // Transactions
     void launchRemoveOutdatedCryptoDataTransaction(
         RemoveOutdatedCryptoDataCommand::Shared command);
 
+    /*
+     * Exchange rates transactions
+     */
+    void launchSetExchangeRateTransaction(
+        SetExchangeRateCommand::Shared command);
+
+    void launchGetExchangeRateTransaction(
+        GetExchangeRateCommand::Shared command);
+
+    void launchListExchangeRatesTransaction(
+        ListExchangeRatesCommand::Shared command);
+
+    void launchRemoveExchangeRateTransaction(
+        RemoveExchangeRateCommand::Shared command);
+
+    void launchClearExchangeRatesTransaction(
+        ClearExchangeRatesCommand::Shared command);
+
 protected:
     // Signals connection to manager's slots
     void subscribeForSubsidiaryTransactions(
@@ -569,6 +595,7 @@ private:
 
     SubsystemsController *mSubsystemsController;
     TrustLinesInfluenceController *mTrustLinesInfluenceController;
+    ExchangeRatesManager *mExchangeRatesManager;
 
     unique_ptr<TransactionsScheduler> mScheduler;
     unique_ptr<EquivalentsCyclesSubsystemsRouter> mEquivalentsCyclesSubsystemsRouter;

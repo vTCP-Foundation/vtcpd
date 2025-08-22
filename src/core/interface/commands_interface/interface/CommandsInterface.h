@@ -39,6 +39,11 @@
 #include "../commands/subsystems_controller/TrustLinesInfluenceCommand.h"
 #include "../commands/transactions/PaymentTransactionByCommandUUIDCommand.h"
 #include "../commands/general/RemoveOutdatedCryptoDataCommand.h"
+#include "../commands/rates/SetExchangeRateCommand.h"
+#include "../commands/rates/ClearExchangeRatesCommand.h"
+#include "../commands/rates/GetExchangeRateCommand.h"
+#include "../commands/rates/ListExchangeRatesCommand.h"
+#include "../commands/rates/RemoveExchangeRateCommand.h"
 
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/ValueError.h"

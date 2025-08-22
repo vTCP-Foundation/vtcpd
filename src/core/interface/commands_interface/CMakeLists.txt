@@ -73,7 +73,17 @@ add_library(interface__commands
     commands/transactions/PaymentTransactionByCommandUUIDCommand.h
     commands/transactions/PaymentTransactionByCommandUUIDCommand.cpp
     commands/general/RemoveOutdatedCryptoDataCommand.h
-    commands/general/RemoveOutdatedCryptoDataCommand.cpp)
+    commands/general/RemoveOutdatedCryptoDataCommand.cpp
+    commands/rates/SetExchangeRateCommand.h
+    commands/rates/SetExchangeRateCommand.cpp
+    commands/rates/GetExchangeRateCommand.h
+    commands/rates/GetExchangeRateCommand.cpp
+    commands/rates/ListExchangeRatesCommand.h
+    commands/rates/ListExchangeRatesCommand.cpp
+    commands/rates/RemoveExchangeRateCommand.h
+    commands/rates/RemoveExchangeRateCommand.cpp
+    commands/rates/ClearExchangeRatesCommand.h
+    commands/rates/ClearExchangeRatesCommand.cpp)
 
 target_include_directories(interface__commands
     PUBLIC

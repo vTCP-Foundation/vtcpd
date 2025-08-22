@@ -193,6 +193,7 @@ target_link_libraries(vtcpd PRIVATE
     observing
     features
     providing
+    rates
 
     # Libs
     SQLite::SQLite3

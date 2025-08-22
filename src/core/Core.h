@@ -19,6 +19,7 @@
 #include "delayed_tasks/TopologyEventDelayedTask.h"
 #include "features/FeaturesManager.h"
 #include "providing/ProvidingHandler.h"
+#include "rates/manager/ExchangeRatesManager.h"
 
 #include "logger/Logger.h"
 
@@ -101,6 +102,8 @@ private:
 
     int initFeaturesManager(
         const json &conf);
+
+    int initExchangeRatesManager();
 
     void connectCommunicatorSignals();
 
@@ -229,6 +232,7 @@ protected:
     unique_ptr<TailManager> mTailManager;
     unique_ptr<FeaturesManager> mFeaturesManager;
     unique_ptr<ProvidingHandler> mProvidingHandler;
+    unique_ptr<ExchangeRatesManager> mExchangeRatesManager;
 };
 
 #endif //VTCPD_CORE_H

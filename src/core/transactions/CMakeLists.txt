@@ -15,6 +15,7 @@ add_subdirectory(transactions/transaction)
 add_subdirectory(transactions/gateway_notification)
 add_subdirectory(transactions/general)
 add_subdirectory(transactions/trust_line_channel)
+add_subdirectory(transactions/rates)
 
 add_library(transactions
     manager/TransactionsManager.h
@@ -48,6 +49,7 @@ target_link_libraries(transactions
         transactions__gateway_notification
         transactions__general
         transactions__channels
+        transactions__rates
         core_libs
         common
         exceptions
