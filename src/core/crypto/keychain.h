@@ -206,9 +206,6 @@ public:
     bool ownKeysPresent(
         IOTransaction::Shared ioTransaction);
 
-    bool isInitialAuditCondition(
-        IOTransaction::Shared ioTransaction);
-
     /**
      * @brief
      * Uses next available private key for signing the data.

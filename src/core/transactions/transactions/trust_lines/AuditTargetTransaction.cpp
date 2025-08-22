@@ -233,8 +233,7 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
             TrustLine::Active,
             ioTransaction);
 
-        if (mTrustLines->isTrustLineEmpty(mContractorID) and
-                !keyChain.isInitialAuditCondition(ioTransaction)) {
+        if (mTrustLines->isTrustLineEmpty(mContractorID)) {
             mTrustLines->setTrustLineState(
                 mContractorID,
                 TrustLine::Archived,

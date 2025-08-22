@@ -57,7 +57,11 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::run()
         return runPublicKeysSharingInitializationStage();
     }
     case Stages::CommandInitialization: {
-        return runCommandPublicKeysSharingInitializationStage();
+        // It is prohibited to regenerate keys outside of a deposit transaction
+        // through federation according to the ADR 
+        // workspace/architecture/vtcpd/ADR-001-trust-line-key-regeneration-prohibition.md
+        // return runCommandPublicKeysSharingInitializationStage();
+        return resultProtocolError();
     }
     case Stages::ResponseProcessing: {
         return runPublicKeysSendNextKeyStage();
@@ -74,6 +78,20 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
 
     if (!mContractorsManager->contractorPresent(mContractorID)) {
         warning() << "There is no contractor with requested id";
+        return resultDone();
+    }
+
+    // It is prohibited to regenerate keys outside of a deposit transaction
+    // through federation according to the ADR 
+    // workspace/architecture/vtcpd/ADR-001-trust-line-key-regeneration-prohibition.md
+    // except for the case of own key absence (during creating TL)
+    try {
+        if (mTrustLines->trustLineOwnKeysPresent(mContractorID)) {
+            warning() << "Own key already present in TL";
+            return resultDone();
+        }
+    } catch (NotFoundError &e) {
+        warning() << "Attempt to use not existing TL";
         return resultDone();
     }
 
@@ -273,14 +291,6 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::runPublicKeys
                 mContractorID,
                 true);
             info() << "TL is ready for using";
-            if (!mTrustLines->isTrustLineEmpty(mContractorID)) {
-                auditSignal(mContractorID, mEquivalent);
-            } else {
-                if (mTrustLines->trustLineContractorKeysPresent(mContractorID)) {
-                    info() << "Init audit signal";
-                    auditSignal(mContractorID, mEquivalent);
-                }
-            }
         } catch (IOError &e) {
             ioTransaction->rollback();
             error() << "Can't update TL state. Details " << e.what();

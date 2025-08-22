@@ -184,14 +184,6 @@ bool TrustLineKeychain::ownKeysPresent(IOTransaction::Shared ioTransaction)
     return ioTransaction->ownKeysHandler()->hasKey(mTrustLineID);
 }
 
-bool TrustLineKeychain::isInitialAuditCondition(
-    IOTransaction::Shared ioTransaction)
-{
-    AuditNumber currentAuditNumber = ioTransaction->auditHandler()->getActualAuditFull(mTrustLineID)->auditNumber();
-    info() << "currentAuditNumber " << currentAuditNumber;
-    return currentAuditNumber == 1;
-}
-
 sphincs::Signature::Shared TrustLineKeychain::sign(
     IOTransaction::Shared ioTransaction,
     BytesShared data,
