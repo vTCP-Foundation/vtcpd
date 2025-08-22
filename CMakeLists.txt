@@ -151,6 +151,7 @@ foreach(COMPONENT
     core/observing
     core/features
     core/providing
+    core/rates
 )
     add_subdirectory(src/${COMPONENT})
 endforeach()

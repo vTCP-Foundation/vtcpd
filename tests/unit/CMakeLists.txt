@@ -2,19 +2,28 @@ cmake_minimum_required(VERSION 3.14)
 
 # Build only stable, up-to-date tests (other old tests require refactor)
 add_executable(unit_tests
-    example_test.cpp
     database_config_test.cpp
-    sqlite/HistoryStorageSQLiteTest.cpp
-    sqlite/SQLiteStatementRAIITest.cpp
     sqlite/AddressHandlerSQLiteTest.cpp
     sqlite/AuditHandlerSQLiteTest.cpp
     sqlite/AuditRulesHandlerSQLiteTest.cpp
     sqlite/ContractorKeysHandlerSQLiteTest.cpp
     sqlite/ContractorsHandlerSQLiteTest.cpp
     sqlite/FeaturesHandlerSQLiteTest.cpp
+    sqlite/HistoryStorageSQLiteTest.cpp
     sqlite/IncomingPaymentReceiptHandlerSQLiteTest.cpp
     sqlite/IOTransactionSQLiteTest.cpp
     sqlite/OutgoingPaymentReceiptHandlerSQLiteTest.cpp
+    sqlite/OwnKeysHandlerSQLiteTest.cpp
+    sqlite/PaymentKeysHandlerSQLiteTest.cpp
+    sqlite/PaymentParticipantsVotesHandlerSQLiteTest.cpp
+    sqlite/PaymentTransactionsHandlerSQLiteTest.cpp
+    sqlite/SQLiteStatementRAIITest.cpp
+    sqlite/StorageHandlerSQLiteTest.cpp
+    sqlite/TransactionsHandlerSQLiteTest.cpp
+    sqlite/TrustLineHandlerSQLiteTest.cpp
+    postgresql/PaymentKeysHandlerPostgreSQLUnitTest.cpp
+    rates/ExchangeRateTest.cpp
+    rates/ExchangeRatesManagerTest.cpp
 )
 
 # Include directories for tests
@@ -38,6 +47,7 @@ target_link_libraries(unit_tests PRIVATE
     exceptions
     crypto
     trust_lines
+    rates
     settings
 )
 
