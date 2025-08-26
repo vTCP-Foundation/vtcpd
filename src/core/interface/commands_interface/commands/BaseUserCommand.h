@@ -126,6 +126,9 @@ public:
     CommandResult::SharedConst responseForbiddenRunDueObservingTransaction() const
     noexcept;
 
+    CommandResult::SharedConst responseExchangeRateIsAbsent() const
+    noexcept;
+
     CommandResult::SharedConst responseEquivalentIsAbsent() const
     noexcept;
 

@@ -146,3 +146,9 @@ noexcept
     return makeResult(605);
 }
 
+CommandResult::SharedConst BaseUserCommand::responseExchangeRateIsAbsent() const
+noexcept
+{
+    return makeResult(607);
+}
+

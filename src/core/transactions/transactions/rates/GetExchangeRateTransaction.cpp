@@ -24,7 +24,8 @@ TransactionResult::SharedConst GetExchangeRateTransaction::run()
 
         if (exchangeRate == nullptr) {
             debug() << "GetExchangeRateTransaction: Exchange rate not found";
-            return resultNotFound();
+            return transactionResultFromCommand(
+                mCommand->responseExchangeRateIsAbsent());
         }
 
         debug() << "GetExchangeRateTransaction: Successfully retrieved exchange rate";
@@ -48,7 +49,7 @@ TransactionResult::SharedConst GetExchangeRateTransaction::resultOK(
 TransactionResult::SharedConst GetExchangeRateTransaction::resultNotFound() const
 {
     return transactionResultFromCommand(
-        mCommand->responseProtocolError());
+        mCommand->responseExchangeRateIsAbsent());
 }
 
 string GetExchangeRateTransaction::serializeExchangeRate(ExchangeRate::Shared exchangeRate) const
