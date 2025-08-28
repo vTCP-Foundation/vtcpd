@@ -26,9 +26,17 @@ public:
         vector<BaseAddress::Shared> targetAddresses);
 
     MaxFlowCalculationMessage(
+        const SerializedEquivalent equivalent,
+        ContractorID idOnReceiverSide,
+        vector<BaseAddress::Shared> targetAddresses,
+        vector<SerializedEquivalent> exchangeEquivalents);
+
+    MaxFlowCalculationMessage(
         BytesShared buffer);
 
     vector<BaseAddress::Shared> targetAddresses() const;
+
+    vector<SerializedEquivalent> exchangeEquivalents() const;
 
     virtual pair<BytesShared, size_t> serializeToBytes() const override;
 
@@ -36,6 +44,7 @@ public:
 
 protected:
     vector<BaseAddress::Shared> mTargetAddresses;
+    vector<SerializedEquivalent> mExchangeEquivalents;
 };
 
 #endif //VTCPD_MAXFLOWCALCULATIONMESSAGE_H

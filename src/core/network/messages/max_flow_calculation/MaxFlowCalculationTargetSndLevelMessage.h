@@ -17,6 +17,13 @@ public:
         bool isTargetGateway);
 
     MaxFlowCalculationTargetSndLevelMessage(
+        const SerializedEquivalent equivalent,
+        ContractorID idOnReceiverSide,
+        vector<BaseAddress::Shared> targetAddresses,
+        bool isTargetGateway,
+        vector<SerializedEquivalent> exchangeEquivalents);
+
+    MaxFlowCalculationTargetSndLevelMessage(
         BytesShared buffer);
 
     bool isTargetGateway() const;

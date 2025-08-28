@@ -20,6 +20,14 @@ public:
         HopsCount_t hopsCount);
 
     MaxFlowCalculationTargetFstLevelMessage(
+        const SerializedEquivalent equivalent,
+        ContractorID idOnReceiverSide,
+        vector<BaseAddress::Shared> targetAddresses,
+        bool isTargetGateway,
+        HopsCount_t hopsCount,
+        vector<SerializedEquivalent> exchangeEquivalents);
+
+    MaxFlowCalculationTargetFstLevelMessage(
         BytesShared buffer);
 
     const MessageType typeID() const override;

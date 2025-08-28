@@ -19,6 +19,13 @@ public:
         HopsCount_t hopsCount
 	);
 
+	MaxFlowCalculationSourceFstLevelMessage(
+	 const SerializedEquivalent equivalent,
+		ContractorID idOnReceiverSide,
+        HopsCount_t hopsCount,
+        vector<SerializedEquivalent> exchangeEquivalents
+	);
+
 	MaxFlowCalculationSourceFstLevelMessage(BytesShared buffer);
 
 	pair<BytesShared, size_t> serializeToBytes() const override;
@@ -27,9 +34,12 @@ public:
 
 	HopsCount_t getHopsCount() const;
 
+	vector<SerializedEquivalent> exchangeEquivalents() const;
+
 private:
 
 	HopsCount_t mHopsCnt;
+	vector<SerializedEquivalent> mExchangeEquivalents;
 	
 };
 

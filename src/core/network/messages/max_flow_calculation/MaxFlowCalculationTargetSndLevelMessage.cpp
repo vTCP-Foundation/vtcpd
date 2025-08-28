@@ -12,6 +12,19 @@ MaxFlowCalculationTargetSndLevelMessage::MaxFlowCalculationTargetSndLevelMessage
 }
 
 MaxFlowCalculationTargetSndLevelMessage::MaxFlowCalculationTargetSndLevelMessage(
+    const SerializedEquivalent equivalent,
+    ContractorID idOnReceiverSide,
+    vector<BaseAddress::Shared> targetAddresses,
+    bool isTargetGateway,
+    vector<SerializedEquivalent> exchangeEquivalents) : MaxFlowCalculationMessage(equivalent,
+                idOnReceiverSide,
+                targetAddresses,
+                exchangeEquivalents),
+    mIsTargetGateway(isTargetGateway)
+{
+}
+
+MaxFlowCalculationTargetSndLevelMessage::MaxFlowCalculationTargetSndLevelMessage(
     BytesShared buffer) : MaxFlowCalculationMessage(buffer)
 {
     size_t bytesBufferOffset = MaxFlowCalculationMessage::kOffsetToInheritedBytes();

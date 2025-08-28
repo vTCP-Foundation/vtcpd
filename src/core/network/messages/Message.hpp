@@ -103,6 +103,8 @@ public:
         MaxFlow_ResultMaxFlowCalculation = 405,
         MaxFlow_ResultMaxFlowCalculationFromGateway = 406,
         MaxFlow_Confirmation = 407,
+        MaxFlow_ExchangeRates = 408,
+        MaxFlow_InitiateExchangeCalculation = 409,
 
         /*
          * General
