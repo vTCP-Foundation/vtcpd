@@ -1,14 +1,17 @@
 #include "PathsManager.h"
+#include "../equivalents/EquivalentsSubsystemsRouter.h"
 
 PathsManager::PathsManager(const SerializedEquivalent equivalent,
                            TrustLinesManager* trustLinesManager,
                            TopologyTrustLinesManager* topologyTrustLineManager,
+                           EquivalentsSubsystemsRouter* equivalentsSubsystemsRouter,
                            Logger& logger)
     :
 
     mEquivalent(equivalent)
     , mTrustLinesManager(trustLinesManager)
     , mTopologyTrustLinesManager(topologyTrustLineManager)
+    , mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter)
     , mLog(logger)
     , mPathCollection(nullptr)
 {
@@ -191,12 +194,12 @@ void
 PathsManager::reBuildPaths(BaseAddress::Shared contractorAddress, const vector<BaseAddress::Shared>& inaccessibleNodes)
 {
     mContractorAddress = contractorAddress;
-    mContractorID = mTopologyTrustLinesManager->getID(contractorAddress);
+    mContractorID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(contractorAddress);
     info() << "ReBuild paths to " << mContractorAddress->fullAddress() << " id " << mContractorID;
     auto startTime = utc_now();
     mTopologyTrustLinesManager->makeFullyUsedTLsFromGatewaysToAllNodesExceptOne(mContractorID);
     for (const auto& inaccessibleNodeAddress : inaccessibleNodes) {
-        mInaccessibleNodes.insert(mTopologyTrustLinesManager->getID(inaccessibleNodeAddress));
+        mInaccessibleNodes.insert(mEquivalentsSubsystemsRouter->getOrCreateParticipantID(inaccessibleNodeAddress));
     }
     mPathCollection = make_shared<PathsCollection>(contractorAddress);
 
@@ -310,7 +313,7 @@ PathsManager::calculateOneNodeForRebuildingPaths(ContractorID nodeID, const Trus
 void
 PathsManager::addUsedAmountFromInitiator(BaseAddress::Shared targetAddress, const TrustLineAmount& amount)
 {
-    auto targetID = mTopologyTrustLinesManager->getID(targetAddress);
+    auto targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(targetAddress);
     mTopologyTrustLinesManager->addUsedAmount(TopologyTrustLinesManager::kCurrentNodeID, targetID, amount);
 }
 
@@ -319,16 +322,16 @@ PathsManager::addUsedAmount(BaseAddress::Shared sourceAddress,
                             BaseAddress::Shared targetAddress,
                             const TrustLineAmount& amount)
 {
-    auto sourceID = mTopologyTrustLinesManager->getID(sourceAddress);
-    auto targetID = mTopologyTrustLinesManager->getID(targetAddress);
+    auto sourceID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(sourceAddress);
+    auto targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(targetAddress);
     mTopologyTrustLinesManager->addUsedAmount(sourceID, targetID, amount);
 }
 
 void
 PathsManager::makeTrustLineFullyUsed(BaseAddress::Shared sourceAddress, BaseAddress::Shared targetAddress)
 {
-    auto sourceID = mTopologyTrustLinesManager->getID(sourceAddress);
-    auto targetID = mTopologyTrustLinesManager->getID(targetAddress);
+    auto sourceID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(sourceAddress);
+    auto targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(targetAddress);
     mTopologyTrustLinesManager->makeFullyUsed(sourceID, targetID);
 }
 
@@ -338,7 +341,7 @@ PathsManager::addressesPath()
     vector<BaseAddress::Shared> result;
     result.reserve(mPassedNodeIDs.size());
     for (const auto& nodeID : mPassedNodeIDs) {
-        result.push_back(mTopologyTrustLinesManager->getAddressByID(nodeID));
+        result.push_back(mEquivalentsSubsystemsRouter->resolveParticipantAddress(nodeID));
     }
     return result;
 }

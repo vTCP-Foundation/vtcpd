@@ -1,5 +1,8 @@
 #include "TopologyTrustLinesManager.h"
 
+// Static constant definition
+const ContractorID TopologyTrustLinesManager::kCurrentNodeID;
+
 TopologyTrustLinesManager::TopologyTrustLinesManager(
     const SerializedEquivalent equivalent,
     BaseAddress::Shared ownAddress,
@@ -8,16 +11,12 @@ TopologyTrustLinesManager::TopologyTrustLinesManager(
 
     mEquivalent(equivalent),
     mLog(logger),
-    mPreventDeleting(false),
-    mHigherFreeID(1)
+    mPreventDeleting(false)
 {
-    // todo : use here kCurrentNodeID
+    // Use kCurrentNodeID for current node
     if (iAmGateway) {
-        mGateways.insert(0);
+        mGateways.insert(kCurrentNodeID);
     }
-    mParticipantsAddresses.emplace_back(
-        ownAddress,
-        0);
 }
 
 void TopologyTrustLinesManager::addTrustLine(
@@ -226,10 +225,6 @@ size_t TopologyTrustLinesManager::trustLinesCounts() const
 
 void TopologyTrustLinesManager::printTrustLines() const
 {
-    info() << "participants:";
-    for (const auto &participant : mParticipantsAddresses) {
-        info() << participant.first->fullAddress() << " " << participant.second;
-    }
     size_t trustLinesCnt = 0;
     info() << "print new    " << "trustLineMap size: " << msTrustLines.size();
     for (const auto &nodeIDAndTrustLines : msTrustLines) {
@@ -315,33 +310,6 @@ const TrustLineAmount& TopologyTrustLinesManager::flowAmount(
     return TrustLine::kZeroAmount();
 }
 
-ContractorID TopologyTrustLinesManager::getID(
-    BaseAddress::Shared address)
-{
-    for (const auto &participantAddress : mParticipantsAddresses) {
-        if (participantAddress.first == address) {
-            return participantAddress.second;
-        }
-    }
-    mParticipantsAddresses.emplace_back(
-        address,
-        mHigherFreeID);
-    auto result = mHigherFreeID;
-    mHigherFreeID++;
-    return result;
-}
-
-// todo : improve this code for preventing loop
-BaseAddress::Shared TopologyTrustLinesManager::getAddressByID(
-    ContractorID nodeID) const
-{
-    for (const auto &participant : mParticipantsAddresses) {
-        if (participant.second == nodeID) {
-            return participant.first;
-        }
-    }
-    return nullptr;
-}
 
 void TopologyTrustLinesManager::setPreventDeleting(
     bool preventDeleting)

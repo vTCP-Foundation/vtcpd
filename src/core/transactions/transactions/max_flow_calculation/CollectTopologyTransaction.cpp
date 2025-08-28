@@ -4,6 +4,7 @@ CollectTopologyTransaction::CollectTopologyTransaction(
     const SerializedEquivalent equivalent,
     const vector<BaseAddress::Shared> &contractorAddresses,
     ContractorsManager *contractorsManager,
+    EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     TrustLinesManager *manager,
     TopologyTrustLinesManager *topologyTrustLineManager,
     TopologyCacheManager *topologyCacheManager,
@@ -18,6 +19,7 @@ CollectTopologyTransaction::CollectTopologyTransaction(
         logger),
     mContractorAddresses(contractorAddresses),
     mContractorsManager(contractorsManager),
+    mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
     mTrustLinesManager(manager),
     mTopologyTrustLineManager(topologyTrustLineManager),
     mTopologyCacheManager(topologyCacheManager),
@@ -39,7 +41,7 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
 
     if (mIamGateway) {
         for (auto const &nodeAddressAndOutgoingFlow : mTrustLinesManager->outgoingFlows()) {
-            auto targetID = mTopologyTrustLineManager->getID(nodeAddressAndOutgoingFlow.first);
+            auto targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(nodeAddressAndOutgoingFlow.first);
             auto trustLineAmountShared = nodeAddressAndOutgoingFlow.second;
             if (mTrustLinesManager->isContractorGateway(targetID)) {
                 mTopologyTrustLineManager->addTrustLine(
@@ -59,7 +61,7 @@ TransactionResult::SharedConst CollectTopologyTransaction::run()
         }
     } else {
         for (auto const &nodeAddressAndOutgoingFlow : mTrustLinesManager->outgoingFlows()) {
-            auto targetID = mTopologyTrustLineManager->getID(nodeAddressAndOutgoingFlow.first);
+            auto targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(nodeAddressAndOutgoingFlow.first);
             auto trustLineAmountShared = nodeAddressAndOutgoingFlow.second;
             mTopologyTrustLineManager->addTrustLine(
                 make_shared<TopologyTrustLine>(

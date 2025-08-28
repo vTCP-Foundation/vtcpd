@@ -6,6 +6,9 @@
 #include "../topology/manager/TopologyTrustLinesManager.h"
 #include "../logger/Logger.h"
 
+// Forward declaration to avoid circular dependency
+class EquivalentsSubsystemsRouter;
+
 #include <set>
 
 class PathsManager
@@ -16,6 +19,7 @@ public:
         const SerializedEquivalent equivalent,
         TrustLinesManager *trustLinesManager,
         TopologyTrustLinesManager *topologyTrustLineManager,
+        EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         Logger &logger);
 
     void buildPaths(
@@ -75,6 +79,7 @@ private:
 private:
     TrustLinesManager *mTrustLinesManager;
     TopologyTrustLinesManager *mTopologyTrustLinesManager;
+    EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
     SerializedEquivalent mEquivalent;
     Logger &mLog;
     PathsCollection::Shared mPathCollection;

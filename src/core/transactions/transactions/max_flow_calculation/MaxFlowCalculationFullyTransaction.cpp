@@ -39,7 +39,7 @@ TransactionResult::SharedConst MaxFlowCalculationFullyTransaction::sendRequestFo
         }
     }
     for (const auto &contractorAddress : mCommand->contractorAddresses()) {
-        auto contractorID = mTopologyTrustLineManager->getID(
+        auto contractorID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(
                                 contractorAddress);
         info() << "ContractorID " << contractorID << " address " << contractorAddress->fullAddress();
         mContractorIDs.emplace_back(
@@ -61,6 +61,7 @@ TransactionResult::SharedConst MaxFlowCalculationFullyTransaction::sendRequestFo
                                   mEquivalent,
                                   mCommand->contractorAddresses(),
                                   mContractorsManager,
+                                  mEquivalentsSubsystemsRouter,
                                   mTrustLinesManager,
                                   mTopologyTrustLineManager,
                                   mTopologyCacheManager,

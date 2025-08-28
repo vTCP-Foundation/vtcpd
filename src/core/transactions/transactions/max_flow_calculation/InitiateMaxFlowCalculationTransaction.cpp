@@ -43,7 +43,7 @@ TransactionResult::SharedConst InitiateMaxFlowCalculationTransaction::sendReques
         }
     }
     for (const auto &contractorAddress : mCommand->contractorAddresses()) {
-        auto contractorID = mTopologyTrustLineManager->getID(
+        auto contractorID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(
                                 contractorAddress);
         info() << "ContractorID " << contractorID << " address " << contractorAddress->fullAddress();
         mContractorIDs.emplace_back(
@@ -88,6 +88,7 @@ TransactionResult::SharedConst InitiateMaxFlowCalculationTransaction::sendReques
                                   mEquivalent,
                                   nonCachedContractors,
                                   mContractorsManager,
+                                  mEquivalentsSubsystemsRouter,
                                   mTrustLinesManager,
                                   mTopologyTrustLineManager,
                                   mTopologyCacheManager,

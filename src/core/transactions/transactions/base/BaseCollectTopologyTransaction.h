@@ -51,15 +51,13 @@ protected:
 
 protected:
     ContractorsManager *mContractorsManager;
+    EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
     TrustLinesManager *mTrustLinesManager;
     TopologyTrustLinesManager *mTopologyTrustLineManager;
     TopologyCacheManager *mTopologyCacheManager;
     MaxFlowCacheManager *mMaxFlowCacheManager;
     set<ContractorID> mGateways;
     TailManager *mTailManager;
-
-private:
-    EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
 };
 
 

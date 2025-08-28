@@ -7,6 +7,7 @@
 #include "../../../topology/manager/TopologyTrustLinesManager.h"
 #include "../../../topology/cache/TopologyCacheManager.h"
 #include "../../../topology/cache/MaxFlowCacheManager.h"
+#include "../../../equivalents/EquivalentsSubsystemsRouter.h"
 
 #include "../../../network/messages/max_flow_calculation/InitiateMaxFlowCalculationMessage.h"
 #include "../../../network/messages/max_flow_calculation/MaxFlowCalculationSourceFstLevelMessage.h"
@@ -22,6 +23,7 @@ public:
         const SerializedEquivalent equivalent,
         const vector<BaseAddress::Shared> &contractorAddresses,
         ContractorsManager *contractorsManager,
+        EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         TrustLinesManager *manager,
         TopologyTrustLinesManager *topologyTrustLineManager,
         TopologyCacheManager *topologyCacheManager,
@@ -45,6 +47,7 @@ private:
 
 private:
     ContractorsManager *mContractorsManager;
+    EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
     TrustLinesManager *mTrustLinesManager;
     TopologyTrustLinesManager *mTopologyTrustLineManager;
     TopologyCacheManager *mTopologyCacheManager;

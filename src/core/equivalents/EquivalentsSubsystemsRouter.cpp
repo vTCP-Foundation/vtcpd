@@ -15,7 +15,8 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
     mEventsInterfaceManager(eventsInterfaceManager),
     mEquivalentsIAmGateway(equivalentsIAmGateway),
     mIOCtx(ioCtx),
-    mLogger(logger)
+    mLogger(logger),
+    mHigherFreeID(1)
 {
     // Validate input parameters
     if (storageHandler == nullptr) {
@@ -33,6 +34,11 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
     if (eventsInterfaceManager == nullptr) {
         throw ValueError("EquivalentsSubsystemsRouter::constructor: Events interface manager cannot be null.");
     }
+
+    // Initialize unified participant ID management with current node as ID 0
+    mParticipantsAddresses.emplace_back(
+        contractorsManager->selfContractor()->mainAddress(), 
+        0);
 
     try {
         // Load equivalents from storage with proper transaction handling
@@ -127,6 +133,7 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
                                         equivalent,
                                         mTrustLinesManagers[equivalent].get(),
                                         mTopologyTrustLinesManagers[equivalent].get(),
+                                        this,
                                         mLogger);
                 if (!pathsManager) {
                     throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to create PathsManager for equivalent " + to_string(equivalent));
@@ -324,6 +331,7 @@ void EquivalentsSubsystemsRouter::initNewEquivalent(
                                 equivalent,
                                 mTrustLinesManagers[equivalent].get(),
                                 mTopologyTrustLinesManagers[equivalent].get(),
+                                this,
                                 mLogger);
         if (!pathsManager) {
             throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Failed to create PathsManager for equivalent " + to_string(equivalent));
@@ -375,6 +383,58 @@ void EquivalentsSubsystemsRouter::clearContractorsShouldBePinged()
 {
     mContractorsShouldBePinged.clear();
     debug() << "Contractors should be pinged list cleared";
+}
+
+ContractorID EquivalentsSubsystemsRouter::getOrCreateParticipantID(
+    const BaseAddress::Shared &address)
+{
+    if (!address) {
+        throw ValueError("EquivalentsSubsystemsRouter::getOrCreateParticipantID: Address cannot be null");
+    }
+
+    // Search for existing address
+    for (const auto &participantAddress : mParticipantsAddresses) {
+        if (participantAddress.first == address) {
+            debug() << "Found existing ContractorID " << participantAddress.second 
+                    << " for address " << address->fullAddress();
+            return participantAddress.second;
+        }
+    }
+
+    // Create new entry
+    mParticipantsAddresses.emplace_back(address, mHigherFreeID);
+    auto result = mHigherFreeID;
+    mHigherFreeID++;
+    
+    info() << "Created new ContractorID " << result 
+           << " for address " << address->fullAddress();
+    return result;
+}
+
+BaseAddress::Shared EquivalentsSubsystemsRouter::resolveParticipantAddress(
+    ContractorID contractorID) const
+{
+    for (const auto &participant : mParticipantsAddresses) {
+        if (participant.second == contractorID) {
+            return participant.first;
+        }
+    }
+    return nullptr;
+}
+
+optional<ContractorID> EquivalentsSubsystemsRouter::resolveParticipantID(
+    const BaseAddress::Shared &address) const
+{
+    if (!address) {
+        return std::nullopt;
+    }
+
+    for (const auto &participantAddress : mParticipantsAddresses) {
+        if (participantAddress.first == address) {
+            return participantAddress.second;
+        }
+    }
+    return std::nullopt;
 }
 
 void EquivalentsSubsystemsRouter::sendTopologyEvent() const

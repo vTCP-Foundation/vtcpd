@@ -14,9 +14,12 @@
 #include <memory>
 #include <algorithm>
 #include <utility>
+#include <optional>
 
 namespace as = boost::asio;
 namespace signals = boost::signals2;
+
+using std::optional;
 
 /**
  * Routes and manages subsystems for different equivalents in the network.
@@ -142,6 +145,36 @@ public:
      */
     void sendTopologyEvent() const;
 
+    /**
+     * Returns unified ContractorID for given address, creating new ID if needed.
+     * 
+     * This provides a single source of truth for ContractorID assignment across
+     * all equivalents, ensuring consistent participant identification.
+     *
+     * @param address Base address to resolve or assign ContractorID for
+     * @return ContractorID for the address (existing or newly created)
+     */
+    ContractorID getOrCreateParticipantID(
+        const BaseAddress::Shared &address);
+
+    /**
+     * Resolves ContractorID to BaseAddress if known.
+     *
+     * @param contractorID ContractorID to resolve  
+     * @return BaseAddress for the contractor, or nullptr if not found
+     */
+    BaseAddress::Shared resolveParticipantAddress(
+        ContractorID contractorID) const;
+
+    /**
+     * Finds ContractorID for given address without creating new entry.
+     *
+     * @param address Base address to lookup
+     * @return ContractorID if found, or nullopt if address is unknown
+     */
+    optional<ContractorID> resolveParticipantID(
+        const BaseAddress::Shared &address) const;
+
 #ifdef TESTS
     /**
      * Sets this node as gateway for all equivalents (testing only).
@@ -182,6 +215,10 @@ private:
     unique_ptr<GatewayNotificationAndRoutingTablesDelayedTask> mGatewayNotificationAndRoutingTablesDelayedTask;
 
     set<ContractorID> mContractorsShouldBePinged;
+
+    // Unified participant ID management across all equivalents
+    vector<pair<BaseAddress::Shared, ContractorID>> mParticipantsAddresses;
+    ContractorID mHigherFreeID;
 };
 
 

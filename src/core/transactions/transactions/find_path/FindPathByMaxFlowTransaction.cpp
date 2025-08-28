@@ -32,13 +32,14 @@ TransactionResult::SharedConst FindPathByMaxFlowTransaction::sendRequestForColle
     try {
         vector<BaseAddress::Shared> contractors;
         contractors.push_back(mContractorAddress);
-        mContractorID = mTopologyTrustLineManager->getID(
+        mContractorID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(
                             mContractorAddress);
         info() << "ContractorID " << mContractorID;
         const auto kTransaction = make_shared<CollectTopologyTransaction>(
                                       mEquivalent,
                                       contractors,
                                       mContractorsManager,
+                                      mEquivalentsSubsystemsRouter,
                                       mTrustLinesManager,
                                       mTopologyTrustLineManager,
                                       mTopologyCacheManager,

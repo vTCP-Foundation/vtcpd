@@ -24,6 +24,7 @@ add_executable(unit_tests
     postgresql/PaymentKeysHandlerPostgreSQLUnitTest.cpp
     rates/ExchangeRateTest.cpp
     rates/ExchangeRatesManagerTest.cpp
+    equivalents/EquivalentsSubsystemsRouterTest.cpp
 )
 
 # Include directories for tests
@@ -48,6 +49,10 @@ target_link_libraries(unit_tests PRIVATE
     crypto
     trust_lines
     rates
+    equivalents
+    topology
+    paths
+    interface__events
     settings
 )
 

@@ -65,12 +65,6 @@ public:
         ContractorID source,
         ContractorID destination);
 
-    ContractorID getID(
-        BaseAddress::Shared address);
-
-    BaseAddress::Shared getAddressByID(
-        ContractorID nodeID) const;
-
 public:
     static const ContractorID kCurrentNodeID = 0;
 
@@ -111,8 +105,6 @@ private:
 private:
     unordered_map<ContractorID, TrustLineWithPtrHashSet *> msTrustLines;
     map<DateTime, TopologyTrustLineWithPtr *> mtTrustLines;
-    vector<pair<BaseAddress::Shared, ContractorID>> mParticipantsAddresses;
-    ContractorID mHigherFreeID;
     SerializedEquivalent mEquivalent;
     Logger &mLog;
     bool mPreventDeleting;

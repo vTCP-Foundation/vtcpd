@@ -56,9 +56,9 @@ void BaseCollectTopologyTransaction::fillTopology()
 #endif
             auto topologyTrustLineManager = mEquivalentsSubsystemsRouter->topologyTrustLineManager(
                                                 kMessage->equivalent());
-            auto senderID = topologyTrustLineManager->getID(kMessage->senderAddresses.at(0));
+            auto senderID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(kMessage->senderAddresses.at(0));
             for (auto const &outgoingFlow : kMessage->outgoingFlows()) {
-                auto targetID = mTopologyTrustLineManager->getID(outgoingFlow.first);
+                auto targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(outgoingFlow.first);
                 topologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
                         senderID,
@@ -66,7 +66,7 @@ void BaseCollectTopologyTransaction::fillTopology()
                         outgoingFlow.second));
             }
             for (auto const &incomingFlow : kMessage->incomingFlows()) {
-                auto sourceID = topologyTrustLineManager->getID(incomingFlow.first);
+                auto sourceID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(incomingFlow.first);
                 topologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
                         sourceID,
@@ -84,10 +84,10 @@ void BaseCollectTopologyTransaction::fillTopology()
 #endif
             auto topologyTrustLineManager = mEquivalentsSubsystemsRouter->topologyTrustLineManager(
                                                 kMessage->equivalent());
-            auto senderID = topologyTrustLineManager->getID(kMessage->senderAddresses.at(0));
+            auto senderID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(kMessage->senderAddresses.at(0));
             topologyTrustLineManager->addGateway(senderID);
             for (auto const &outgoingFlow : kMessage->outgoingFlows()) {
-                auto targetID = topologyTrustLineManager->getID(outgoingFlow.first);
+                auto targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(outgoingFlow.first);
                 topologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
                         senderID,
@@ -95,7 +95,7 @@ void BaseCollectTopologyTransaction::fillTopology()
                         outgoingFlow.second));
             }
             for (auto const &incomingFlow : kMessage->incomingFlows()) {
-                auto sourceID = topologyTrustLineManager->getID(incomingFlow.first);
+                auto sourceID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(incomingFlow.first);
                 topologyTrustLineManager->addTrustLine(
                     make_shared<TopologyTrustLine>(
                         sourceID,
