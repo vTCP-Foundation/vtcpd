@@ -40,6 +40,8 @@ add_library(interface__commands
     commands/payments/CreditUsageCommand.h
     commands/max_flow_calculation/InitiateMaxFlowCalculationCommand.h
     commands/max_flow_calculation/InitiateMaxFlowCalculationCommand.cpp
+    commands/max_flow_calculation/InitiateMaxFlowExchangeCalculationCommand.h
+    commands/max_flow_calculation/InitiateMaxFlowExchangeCalculationCommand.cpp
     commands/max_flow_calculation/InitiateMaxFlowCalculationFullyCommand.h
     commands/max_flow_calculation/InitiateMaxFlowCalculationFullyCommand.cpp
     commands/total_balances/TotalBalancesCommand.h

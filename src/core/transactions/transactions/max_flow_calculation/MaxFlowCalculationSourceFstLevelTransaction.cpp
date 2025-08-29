@@ -5,6 +5,7 @@ MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTra
     ContractorsManager *contractorsManager,
     TrustLinesManager *trustLinesManager,
     TopologyCacheManager *topologyCacheManager,
+    ExchangeRatesManager *exchangeRatesManager,
     Logger &logger,
     bool iAmGateway) :
 
@@ -16,6 +17,7 @@ MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTra
     mContractorsManager(contractorsManager),
     mTrustLinesManager(trustLinesManager),
     mTopologyCacheManager(topologyCacheManager),
+    mExchangeRatesManager(exchangeRatesManager),
     mIAmGateway(iAmGateway)
 {}
 
@@ -37,6 +39,9 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
 			sendGatewayResultToInitiator();
 		else
 			this->sendResultToInitiator();
+        
+        // Send exchange rates if this is an exchange-aware flow
+        sendExchangeRatesIfNeeded();
         return resultDone();
     }
 
@@ -68,12 +73,11 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
 		info() << "sendFirst: " << nodeIDWithOutgoingFlow;
 #endif
 		sendMessage<MaxFlowCalculationSourceSndLevelMessage>(
-			nodeIDWithOutgoingFlow,
+			mContractorsManager->contractorMainAddress(nodeIDWithOutgoingFlow),
 			mEquivalent,
-			mContractorsManager->idOnContractorSide(
-			nodeIDWithOutgoingFlow),
-			mContractorsManager->contractorAddresses(
-			mMessage->idOnReceiverSide));
+			mContractorsManager->idOnContractorSide(nodeIDWithOutgoingFlow),
+			mContractorsManager->contractorAddresses(mMessage->idOnReceiverSide),
+			mMessage->exchangeEquivalents());
 		mTopologyCacheManager->addIntoFirstLevelCache(
 			nodeIDWithOutgoingFlow);
 	}
@@ -88,12 +92,11 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
 		info() << "sendFirst zero: " << nodeIDWithOutgoingFlow;
 #endif
 		sendMessage<MaxFlowCalculationSourceSndLevelMessage>(
-			nodeIDWithOutgoingFlow,
+			mContractorsManager->contractorMainAddress(nodeIDWithOutgoingFlow),
 			mEquivalent,
-			mContractorsManager->idOnContractorSide(
-			nodeIDWithOutgoingFlow),
-			mContractorsManager->contractorAddresses(
-			mMessage->idOnReceiverSide));
+			mContractorsManager->idOnContractorSide(nodeIDWithOutgoingFlow),
+			mContractorsManager->contractorAddresses(mMessage->idOnReceiverSide),
+			mMessage->exchangeEquivalents());
 	}
    
     return resultDone();
@@ -296,4 +299,55 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendCachedGatewayResultToIniti
 			incomingFlowsForSending);
 	}
 
+}
+
+void MaxFlowCalculationSourceFstLevelTransaction::sendExchangeRatesIfNeeded()
+{
+    // According to PRD semantics for Source-side transactions:
+    // When exchangeEquivalents non-empty, search local ExchangeRatesManager for rates matching pairs mEquivalent/exchangeEquivalents[i]
+    // Send found rates via ExchangeRatesMessage alongside topology data
+    
+    if (mMessage->exchangeEquivalents().empty()) {
+        // Legacy single-equivalent flow, no exchange rates to send
+        return;
+    }
+
+#ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
+    info() << "Sending exchange rates for " << mMessage->exchangeEquivalents().size() << " exchange equivalents";
+#endif
+
+    vector<ExchangeRate::Shared> ratesToSend;
+    
+    // Search for exchange rates from mEquivalent to each exchangeEquivalent
+    for (const auto& exchangeEquiv : mMessage->exchangeEquivalents()) {
+        try {
+            auto rate = mExchangeRatesManager->get(mEquivalent, exchangeEquiv);
+            if (rate != nullptr) {
+                ratesToSend.push_back(rate);
+#ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
+                info() << "Found local rate: " << mEquivalent << " -> " << exchangeEquiv;
+#endif
+            }
+        } catch (const NotFoundError&) {
+            // No rate found, continue to next equivalent
+#ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
+            debug() << "No local rate found for: " << mEquivalent << " -> " << exchangeEquiv;
+#endif
+        }
+    }
+    
+    if (!ratesToSend.empty()) {
+        vector<BaseAddress::Shared> targetAddresses = mContractorsManager->contractorAddresses(
+            mMessage->idOnReceiverSide);
+        
+        sendMessage<ExchangeRatesMessage>(
+            targetAddresses.at(0),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            ratesToSend);
+            
+#ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
+        info() << "Sent " << ratesToSend.size() << " exchange rates to initiator";
+#endif
+    }
 }

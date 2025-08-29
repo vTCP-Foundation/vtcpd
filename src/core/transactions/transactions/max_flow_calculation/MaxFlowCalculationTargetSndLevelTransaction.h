@@ -8,6 +8,8 @@
 #include "../../../network/messages/max_flow_calculation/MaxFlowCalculationTargetSndLevelMessage.h"
 #include "../../../network/messages/max_flow_calculation/ResultMaxFlowCalculationMessage.h"
 #include "../../../network/messages/max_flow_calculation/ResultMaxFlowCalculationGatewayMessage.h"
+#include "../../../network/messages/max_flow_calculation/ExchangeRatesMessage.h"
+#include "../../../rates/manager/ExchangeRatesManager.h"
 
 class MaxFlowCalculationTargetSndLevelTransaction : public BaseTransaction
 {
@@ -21,6 +23,7 @@ public:
         ContractorsManager *contractorsManager,
         TrustLinesManager *manager,
         TopologyCacheManager *topologyCacheManager,
+        ExchangeRatesManager *exchangeRatesManager,
         Logger &logger,
         bool iAmGateway);
 
@@ -40,11 +43,14 @@ private:
     void sendCachedGatewayResultToInitiator(
         TopologyCache::Shared maxFlowCalculationCachePtr);
 
+    void sendExchangeRatesIfNeeded();
+
 private:
     MaxFlowCalculationTargetSndLevelMessage::Shared mMessage;
     ContractorsManager *mContractorsManager;
     TrustLinesManager *mTrustLinesManager;
     TopologyCacheManager *mTopologyCacheManager;
+    ExchangeRatesManager *mExchangeRatesManager;
     bool mIAmGateway;
 };
 

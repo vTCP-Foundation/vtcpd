@@ -317,6 +317,11 @@ void TransactionsManager::processCommand(
         launchInitiateMaxFlowCalculatingTransaction(
             static_pointer_cast<InitiateMaxFlowCalculationCommand>(
                 command));
+                
+    } else if (command->identifier() == InitiateMaxFlowExchangeCalculationCommand::identifier()) {
+        launchInitiateMaxFlowExchangeCalculationTransaction(
+            static_pointer_cast<InitiateMaxFlowExchangeCalculationCommand>(
+                command));
 
     } else if (command->identifier() == InitiateMaxFlowCalculationFullyCommand::identifier()) {
         launchMaxFlowCalculationFullyTransaction(
@@ -1083,6 +1088,37 @@ void TransactionsManager::launchInitiateMaxFlowCalculatingTransaction(
     }
 }
 
+void TransactionsManager::launchInitiateMaxFlowExchangeCalculationTransaction(
+    InitiateMaxFlowExchangeCalculationCommand::Shared command)
+{
+    try {
+        prepareAndSchedule(
+            make_shared<InitiateMaxFlowExchangeCalculationTransaction>(
+                command,
+                mContractorsManager,
+                mEquivalentsSubsystemsRouter,
+                mExchangeRatesManager,
+                mTailManager,
+                mLog,
+                mHopsCnt),
+            true,
+            true,
+            true);
+    } catch (ConflictError &e) {
+        throw ConflictError(e.message());
+    } catch (NotFoundError &e) {
+        error() << "There are no subsystems for InitiateMaxFlowExchangeCalculationTransaction "
+                   "with equivalent " << command->equivalent() << " Details are: " << e.what();
+        prepareAndSchedule(
+            make_shared<NoEquivalentTransaction>(
+                command,
+                mLog),
+            false,
+            false,
+            false);
+    }
+}
+
 /*!
  *
  * Throws MemoryError.
@@ -1157,6 +1193,7 @@ void TransactionsManager::launchMaxFlowCalculationSourceFstLevelTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter->trustLinesManager(message->equivalent()),
                 mEquivalentsSubsystemsRouter->topologyCacheManager(message->equivalent()),
+                mExchangeRatesManager,
                 mLog,
                 mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
             false,
@@ -1184,6 +1221,7 @@ void TransactionsManager::launchMaxFlowCalculationTargetFstLevelTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter->trustLinesManager(message->equivalent()),
                 mEquivalentsSubsystemsRouter->topologyCacheManager(message->equivalent()),
+                mExchangeRatesManager,
                 mLog,
                 mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
             false,
@@ -1211,6 +1249,7 @@ void TransactionsManager::launchMaxFlowCalculationSourceSndLevelTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter->trustLinesManager(message->equivalent()),
                 mEquivalentsSubsystemsRouter->topologyCacheManager(message->equivalent()),
+                mExchangeRatesManager,
                 mLog,
                 mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
             false,
@@ -1238,6 +1277,7 @@ void TransactionsManager::launchMaxFlowCalculationTargetSndLevelTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter->trustLinesManager(message->equivalent()),
                 mEquivalentsSubsystemsRouter->topologyCacheManager(message->equivalent()),
+                mExchangeRatesManager,
                 mLog,
                 mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
             false,

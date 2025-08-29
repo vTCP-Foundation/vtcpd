@@ -96,6 +96,7 @@ public:
         MaxFlowCalculationTargetSndLevelTransactionType = 407,
         MaxFlowCalculationStepTwoTransactionType = 408,
         MaxFlowCalculationFullyTransactionType = 409,
+        CollectTopologyForExchangeTransactionType = 410,
 
         // TrustLine list
         TrustLinesList = 500,

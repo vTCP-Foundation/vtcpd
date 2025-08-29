@@ -5,6 +5,7 @@ MaxFlowCalculationTargetFstLevelTransaction::MaxFlowCalculationTargetFstLevelTra
     ContractorsManager *contractorsManager,
     TrustLinesManager *manager,
     TopologyCacheManager *topologyCacheManager,
+    ExchangeRatesManager *exchangeRatesManager,
     Logger &logger,
     bool iAmGateway) :
 
@@ -16,6 +17,7 @@ MaxFlowCalculationTargetFstLevelTransaction::MaxFlowCalculationTargetFstLevelTra
     mContractorsManager (contractorsManager),
     mTrustLinesManager(manager),
     mTopologyCacheManager(topologyCacheManager),
+    mExchangeRatesManager(exchangeRatesManager),
     mIAmGateway(iAmGateway)
 {}
 
@@ -34,6 +36,7 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
     }
 
     if(mMessage->getHopsCount() == 1) {
+        sendExchangeRatesIfNeeded();
         if(mIAmGateway) {
             sendGatewayResultToInitiator();
         } else {
@@ -77,7 +80,8 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
             mEquivalent,
             mContractorsManager->idOnContractorSide(nodeIDWithIncomingFlow),
             mMessage->targetAddresses(),
-            mMessage->isTargetGateway());
+            mMessage->isTargetGateway(),
+            mMessage->exchangeEquivalents());
         mTopologyCacheManager->addIntoFirstLevelCache(
             nodeIDWithIncomingFlow);
     }
@@ -97,9 +101,11 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
             mEquivalent,
             mContractorsManager->idOnContractorSide(nodeIDWithIncomingFlow),
             mMessage->targetAddresses(),
-            mMessage->isTargetGateway());
+            mMessage->isTargetGateway(),
+            mMessage->exchangeEquivalents());
     }
 
+    sendExchangeRatesIfNeeded();
     return resultDone();
 }
 
@@ -257,6 +263,34 @@ void MaxFlowCalculationTargetFstLevelTransaction::sendGatewayResultToInitiator()
             make_shared<TopologyCache>(
                 outgoingFlows,
                 incomingFlows));*/
+    }
+}
+
+void MaxFlowCalculationTargetFstLevelTransaction::sendExchangeRatesIfNeeded()
+{
+    if (mMessage->exchangeEquivalents().empty()) {
+        return;
+    }
+    
+    vector<ExchangeRate::Shared> ratesToSend;
+    
+    for (const auto& exchangeEquiv : mMessage->exchangeEquivalents()) {
+        try {
+            auto rate = mExchangeRatesManager->get(mEquivalent, exchangeEquiv);
+            if (rate != nullptr) {
+                ratesToSend.push_back(rate);
+            }
+        } catch (NotFoundError&) {
+        }
+    }
+    
+    if (!ratesToSend.empty()) {
+        auto targetAddress = mMessage->targetAddresses().at(0);
+        sendMessage<ExchangeRatesMessage>(
+            targetAddress,
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            ratesToSend);
     }
 }
 

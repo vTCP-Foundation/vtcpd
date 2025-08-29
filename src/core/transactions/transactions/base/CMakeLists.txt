@@ -5,7 +5,9 @@ add_library(transactions__base
     BaseTransaction.h
     BaseTransaction.cpp
     BaseCollectTopologyTransaction.h
-    BaseCollectTopologyTransaction.cpp)
+    BaseCollectTopologyTransaction.cpp
+    BaseCollectTopologyForExchangeTransaction.h
+    BaseCollectTopologyForExchangeTransaction.cpp)
 
 target_include_directories(transactions__base
     PUBLIC

@@ -53,6 +53,7 @@
 #include "../transactions/regular/payments/CycleCloserIntermediateNodeTransaction.h"
 
 #include "../transactions/max_flow_calculation/InitiateMaxFlowCalculationTransaction.h"
+#include "../transactions/max_flow_calculation/InitiateMaxFlowExchangeCalculationTransaction.h"
 #include "../transactions/max_flow_calculation/MaxFlowCalculationFullyTransaction.h"
 #include "../transactions/max_flow_calculation/ReceiveMaxFlowCalculationOnTargetTransaction.h"
 #include "../transactions/max_flow_calculation/MaxFlowCalculationSourceFstLevelTransaction.h"
@@ -251,6 +252,9 @@ protected: // Transactions
      */
     void launchInitiateMaxFlowCalculatingTransaction(
         InitiateMaxFlowCalculationCommand::Shared command);
+        
+    void launchInitiateMaxFlowExchangeCalculationTransaction(
+        InitiateMaxFlowExchangeCalculationCommand::Shared command);
 
     void launchMaxFlowCalculationFullyTransaction(
         InitiateMaxFlowCalculationFullyCommand::Shared command);

@@ -30,6 +30,8 @@
 #include "../../../messages/max_flow_calculation/MaxFlowCalculationTargetSndLevelMessage.h"
 #include "../../../messages/max_flow_calculation/ResultMaxFlowCalculationMessage.h"
 #include "../../../messages/max_flow_calculation/ResultMaxFlowCalculationGatewayMessage.h"
+#include "../../../messages/max_flow_calculation/InitiateMaxFlowForExchangeCalculationMessage.h"
+#include "../../../messages/max_flow_calculation/ExchangeRatesMessage.h"
 
 #include "../../../messages/payments/CoordinatorReservationRequestMessage.h"
 #include "../../../messages/payments/CoordinatorReservationResponseMessage.h"

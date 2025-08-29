@@ -3,8 +3,12 @@ cmake_minimum_required(VERSION 3.14)
 add_library(transactions__max_flow_calculation
     InitiateMaxFlowCalculationTransaction.h
     InitiateMaxFlowCalculationTransaction.cpp
+    InitiateMaxFlowExchangeCalculationTransaction.h
+    InitiateMaxFlowExchangeCalculationTransaction.cpp
     ReceiveMaxFlowCalculationOnTargetTransaction.h
     ReceiveMaxFlowCalculationOnTargetTransaction.cpp
+    ReceiveMaxFlowCalculationForExchangeOnTargetTransaction.h
+    ReceiveMaxFlowCalculationForExchangeOnTargetTransaction.cpp
     MaxFlowCalculationSourceFstLevelTransaction.h
     MaxFlowCalculationSourceFstLevelTransaction.cpp
     MaxFlowCalculationTargetFstLevelTransaction.h
@@ -15,6 +19,8 @@ add_library(transactions__max_flow_calculation
     MaxFlowCalculationTargetSndLevelTransaction.cpp
     CollectTopologyTransaction.h
     CollectTopologyTransaction.cpp
+    CollectTopologyForExchangeTransaction.h
+    CollectTopologyForExchangeTransaction.cpp
     MaxFlowCalculationFullyTransaction.h
     MaxFlowCalculationFullyTransaction.cpp)
 

@@ -14,7 +14,11 @@ add_library(messages__max_flow_calculation
     ResultMaxFlowCalculationMessage.h
     ResultMaxFlowCalculationMessage.cpp
     ResultMaxFlowCalculationGatewayMessage.h
-    ResultMaxFlowCalculationGatewayMessage.cpp)
+    ResultMaxFlowCalculationGatewayMessage.cpp
+    ExchangeRatesMessage.h
+    ExchangeRatesMessage.cpp
+    InitiateMaxFlowForExchangeCalculationMessage.h
+    InitiateMaxFlowForExchangeCalculationMessage.cpp)
 
 target_include_directories(messages__max_flow_calculation
     PUBLIC

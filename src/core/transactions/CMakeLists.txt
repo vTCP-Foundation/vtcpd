@@ -53,4 +53,5 @@ target_link_libraries(transactions
         core_libs
         common
         exceptions
-        equivalents)
+        equivalents
+        interface__commands)

@@ -244,6 +244,12 @@ pair<bool, Message::Shared> MessagesParser::processBytesSequence(
         case Message::MaxFlow_Confirmation:
             return messageCollected<MaxFlowCalculationConfirmationMessage>(buffer);
 
+        case Message::MaxFlow_InitiateExchangeCalculation:
+            return messageCollected<InitiateMaxFlowForExchangeCalculationMessage>(buffer);
+
+        case Message::MaxFlow_ExchangeRates:
+            return messageCollected<ExchangeRatesMessage>(buffer);
+
         /*
          * Gateway notification & RoutingTables
          */

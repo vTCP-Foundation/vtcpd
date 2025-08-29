@@ -5,6 +5,7 @@ MaxFlowCalculationTargetSndLevelTransaction::MaxFlowCalculationTargetSndLevelTra
     ContractorsManager *contractorsManager,
     TrustLinesManager *manager,
     TopologyCacheManager *topologyCacheManager,
+    ExchangeRatesManager *exchangeRatesManager,
     Logger &logger,
     bool iAmGateway) :
 
@@ -16,6 +17,7 @@ MaxFlowCalculationTargetSndLevelTransaction::MaxFlowCalculationTargetSndLevelTra
     mContractorsManager(contractorsManager),
     mTrustLinesManager(manager),
     mTopologyCacheManager(topologyCacheManager),
+    mExchangeRatesManager(exchangeRatesManager),
     mIAmGateway(iAmGateway)
 {}
 
@@ -26,6 +28,7 @@ TransactionResult::SharedConst MaxFlowCalculationTargetSndLevelTransaction::run(
     info() << "run\t" << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
     info() << "run\t" << "i am is gateway: " << mIAmGateway;
 #endif
+    sendExchangeRatesIfNeeded();
     if (mIAmGateway) {
         sendGatewayResultToInitiator();
     } else {
@@ -232,6 +235,34 @@ void MaxFlowCalculationTargetSndLevelTransaction::sendCachedGatewayResultToIniti
             mContractorsManager->ownAddresses(),
             outgoingFlowsForSending,
             incomingFlowsForSending);
+    }
+}
+
+void MaxFlowCalculationTargetSndLevelTransaction::sendExchangeRatesIfNeeded()
+{
+    if (mMessage->exchangeEquivalents().empty()) {
+        return;
+    }
+    
+    vector<ExchangeRate::Shared> ratesToSend;
+    
+    for (const auto& exchangeEquiv : mMessage->exchangeEquivalents()) {
+        try {
+            auto rate = mExchangeRatesManager->get(mEquivalent, exchangeEquiv);
+            if (rate != nullptr) {
+                ratesToSend.push_back(rate);
+            }
+        } catch (NotFoundError&) {
+        }
+    }
+    
+    if (!ratesToSend.empty()) {
+        auto targetAddress = mMessage->targetAddresses().at(0);
+        sendMessage<ExchangeRatesMessage>(
+            targetAddress,
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            ratesToSend);
     }
 }
 
