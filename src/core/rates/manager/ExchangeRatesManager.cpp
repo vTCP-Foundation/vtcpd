@@ -1,4 +1,5 @@
 #include "ExchangeRatesManager.h"
+#include <algorithm>
 
 ExchangeRatesManager::ExchangeRatesManager(
     as::io_context &ioCtx,
@@ -8,6 +9,7 @@ ExchangeRatesManager::ExchangeRatesManager(
     mLogger(logger)
 {
     mExpiryTimer = make_unique<as::steady_timer>(mIOCtx);
+    mExternalExpiryTimer = make_unique<as::steady_timer>(mIOCtx);
 }
 
 void ExchangeRatesManager::addOrUpdate(
@@ -90,8 +92,12 @@ void ExchangeRatesManager::clear()
 {
     debug() << "Clearing all exchange rates";
     mExchangeRates.clear();
+    mExternalExchangeRates.clear();
     if (mExpiryTimer) {
         mExpiryTimer->cancel();
+    }
+    if (mExternalExpiryTimer) {
+        mExternalExpiryTimer->cancel();
     }
 }
 
@@ -230,4 +236,155 @@ LoggerStream ExchangeRatesManager::debug() const
 const string ExchangeRatesManager::logHeader() const
 {
     return "[ExchangeRatesManager]";
+}
+
+void ExchangeRatesManager::addOrUpdateExternal(
+    const ExchangeRate &rate)
+{
+    auto key = make_pair(rate.equivalentFrom(), rate.equivalentTo());
+    auto rateShared = make_shared<ExchangeRate>(
+        rate.equivalentFrom(),
+        rate.equivalentTo(),
+        rate.exchangeRate(),
+        rate.exchangeRateShift(),
+        rate.expiresAt(),
+        rate.minExchangeAmount(),
+        rate.maxExchangeAmount());
+
+    debug() << "Adding external rate from " << rate.equivalentFrom() 
+            << " to " << rate.equivalentTo();
+
+    auto it = mExternalExchangeRates.find(key);
+    if (it != mExternalExchangeRates.end()) {
+        it->second.push_back(rateShared);
+    } else {
+        vector<ExchangeRate::Shared> rates = { rateShared };
+        mExternalExchangeRates[key] = rates;
+    }
+
+    scheduleExternalExpiryTimer();
+}
+
+vector<ExchangeRate::Shared> ExchangeRatesManager::getExternalRates(
+    const SerializedEquivalent equivFrom,
+    const SerializedEquivalent equivTo) const
+{
+    auto key = make_pair(equivFrom, equivTo);
+    auto it = mExternalExchangeRates.find(key);
+    
+    if (it != mExternalExchangeRates.end()) {
+        return it->second;
+    }
+    
+    return vector<ExchangeRate::Shared>();
+}
+
+vector<ExchangeRate::Shared> ExchangeRatesManager::listExternalRates() const
+{
+    vector<ExchangeRate::Shared> result;
+    
+    for (const auto &pair : mExternalExchangeRates) {
+        for (const auto &rate : pair.second) {
+            result.push_back(rate);
+        }
+    }
+    
+    return result;
+}
+
+void ExchangeRatesManager::scheduleExternalExpiryTimer()
+{
+    if (mExternalExchangeRates.empty()) {
+        return;
+    }
+
+    DateTime earliestExpiry = earliestExternalExpiryTime();
+    auto now = utc_now();
+    
+    if (earliestExpiry <= now) {
+        removeExpiredExternalRates();
+        if (mExternalExchangeRates.empty()) {
+            return;
+        }
+        earliestExpiry = earliestExternalExpiryTime();
+    }
+
+    Duration delay = earliestExpiry - now;
+    auto delayMs = delay.total_milliseconds();
+    if (delayMs < 0) {
+        delayMs = 0;
+    }
+
+    debug() << "Scheduling external expiry timer for " << delayMs << "ms";
+    mExternalExpiryTimer->expires_after(chrono::milliseconds(delayMs));
+    mExternalExpiryTimer->async_wait(boost::bind(
+        &ExchangeRatesManager::onExternalExpiryTimer,
+        this,
+        as::placeholders::error));
+}
+
+void ExchangeRatesManager::onExternalExpiryTimer(
+    const boost::system::error_code &error)
+{
+    if (error == as::error::operation_aborted) {
+        return;
+    }
+    if (error != boost::system::errc::success) {
+        return;
+    }
+
+    debug() << "External expiry timer fired, removing expired external rates";
+    removeExpiredExternalRates();
+    
+    if (!mExternalExchangeRates.empty()) {
+        scheduleExternalExpiryTimer();
+    }
+}
+
+DateTime ExchangeRatesManager::earliestExternalExpiryTime() const
+{
+    if (mExternalExchangeRates.empty()) {
+        return utc_now();
+    }
+
+    DateTime earliest;
+    bool firstFound = false;
+    
+    for (const auto &pair : mExternalExchangeRates) {
+        for (const auto &rate : pair.second) {
+            if (!firstFound) {
+                earliest = rate->expiresAt();
+                firstFound = true;
+            } else if (rate->expiresAt() < earliest) {
+                earliest = rate->expiresAt();
+            }
+        }
+    }
+    
+    return earliest;
+}
+
+void ExchangeRatesManager::removeExpiredExternalRates()
+{
+    auto now = utc_now();
+    auto it = mExternalExchangeRates.begin();
+    
+    while (it != mExternalExchangeRates.end()) {
+        auto &rates = it->second;
+        
+        rates.erase(
+            remove_if(rates.begin(), rates.end(),
+                [now](const ExchangeRate::Shared &rate) {
+                    return rate->expiresAt() <= now;
+                }),
+            rates.end());
+        
+        if (rates.empty()) {
+            debug() << "Removing empty external rates vector for pair " 
+                    << it->first.first << " to " << it->first.second;
+            it = mExternalExchangeRates.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }

@@ -48,6 +48,15 @@ public:
 
     void clear();
 
+    void addOrUpdateExternal(
+        const ExchangeRate &rate);
+
+    vector<ExchangeRate::Shared> getExternalRates(
+        const SerializedEquivalent equivFrom,
+        const SerializedEquivalent equivTo) const;
+
+    vector<ExchangeRate::Shared> listExternalRates() const;
+
     TrustLineAmount calculateConvertedAmount(
         const SerializedEquivalent equivFrom,
         const SerializedEquivalent equivTo,
@@ -63,6 +72,15 @@ private:
 
     void removeExpiredRates();
 
+    void scheduleExternalExpiryTimer();
+
+    void onExternalExpiryTimer(
+        const boost::system::error_code &error);
+
+    DateTime earliestExternalExpiryTime() const;
+
+    void removeExpiredExternalRates();
+
     LoggerStream debug() const;
 
     const string logHeader() const;
@@ -75,6 +93,8 @@ private:
     Logger &mLogger;
     map<pair<SerializedEquivalent, SerializedEquivalent>, ExchangeRate::Shared> mExchangeRates;
     unique_ptr<as::steady_timer> mExpiryTimer;
+    map<pair<SerializedEquivalent, SerializedEquivalent>, vector<ExchangeRate::Shared>> mExternalExchangeRates;
+    unique_ptr<as::steady_timer> mExternalExpiryTimer;
 };
 
 #endif //VTCPD_EXCHANGERATESMANAGER_H

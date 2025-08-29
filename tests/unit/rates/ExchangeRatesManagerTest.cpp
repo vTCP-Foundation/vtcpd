@@ -260,3 +260,127 @@ TEST_F(ExchangeRatesManagerTest, testCalculateMaxAmountWithUnitRate) {
     auto result = manager->calculateConvertedAmount(1, 2, TrustLineAmount(1000));
     EXPECT_EQ(result, TrustLineAmount(10000000));
 }
+
+TEST_F(ExchangeRatesManagerTest, testAddOrUpdateExternalCreatesNewExternalRate) {
+    SerializedEquivalent equivFrom = 1;
+    SerializedEquivalent equivTo = 2;
+    TrustLineAmount exchangeRate(15000);
+    int16_t exchangeRateShift = 2;
+    TrustLineAmount minAmount(100);
+    TrustLineAmount maxAmount(1000000);
+    DateTime expiresAt = utc_now() + Duration(0, 5, 0, 0);
+
+    ExchangeRate rate(equivFrom, equivTo, exchangeRate, exchangeRateShift, expiresAt, minAmount, maxAmount);
+    manager->addOrUpdateExternal(rate);
+
+    auto externalRates = manager->getExternalRates(equivFrom, equivTo);
+    ASSERT_EQ(externalRates.size(), 1);
+    
+    auto retrievedRate = externalRates[0];
+    EXPECT_EQ(retrievedRate->equivalentFrom(), equivFrom);
+    EXPECT_EQ(retrievedRate->equivalentTo(), equivTo);
+    EXPECT_EQ(retrievedRate->exchangeRate(), exchangeRate);
+    EXPECT_EQ(retrievedRate->exchangeRateShift(), exchangeRateShift);
+    EXPECT_EQ(retrievedRate->minExchangeAmount(), minAmount);
+    EXPECT_EQ(retrievedRate->maxExchangeAmount(), maxAmount);
+    EXPECT_EQ(retrievedRate->expiresAt(), expiresAt);
+}
+
+TEST_F(ExchangeRatesManagerTest, testAddOrUpdateExternalAddsMultipleRatesForSamePair) {
+    SerializedEquivalent equivFrom = 1;
+    SerializedEquivalent equivTo = 2;
+    DateTime expiresAt1 = utc_now() + Duration(0, 5, 0, 0);
+    DateTime expiresAt2 = utc_now() + Duration(0, 10, 0, 0);
+
+    ExchangeRate rate1(equivFrom, equivTo, TrustLineAmount(15000), 2, expiresAt1, TrustLineAmount(100), TrustLineAmount(1000000));
+    ExchangeRate rate2(equivFrom, equivTo, TrustLineAmount(20000), 1, expiresAt2, TrustLineAmount(200), TrustLineAmount(2000000));
+    
+    manager->addOrUpdateExternal(rate1);
+    manager->addOrUpdateExternal(rate2);
+
+    auto externalRates = manager->getExternalRates(equivFrom, equivTo);
+    ASSERT_EQ(externalRates.size(), 2);
+    
+    EXPECT_EQ(externalRates[0]->exchangeRate(), TrustLineAmount(15000));
+    EXPECT_EQ(externalRates[1]->exchangeRate(), TrustLineAmount(20000));
+}
+
+TEST_F(ExchangeRatesManagerTest, testGetExternalRatesReturnsEmptyVectorForMissingPair) {
+    auto externalRates = manager->getExternalRates(1, 2);
+    EXPECT_EQ(externalRates.size(), 0);
+}
+
+TEST_F(ExchangeRatesManagerTest, testListExternalRatesReturnsAllExternalRates) {
+    DateTime expiresAt = utc_now() + Duration(0, 5, 0, 0);
+    
+    ExchangeRate rate1(1, 2, TrustLineAmount(15000), 2, expiresAt, TrustLineAmount(100), TrustLineAmount(1000000));
+    ExchangeRate rate2(2, 3, TrustLineAmount(20000), -1, expiresAt, TrustLineAmount(200), TrustLineAmount(2000000));
+    ExchangeRate rate3(3, 1, TrustLineAmount(25000), 0, expiresAt, TrustLineAmount(300), TrustLineAmount(3000000));
+    
+    manager->addOrUpdateExternal(rate1);
+    manager->addOrUpdateExternal(rate2);
+    manager->addOrUpdateExternal(rate3);
+
+    auto allExternalRates = manager->listExternalRates();
+    EXPECT_EQ(allExternalRates.size(), 3);
+
+    bool found12 = false, found23 = false, found31 = false;
+    for (const auto& rate : allExternalRates) {
+        if (rate->equivalentFrom() == 1 && rate->equivalentTo() == 2) {
+            found12 = true;
+            EXPECT_EQ(rate->exchangeRate(), TrustLineAmount(15000));
+        } else if (rate->equivalentFrom() == 2 && rate->equivalentTo() == 3) {
+            found23 = true;
+            EXPECT_EQ(rate->exchangeRate(), TrustLineAmount(20000));
+        } else if (rate->equivalentFrom() == 3 && rate->equivalentTo() == 1) {
+            found31 = true;
+            EXPECT_EQ(rate->exchangeRate(), TrustLineAmount(25000));
+        }
+    }
+    EXPECT_TRUE(found12);
+    EXPECT_TRUE(found23);
+    EXPECT_TRUE(found31);
+}
+
+TEST_F(ExchangeRatesManagerTest, testExternalRatesExpiredCleanup) {
+    DateTime expiredTime = utc_now() - Duration(0, 1, 0, 0);  // 1 minute ago
+    DateTime futureTime = utc_now() + Duration(0, 5, 0, 0);   // 5 minutes from now
+    
+    ExchangeRate expiredRate(1, 2, TrustLineAmount(15000), 2, expiredTime, TrustLineAmount(100), TrustLineAmount(1000000));
+    ExchangeRate futureRate(2, 3, TrustLineAmount(20000), -1, futureTime, TrustLineAmount(200), TrustLineAmount(2000000));
+    
+    manager->addOrUpdateExternal(expiredRate);
+    manager->addOrUpdateExternal(futureRate);
+    
+    // Run io_context briefly to allow timer to process expired rates
+    ioContext.poll();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ioContext.poll();
+    
+    // Check that expired rate was removed and future rate remains
+    auto rates12 = manager->getExternalRates(1, 2);
+    auto rates23 = manager->getExternalRates(2, 3);
+    
+    EXPECT_EQ(rates12.size(), 0);  // Expired rate should be removed
+    EXPECT_EQ(rates23.size(), 1);  // Future rate should remain
+}
+
+TEST_F(ExchangeRatesManagerTest, testClearRemovesAllExternalRates) {
+    DateTime expiresAt = utc_now() + Duration(0, 5, 0, 0);
+    
+    ExchangeRate rate1(1, 2, TrustLineAmount(15000), 2, expiresAt, TrustLineAmount(100), TrustLineAmount(1000000));
+    ExchangeRate rate2(2, 3, TrustLineAmount(20000), -1, expiresAt, TrustLineAmount(200), TrustLineAmount(2000000));
+    
+    manager->addOrUpdateExternal(rate1);
+    manager->addOrUpdateExternal(rate2);
+    
+    manager->clear();
+    
+    auto allExternalRates = manager->listExternalRates();
+    EXPECT_EQ(allExternalRates.size(), 0);
+    
+    auto rates12 = manager->getExternalRates(1, 2);
+    auto rates23 = manager->getExternalRates(2, 3);
+    EXPECT_EQ(rates12.size(), 0);
+    EXPECT_EQ(rates23.size(), 0);
+}
