@@ -15,7 +15,8 @@ TailManager::TailManager(
     mFlowTail(*this),
     mCyclesFiveTail(*this),
     mCyclesSixTail(*this),
-    mRoutingTableTail(*this)
+    mRoutingTableTail(*this),
+    mExchangeRatesTail(*this)
 {
     mUpdatingTimer = make_unique<as::steady_timer>(
                          mIOCtx);

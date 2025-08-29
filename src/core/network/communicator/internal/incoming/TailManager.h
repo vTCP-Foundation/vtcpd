@@ -72,6 +72,10 @@ public:
     {
         return mRoutingTableTail;
     }
+    Tail &getExchangeRatesTail()
+    {
+        return mExchangeRatesTail;
+    }
 
 private:
     LoggerStream info() const;
@@ -87,6 +91,7 @@ private:
     Tail mCyclesFiveTail;
     Tail mCyclesSixTail;
     Tail mRoutingTableTail;
+    Tail mExchangeRatesTail;
 
     as::io_context &mIOCtx;
     unique_ptr<as::steady_timer> mUpdatingTimer;

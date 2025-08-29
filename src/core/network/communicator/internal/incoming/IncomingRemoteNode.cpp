@@ -250,6 +250,8 @@ bool IncomingRemoteNode::tryCollectNextPacket()
         } else if (kFlagAndMessage.second->typeID() == Message::RoutingTableResponse) {
             mTailManager->getRoutingTableTail().push_back(kFlagAndMessage.second);
             mCollectedMessages.push_back(kFlagAndMessage.second);
+        } else if (kFlagAndMessage.second->typeID() == Message::MaxFlow_ExchangeRates) {
+            mTailManager->getExchangeRatesTail().push_back(kFlagAndMessage.second);
         } else {
             mCollectedMessages.push_back(kFlagAndMessage.second);
         }
