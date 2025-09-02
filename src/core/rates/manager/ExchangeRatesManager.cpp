@@ -238,7 +238,34 @@ const string ExchangeRatesManager::logHeader() const
     return "[ExchangeRatesManager]";
 }
 
+void ExchangeRatesManager::printExtqrnalRates() const
+{
+    debug() << "External rates dump begin";
+    if (mExternalExchangeRates.empty()) {
+        debug() << "No external rates available";
+        return;
+    }
+
+    for (const auto &pairByEq : mExternalExchangeRates) {
+        const auto &equivFrom = pairByEq.first.first;
+        const auto &equivTo = pairByEq.first.second;
+        const auto &ratesVec = pairByEq.second;
+        debug() << "Pair " << equivFrom << "->" << equivTo << ", count=" << ratesVec.size();
+        for (const auto &contractorRate : ratesVec) {
+            const ContractorID contractorID = contractorRate.first;
+            const auto &rate = contractorRate.second;
+            debug() << "  contractorID=" << contractorID
+                    << " rate=" << rate->exchangeRate()
+                    << " shift=" << rate->exchangeRateShift()
+                    << " expiresAt=" << rate->expiresAt();
+        }
+    }
+
+    debug() << "External rates dump end";
+}
+
 void ExchangeRatesManager::addOrUpdateExternal(
+    const ContractorID contractorID,
     const ExchangeRate &rate)
 {
     auto key = make_pair(rate.equivalentFrom(), rate.equivalentTo());
@@ -256,16 +283,35 @@ void ExchangeRatesManager::addOrUpdateExternal(
 
     auto it = mExternalExchangeRates.find(key);
     if (it != mExternalExchangeRates.end()) {
-        it->second.push_back(rateShared);
+        // If a rate for the same contractor already exists, replace it only if the new one expires later
+        auto &rates = it->second;
+        auto existingIt = std::find_if(
+            rates.begin(),
+            rates.end(),
+            [contractorID](const pair<ContractorID, ExchangeRate::Shared> &rateWithID) {
+                return rateWithID.first == contractorID;
+            });
+
+        if (existingIt != rates.end()) {
+            // Replace only if the new rate has a later expiry time
+            if (rateShared->expiresAt() > existingIt->second->expiresAt()) {
+                existingIt->second = rateShared;
+            } else {
+                // Existing rate has later or equal expiry, do nothing
+            }
+        } else {
+            // No rate for this contractor yet – append new one
+            rates.push_back(make_pair(contractorID, rateShared));
+        }
     } else {
-        vector<ExchangeRate::Shared> rates = { rateShared };
+        vector<pair<ContractorID, ExchangeRate::Shared>> rates = { make_pair(contractorID, rateShared) };
         mExternalExchangeRates[key] = rates;
     }
 
     scheduleExternalExpiryTimer();
 }
 
-vector<ExchangeRate::Shared> ExchangeRatesManager::getExternalRates(
+vector<pair<ContractorID, ExchangeRate::Shared>> ExchangeRatesManager::getExternalRates(
     const SerializedEquivalent equivFrom,
     const SerializedEquivalent equivTo) const
 {
@@ -276,16 +322,16 @@ vector<ExchangeRate::Shared> ExchangeRatesManager::getExternalRates(
         return it->second;
     }
     
-    return vector<ExchangeRate::Shared>();
+    return vector<pair<ContractorID, ExchangeRate::Shared>>();
 }
 
-vector<ExchangeRate::Shared> ExchangeRatesManager::listExternalRates() const
+vector<pair<ContractorID, ExchangeRate::Shared>> ExchangeRatesManager::listExternalRates() const
 {
-    vector<ExchangeRate::Shared> result;
+    vector<pair<ContractorID, ExchangeRate::Shared>> result;
     
     for (const auto &pair : mExternalExchangeRates) {
-        for (const auto &rate : pair.second) {
-            result.push_back(rate);
+        for (const auto &rateWithID : pair.second) {
+            result.push_back(rateWithID);
         }
     }
     
@@ -351,7 +397,8 @@ DateTime ExchangeRatesManager::earliestExternalExpiryTime() const
     bool firstFound = false;
     
     for (const auto &pair : mExternalExchangeRates) {
-        for (const auto &rate : pair.second) {
+        for (const auto &rateWithID : pair.second) {
+            const auto &rate = rateWithID.second;
             if (!firstFound) {
                 earliest = rate->expiresAt();
                 firstFound = true;
@@ -371,14 +418,14 @@ void ExchangeRatesManager::removeExpiredExternalRates()
     
     while (it != mExternalExchangeRates.end()) {
         auto &rates = it->second;
-        
+
         rates.erase(
             remove_if(rates.begin(), rates.end(),
-                [now](const ExchangeRate::Shared &rate) {
-                    return rate->expiresAt() <= now;
+                [now](const pair<ContractorID, ExchangeRate::Shared> &rateWithID) {
+                    return rateWithID.second->expiresAt() <= now;
                 }),
             rates.end());
-        
+
         if (rates.empty()) {
             debug() << "Removing empty external rates vector for pair " 
                     << it->first.first << " to " << it->first.second;

@@ -24,9 +24,9 @@ MaxFlowCalculationSourceSndLevelTransaction::MaxFlowCalculationSourceSndLevelTra
 TransactionResult::SharedConst MaxFlowCalculationSourceSndLevelTransaction::run()
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
-    info() << "run\t" << "i am is gateway: " << mIAmGateway;
-    info() << "run\t" << "sender: " << mMessage->idOnReceiverSide;
-    info() << "run\t" << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
+    info() << "i am is gateway: " << mIAmGateway;
+    info() << "sender: " << mMessage->idOnReceiverSide;
+    info() << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
 #endif
     if (mIAmGateway) {
         sendGatewayResultToInitiator();

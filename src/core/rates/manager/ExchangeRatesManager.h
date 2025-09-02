@@ -49,18 +49,22 @@ public:
     void clear();
 
     void addOrUpdateExternal(
+        const ContractorID contractorID,
         const ExchangeRate &rate);
 
-    vector<ExchangeRate::Shared> getExternalRates(
+    vector<pair<ContractorID, ExchangeRate::Shared>> getExternalRates(
         const SerializedEquivalent equivFrom,
         const SerializedEquivalent equivTo) const;
 
-    vector<ExchangeRate::Shared> listExternalRates() const;
+    vector<pair<ContractorID, ExchangeRate::Shared>> listExternalRates() const;
 
     TrustLineAmount calculateConvertedAmount(
         const SerializedEquivalent equivFrom,
         const SerializedEquivalent equivTo,
         const TrustLineAmount &amountInEquivFrom) const;
+
+    // Prints the contents of mExternalExchangeRates via debug() logger
+    void printExtqrnalRates() const;
 
 private:
     void scheduleExpiryTimer();
@@ -93,7 +97,7 @@ private:
     Logger &mLogger;
     map<pair<SerializedEquivalent, SerializedEquivalent>, ExchangeRate::Shared> mExchangeRates;
     unique_ptr<as::steady_timer> mExpiryTimer;
-    map<pair<SerializedEquivalent, SerializedEquivalent>, vector<ExchangeRate::Shared>> mExternalExchangeRates;
+    map<pair<SerializedEquivalent, SerializedEquivalent>, vector<pair<ContractorID, ExchangeRate::Shared>>> mExternalExchangeRates;
     unique_ptr<as::steady_timer> mExternalExpiryTimer;
 };
 

@@ -226,24 +226,24 @@ size_t TopologyTrustLinesManager::trustLinesCounts() const
 void TopologyTrustLinesManager::printTrustLines() const
 {
     size_t trustLinesCnt = 0;
-    info() << "print new    " << "trustLineMap size: " << msTrustLines.size();
+    debug() << "trustLineMap size: " << msTrustLines.size();
     for (const auto &nodeIDAndTrustLines : msTrustLines) {
-        info() << "print new    " << "key: " << nodeIDAndTrustLines.first;
+        debug() << "key: " << nodeIDAndTrustLines.first;
         for (auto &itTrustLine : *nodeIDAndTrustLines.second) {
             TopologyTrustLine::Shared trustLine = itTrustLine->topologyTrustLine();
-            info() << "print new    " << "value: " << trustLine->targetID() << " " << *trustLine->amount().get()
+            debug() << "value: " << trustLine->targetID() << " " << *trustLine->amount().get()
                    << " free amount: " << *trustLine->freeAmount();
         }
         trustLinesCnt += nodeIDAndTrustLines.second->size();
     }
-    info() << "print new    " << "trust lines count: " << trustLinesCnt;
+    debug() << "trust lines count: " << trustLinesCnt;
 
-    info() << "now is " << utc_now();
-    info() << "print new    " << "timesMap size: " << mtTrustLines.size();
+    debug() << "now is " << utc_now();
+    debug() << "timesMap size: " << mtTrustLines.size();
     for (const auto &timeAndTrustLine : mtTrustLines) {
-        info() << "print new    " << "key: " << timeAndTrustLine.first;
+        debug() << "key: " << timeAndTrustLine.first;
         auto trustLine = timeAndTrustLine.second->topologyTrustLine();
-        info() << "print new    " << "value: " << trustLine->targetID() << " " << *trustLine->amount().get()
+        debug() << "value: " << trustLine->targetID() << " " << *trustLine->amount().get()
                << " free amount: " << *trustLine->freeAmount();
     }
 }

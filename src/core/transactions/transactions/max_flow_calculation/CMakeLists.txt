@@ -36,6 +36,7 @@ target_compile_features(transactions__max_flow_calculation
 
 target_link_libraries(transactions__max_flow_calculation
     PUBLIC
+        core_libs
         transactions__base
         topology
         messages__max_flow_calculation)

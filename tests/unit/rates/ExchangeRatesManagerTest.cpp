@@ -271,12 +271,15 @@ TEST_F(ExchangeRatesManagerTest, testAddOrUpdateExternalCreatesNewExternalRate) 
     DateTime expiresAt = utc_now() + Duration(0, 5, 0, 0);
 
     ExchangeRate rate(equivFrom, equivTo, exchangeRate, exchangeRateShift, expiresAt, minAmount, maxAmount);
-    manager->addOrUpdateExternal(rate);
+    ContractorID contractorID = 101;
+    manager->addOrUpdateExternal(contractorID, rate);
 
     auto externalRates = manager->getExternalRates(equivFrom, equivTo);
     ASSERT_EQ(externalRates.size(), 1);
     
-    auto retrievedRate = externalRates[0];
+    auto retrievedPair = externalRates[0];
+    EXPECT_EQ(retrievedPair.first, contractorID);
+    auto retrievedRate = retrievedPair.second;
     EXPECT_EQ(retrievedRate->equivalentFrom(), equivFrom);
     EXPECT_EQ(retrievedRate->equivalentTo(), equivTo);
     EXPECT_EQ(retrievedRate->exchangeRate(), exchangeRate);
@@ -294,15 +297,19 @@ TEST_F(ExchangeRatesManagerTest, testAddOrUpdateExternalAddsMultipleRatesForSame
 
     ExchangeRate rate1(equivFrom, equivTo, TrustLineAmount(15000), 2, expiresAt1, TrustLineAmount(100), TrustLineAmount(1000000));
     ExchangeRate rate2(equivFrom, equivTo, TrustLineAmount(20000), 1, expiresAt2, TrustLineAmount(200), TrustLineAmount(2000000));
+    ContractorID contractorID1 = 201;
+    ContractorID contractorID2 = 202;
     
-    manager->addOrUpdateExternal(rate1);
-    manager->addOrUpdateExternal(rate2);
+    manager->addOrUpdateExternal(contractorID1, rate1);
+    manager->addOrUpdateExternal(contractorID2, rate2);
 
     auto externalRates = manager->getExternalRates(equivFrom, equivTo);
     ASSERT_EQ(externalRates.size(), 2);
     
-    EXPECT_EQ(externalRates[0]->exchangeRate(), TrustLineAmount(15000));
-    EXPECT_EQ(externalRates[1]->exchangeRate(), TrustLineAmount(20000));
+    EXPECT_EQ(externalRates[0].first, contractorID1);
+    EXPECT_EQ(externalRates[1].first, contractorID2);
+    EXPECT_EQ(externalRates[0].second->exchangeRate(), TrustLineAmount(15000));
+    EXPECT_EQ(externalRates[1].second->exchangeRate(), TrustLineAmount(20000));
 }
 
 TEST_F(ExchangeRatesManagerTest, testGetExternalRatesReturnsEmptyVectorForMissingPair) {
@@ -316,16 +323,20 @@ TEST_F(ExchangeRatesManagerTest, testListExternalRatesReturnsAllExternalRates) {
     ExchangeRate rate1(1, 2, TrustLineAmount(15000), 2, expiresAt, TrustLineAmount(100), TrustLineAmount(1000000));
     ExchangeRate rate2(2, 3, TrustLineAmount(20000), -1, expiresAt, TrustLineAmount(200), TrustLineAmount(2000000));
     ExchangeRate rate3(3, 1, TrustLineAmount(25000), 0, expiresAt, TrustLineAmount(300), TrustLineAmount(3000000));
+    ContractorID contractorID1 = 301;
+    ContractorID contractorID2 = 302;
+    ContractorID contractorID3 = 303;
     
-    manager->addOrUpdateExternal(rate1);
-    manager->addOrUpdateExternal(rate2);
-    manager->addOrUpdateExternal(rate3);
+    manager->addOrUpdateExternal(contractorID1, rate1);
+    manager->addOrUpdateExternal(contractorID2, rate2);
+    manager->addOrUpdateExternal(contractorID3, rate3);
 
     auto allExternalRates = manager->listExternalRates();
     EXPECT_EQ(allExternalRates.size(), 3);
 
     bool found12 = false, found23 = false, found31 = false;
-    for (const auto& rate : allExternalRates) {
+    for (const auto& ratePair : allExternalRates) {
+        const auto &rate = ratePair.second;
         if (rate->equivalentFrom() == 1 && rate->equivalentTo() == 2) {
             found12 = true;
             EXPECT_EQ(rate->exchangeRate(), TrustLineAmount(15000));
@@ -348,9 +359,11 @@ TEST_F(ExchangeRatesManagerTest, testExternalRatesExpiredCleanup) {
     
     ExchangeRate expiredRate(1, 2, TrustLineAmount(15000), 2, expiredTime, TrustLineAmount(100), TrustLineAmount(1000000));
     ExchangeRate futureRate(2, 3, TrustLineAmount(20000), -1, futureTime, TrustLineAmount(200), TrustLineAmount(2000000));
+    ContractorID contractorID1 = 401;
+    ContractorID contractorID2 = 402;
     
-    manager->addOrUpdateExternal(expiredRate);
-    manager->addOrUpdateExternal(futureRate);
+    manager->addOrUpdateExternal(contractorID1, expiredRate);
+    manager->addOrUpdateExternal(contractorID2, futureRate);
     
     // Run io_context briefly to allow timer to process expired rates
     ioContext.poll();
@@ -371,8 +384,8 @@ TEST_F(ExchangeRatesManagerTest, testClearRemovesAllExternalRates) {
     ExchangeRate rate1(1, 2, TrustLineAmount(15000), 2, expiresAt, TrustLineAmount(100), TrustLineAmount(1000000));
     ExchangeRate rate2(2, 3, TrustLineAmount(20000), -1, expiresAt, TrustLineAmount(200), TrustLineAmount(2000000));
     
-    manager->addOrUpdateExternal(rate1);
-    manager->addOrUpdateExternal(rate2);
+    manager->addOrUpdateExternal(501, rate1);
+    manager->addOrUpdateExternal(502, rate2);
     
     manager->clear();
     
@@ -383,4 +396,103 @@ TEST_F(ExchangeRatesManagerTest, testClearRemovesAllExternalRates) {
     auto rates23 = manager->getExternalRates(2, 3);
     EXPECT_EQ(rates12.size(), 0);
     EXPECT_EQ(rates23.size(), 0);
+}
+
+TEST_F(ExchangeRatesManagerTest, testAddOrUpdateExternalReplacesExistingForSameContractorWhenNewExpiryLater) {
+    // Prepare initial and newer expiry times
+    SerializedEquivalent equivFrom = 10;
+    SerializedEquivalent equivTo = 11;
+    ContractorID contractorID = 777;
+
+    DateTime expiresAtInitial = utc_now() + Duration(0, 5, 0, 0);
+    DateTime expiresAtLater = utc_now() + Duration(0, 10, 0, 0);
+
+    // Initial rate for the contractor
+    ExchangeRate initialRate(
+        equivFrom,
+        equivTo,
+        TrustLineAmount(15000),
+        2,
+        expiresAtInitial,
+        TrustLineAmount(100),
+        TrustLineAmount(1000000));
+
+    manager->addOrUpdateExternal(contractorID, initialRate);
+
+    // New rate with later expiry should replace the existing one for the same contractor
+    ExchangeRate newerRate(
+        equivFrom,
+        equivTo,
+        TrustLineAmount(20000),
+        1,
+        expiresAtLater,
+        TrustLineAmount(200),
+        TrustLineAmount(2000000));
+
+    manager->addOrUpdateExternal(contractorID, newerRate);
+
+    auto externalRates = manager->getExternalRates(equivFrom, equivTo);
+    ASSERT_EQ(externalRates.size(), 1);
+
+    EXPECT_EQ(externalRates[0].first, contractorID);
+    auto storedRate = externalRates[0].second;
+    EXPECT_EQ(storedRate->exchangeRate(), TrustLineAmount(20000));
+    EXPECT_EQ(storedRate->exchangeRateShift(), 1);
+    EXPECT_EQ(storedRate->minExchangeAmount(), TrustLineAmount(200));
+    EXPECT_EQ(storedRate->maxExchangeAmount(), TrustLineAmount(2000000));
+    EXPECT_EQ(storedRate->expiresAt(), expiresAtLater);
+}
+
+TEST_F(ExchangeRatesManagerTest, testAddOrUpdateExternalDoesNotReplaceWhenNewExpiryEarlierOrEqual) {
+    SerializedEquivalent equivFrom = 20;
+    SerializedEquivalent equivTo = 21;
+    ContractorID contractorID = 888;
+
+    DateTime expiresAtOriginal = utc_now() + Duration(0, 10, 0, 0);
+    DateTime expiresAtEarlier = utc_now() + Duration(0, 5, 0, 0);
+    DateTime expiresAtEqual = expiresAtOriginal;
+
+    // Add original rate
+    ExchangeRate originalRate(
+        equivFrom,
+        equivTo,
+        TrustLineAmount(30000),
+        3,
+        expiresAtOriginal,
+        TrustLineAmount(300),
+        TrustLineAmount(3000000));
+    manager->addOrUpdateExternal(contractorID, originalRate);
+
+    // Attempt equal-expiry replacement – should not replace
+    ExchangeRate equalExpiryRate(
+        equivFrom,
+        equivTo,
+        TrustLineAmount(99999), // different to detect unintended replacement
+        9,
+        expiresAtEqual,
+        TrustLineAmount(999),
+        TrustLineAmount(9999999));
+    manager->addOrUpdateExternal(contractorID, equalExpiryRate);
+
+    // Attempt earlier-expiry replacement – should also not replace
+    ExchangeRate earlierExpiryRate(
+        equivFrom,
+        equivTo,
+        TrustLineAmount(11111),
+        1,
+        expiresAtEarlier,
+        TrustLineAmount(111),
+        TrustLineAmount(1111111));
+    manager->addOrUpdateExternal(contractorID, earlierExpiryRate);
+
+    auto externalRates = manager->getExternalRates(equivFrom, equivTo);
+    ASSERT_EQ(externalRates.size(), 1);
+
+    EXPECT_EQ(externalRates[0].first, contractorID);
+    auto storedRate = externalRates[0].second;
+    EXPECT_EQ(storedRate->exchangeRate(), TrustLineAmount(30000));
+    EXPECT_EQ(storedRate->exchangeRateShift(), 3);
+    EXPECT_EQ(storedRate->minExchangeAmount(), TrustLineAmount(300));
+    EXPECT_EQ(storedRate->maxExchangeAmount(), TrustLineAmount(3000000));
+    EXPECT_EQ(storedRate->expiresAt(), expiresAtOriginal);
 }

@@ -24,10 +24,11 @@ MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTra
 TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run()
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
-    info() << "run\t" << "sender: " << mMessage->idOnReceiverSide;
-    info() << "run\t" << "i am is gateway: " << mIAmGateway;
-    info() << "run\t" << "OutgoingFlows: " << mTrustLinesManager->outgoingFlows().size();
-    info() << "run\t" << "IncomingFlows: " << mTrustLinesManager->incomingFlows().size();
+    info() << "sender: " << mMessage->idOnReceiverSide;
+    info() << "i am is gateway: " << mIAmGateway;
+    info() << "OutgoingFlows: " << mTrustLinesManager->outgoingFlows().size();
+    info() << "IncomingFlows: " << mTrustLinesManager->incomingFlows().size();
+    info() << "Hops count: " << mMessage->getHopsCount();
 #endif
 
 	if(mMessage->getHopsCount() < 1 || mMessage->getHopsCount() > 3) {

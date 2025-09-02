@@ -22,8 +22,7 @@ InitiateMaxFlowExchangeCalculationTransaction::InitiateMaxFlowExchangeCalculatio
     mExchangeEquivalents(command->exchangeEquivalents()),
     mResultStep(1),
     mGatewayResponseProcessed(false),
-    mShortMaxFlowsCalculated(false),
-    mIamGateway(equivalentsSubsystemsRouter->iAmGateway(command->equivalent()))
+    mShortMaxFlowsCalculated(false)
 {
     // Validate exchangeEquivalents limit (maximum 5 elements)
     if (mExchangeEquivalents.size() > 5) {
@@ -34,8 +33,11 @@ InitiateMaxFlowExchangeCalculationTransaction::InitiateMaxFlowExchangeCalculatio
 TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::sendRequestForCollectingTopology()
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
-    info() << "run\t" << "targets count: " << mCommand->contractorAddresses().size();
-    info() << "SendRequestForCollectingTopology with exchange equivalents: " << mExchangeEquivalents.size();
+    info() << "targets count: " << mCommand->contractorAddresses().size();
+    info() << "SendRequestForCollectingTopology with exchange equivalents: ";
+    for (const auto &exchangeEquivalent : mExchangeEquivalents) {
+        info() << exchangeEquivalent;
+    }
 #endif
     info() << "contractors addresses:";
     for (const auto &contractor : mCommand->contractorAddresses()) {
@@ -58,12 +60,6 @@ TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::se
             contractorID,
             contractorAddress);
     }
-
-    // According to PRD: just launch CollectTopologyForExchangeTransaction
-    // mEquivalent is receiver's target equivalent
-    // mExchangeEquivalents are sender's payment equivalents
-    auto receiverCacheManager = mEquivalentsSubsystemsRouter->topologyCacheManager(mEquivalent);
-    auto receiverMaxFlowCacheManager = mEquivalentsSubsystemsRouter->maxFlowCacheManager(mEquivalent);
     
     auto transaction = make_shared<CollectTopologyForExchangeTransaction>(
         mEquivalent, // Receiver's target equivalent
@@ -72,14 +68,14 @@ TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::se
         mContractorsManager,
         mEquivalentsSubsystemsRouter,
         mExchangeRatesManager,
-        receiverCacheManager,
-        receiverMaxFlowCacheManager,
         mLog,
         mHopsCnt);
     
     launchSubsidiaryTransaction(transaction);
 
-    return resultAwakeAfterMilliseconds(10000); // TODO: Use proper timeout mechanism
+    mCountProcessCollectingTopologyRun = 0;
+    return resultAwakeAfterMilliseconds(
+        kWaitMillisecondsForCalculatingMaxFlow); 
 }
 
 TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::processCollectingTopology()
@@ -87,17 +83,34 @@ TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::pr
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
     info() << "ProcessCollectingTopology";
 #endif
+
+    auto const contextSize = mContext.size();
     
     fillTopology();
     fillRates(); // Process exchange rates messages
 
-    if (mContext.empty()) {
-        debug() << "No messages received. Waiting for responses.";
-        return resultAwakeAfterMilliseconds(5000); // TODO: Use proper timeout mechanism
+    mCountProcessCollectingTopologyRun++;
+    if (contextSize > 0 && mCountProcessCollectingTopologyRun <= kCountRunningProcessCollectingTopologyStage) {
+        return resultAwakeAfterMilliseconds(
+                   kWaitMillisecondsForCalculatingMaxFlowAgain);
     }
 
+#ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
+    debug() << "Collected topology:";
+    debug() << "Topology participants:";
+    mEquivalentsSubsystemsRouter->printParticipants();
+    debug() << "Receiver equivalent: " << mEquivalent;
+    mEquivalentsSubsystemsRouter->topologyTrustLineManager(mEquivalent)->printTrustLines();
+    for (const auto &exchangeEquivalent : mExchangeEquivalents) {
+        debug() << "Exchange equivalent: " << exchangeEquivalent;
+        mEquivalentsSubsystemsRouter->topologyTrustLineManager(exchangeEquivalent)->printTrustLines();
+    }
+    debug() << "Exchange rates:";
+    mExchangeRatesManager->printExtqrnalRates();
+#endif
+
     mStep = CustomLogic;
-    return resultDone();
+    return applyCustomLogic();
 }
 
 TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::applyCustomLogic()
@@ -109,7 +122,7 @@ TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::ap
     // TODO: Implement OR-Tools Linear Programming optimization
     // For now, use simplified calculation similar to existing implementation
     mCurrentGlobalContractorIdx = 0;
-    mMaxPathLength = kShortMaxPathLength;
+    mMaxPathLength = kMaxPathLength;
 
     for (const auto &contractor : mContractorIDs) {
         mCurrentContractor = contractor.first;
@@ -121,7 +134,7 @@ TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::ap
 #endif
     }
 
-    return resultFinalOk();
+    return resultOk();
 }
 
 TrustLineAmount InitiateMaxFlowExchangeCalculationTransaction::calculateMaxFlow(
@@ -152,34 +165,24 @@ TrustLineAmount InitiateMaxFlowExchangeCalculationTransaction::calculateOneNode(
     return TrustLineAmount(0);
 }
 
-TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::resultFinalOk()
+TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::resultOk()
 {
     stringstream ss;
-    ss << kFinalStep << kTokensSeparator;
-    
-    for (const auto &contractorResult : mMaxFlows) {
-        ss << contractorResult.first << kTokensSeparator;
-        ss << contractorResult.second << kTokensSeparator;
+    ss << mMaxFlows.size();
+    for (const auto &nodeIDAndMaxFlow : mMaxFlows) {
+        for (const auto &nodeIDAndAddress : mContractorIDs) {
+            if (nodeIDAndAddress.first == nodeIDAndMaxFlow.first) {
+                ss << kTokensSeparator << nodeIDAndAddress.second->typeID()
+                   << kTokensSeparator << nodeIDAndAddress.second->fullAddress()
+                   << kTokensSeparator << nodeIDAndMaxFlow.second;
+                break;
+            }
+        }
     }
-
-    auto result = ss.str();
+    auto kMaxFlowAmountsStr = ss.str();
     return transactionResultFromCommand(
-        mCommand->responseOk(result));
-}
-
-TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::resultIntermediateOk()
-{
-    stringstream ss;
-    ss << mResultStep << kTokensSeparator;
-    
-    for (const auto &contractorResult : mMaxFlows) {
-        ss << contractorResult.first << kTokensSeparator;
-        ss << contractorResult.second << kTokensSeparator;
-    }
-
-    auto result = ss.str();
-    return transactionResultFromCommand(
-        mCommand->responseOk(result));
+               mCommand->responseOk(
+                   kMaxFlowAmountsStr));
 }
 
 TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::resultProtocolError()

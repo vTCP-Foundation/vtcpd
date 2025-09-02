@@ -24,11 +24,11 @@ MaxFlowCalculationTargetFstLevelTransaction::MaxFlowCalculationTargetFstLevelTra
 TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run()
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
-    info() << "run\t" << "sender: " << mMessage->idOnReceiverSide;
-    info() << "run\t" << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
-    info() << "run\t" << "i am is gateway: " << mIAmGateway;
-    info() << "run\t" << "OutgoingFlows: " << mTrustLinesManager->outgoingFlows().size();
-    info() << "run\t" << "IncomingFlows: " << mTrustLinesManager->incomingFlows().size();
+    info() <<  "sender: " << mMessage->idOnReceiverSide;
+    info() << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
+    info() << "i am is gateway: " << mIAmGateway;
+    info() << "OutgoingFlows: " << mTrustLinesManager->outgoingFlows().size();
+    info() << "IncomingFlows: " << mTrustLinesManager->incomingFlows().size();
 #endif
 
     if(mMessage->getHopsCount() < 1 || mMessage->getHopsCount() > 3) {

@@ -558,3 +558,22 @@ LoggerStream EquivalentsSubsystemsRouter::debug() const
 {
     return mLogger.debug(logHeader());
 }
+
+void EquivalentsSubsystemsRouter::printParticipants() const
+{
+    // Print mapping of ContractorID to address for diagnostics
+    debug() << "Participants dump begin";
+    if (mParticipantsAddresses.empty()) {
+        debug() << "No participants registered";
+        return;
+    }
+
+    for (const auto &entry : mParticipantsAddresses) {
+        const auto &address = entry.first;
+        const ContractorID contractorID = entry.second;
+        // Use fullAddress() to get printable representation of BaseAddress
+        debug() << "contractorID=" << contractorID << " address=" << address->fullAddress();
+    }
+
+    debug() << "Participants dump end";
+}

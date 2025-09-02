@@ -24,9 +24,9 @@ MaxFlowCalculationTargetSndLevelTransaction::MaxFlowCalculationTargetSndLevelTra
 TransactionResult::SharedConst MaxFlowCalculationTargetSndLevelTransaction::run()
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
-    info() << "run\t" << "sender: " << mMessage->idOnReceiverSide;
-    info() << "run\t" << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
-    info() << "run\t" << "i am is gateway: " << mIAmGateway;
+    info() << "sender: " << mMessage->idOnReceiverSide;
+    info() << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
+    info() << "i am is gateway: " << mIAmGateway;
 #endif
     sendExchangeRatesIfNeeded();
     if (mIAmGateway) {
@@ -248,7 +248,7 @@ void MaxFlowCalculationTargetSndLevelTransaction::sendExchangeRatesIfNeeded()
     
     for (const auto& exchangeEquiv : mMessage->exchangeEquivalents()) {
         try {
-            auto rate = mExchangeRatesManager->get(mEquivalent, exchangeEquiv);
+            auto rate = mExchangeRatesManager->get(exchangeEquiv, mEquivalent);
             if (rate != nullptr) {
                 ratesToSend.push_back(rate);
             }

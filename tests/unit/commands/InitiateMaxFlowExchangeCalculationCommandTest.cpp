@@ -10,17 +10,18 @@ protected:
     }
 
     string buildCommandString(const vector<SerializedEquivalent>& exchangeEquivalents) {
-        // Format: 1\t1\t127.0.0.1:2001\t1\t2\t3\t4\t5
-        // Note: addressType "1" = IPv4_IncludingPort
+        // Format: 1\t12\t127.0.0.1:2001\t1\t2\t3\t4\t5
+        // Note: addressType "12" = IPv4_IncludingPort
         stringstream ss;
         ss << "1" << kTokensSeparator;  // contractorsCount
-        ss << "1" << kTokensSeparator << "127.0.0.1:2001" << kTokensSeparator;  // addressType + address
+        ss << "12" << kTokensSeparator << "127.0.0.1:2001" << kTokensSeparator;  // addressType + address
         ss << "1";  // equivalent (receiver equivalent)
         
         for (const auto& exchEquiv : exchangeEquivalents) {
             ss << kTokensSeparator << exchEquiv;
         }
         
+        ss << '\n';
         return ss.str();
     }
 

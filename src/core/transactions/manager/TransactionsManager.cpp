@@ -454,6 +454,10 @@ void TransactionsManager::processMessage(
         launchReceiveMaxFlowCalculationOnTargetTransaction(
             static_pointer_cast<InitiateMaxFlowCalculationMessage>(message));
 
+    } else if (message->typeID() == Message::MessageType::MaxFlow_InitiateExchangeCalculation) {
+        launchReceiveMaxFlowCalculationForExchangeOnTargetTransaction(
+            static_pointer_cast<InitiateMaxFlowForExchangeCalculationMessage>(message));
+
     } else if (message->typeID() == Message::MessageType::MaxFlow_CalculationSourceFirstLevel) {
         launchMaxFlowCalculationSourceFstLevelTransaction(
             static_pointer_cast<MaxFlowCalculationSourceFstLevelMessage>(message));
@@ -1092,6 +1096,25 @@ void TransactionsManager::launchInitiateMaxFlowExchangeCalculationTransaction(
     InitiateMaxFlowExchangeCalculationCommand::Shared command)
 {
     try {
+        mEquivalentsSubsystemsRouter->iAmGateway(command->equivalent());
+    } catch (NotFoundError &e) {
+        info() << "launchInitiateMaxFlowExchangeCalculationTransaction: init new equivalent "
+               << command->equivalent();
+        mEquivalentsSubsystemsRouter->initNewEquivalent(command->equivalent());
+        mEquivalentsCyclesSubsystemsRouter->initNewEquivalent(command->equivalent());
+    }
+
+    for (const auto& exchangeEquivalent : command->exchangeEquivalents()) {
+        try {
+            mEquivalentsSubsystemsRouter->iAmGateway(exchangeEquivalent);
+        } catch (NotFoundError &e) {
+            info() << "launchInitiateMaxFlowExchangeCalculationTransaction: init new equivalent "
+                   << exchangeEquivalent;
+            mEquivalentsSubsystemsRouter->initNewEquivalent(exchangeEquivalent);
+            mEquivalentsCyclesSubsystemsRouter->initNewEquivalent(exchangeEquivalent);
+        }
+    }
+    try {
         prepareAndSchedule(
             make_shared<InitiateMaxFlowExchangeCalculationTransaction>(
                 command,
@@ -1175,6 +1198,32 @@ void TransactionsManager::launchReceiveMaxFlowCalculationOnTargetTransaction(
         throw ConflictError(e.message());
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for ReceiveMaxFlowCalculationOnTargetTransaction "
+                   "with equivalent " << message->equivalent() << " Details are: " << e.what();
+    }
+}
+
+/*!
+ *
+ * Throws MemoryError.
+ */
+void TransactionsManager::launchReceiveMaxFlowCalculationForExchangeOnTargetTransaction(
+    InitiateMaxFlowForExchangeCalculationMessage::Shared message)
+{
+    try {
+        prepareAndSchedule(
+            make_shared<ReceiveMaxFlowCalculationForExchangeOnTargetTransaction>(
+                message,
+                mContractorsManager,
+                mEquivalentsSubsystemsRouter->trustLinesManager(message->equivalent()),
+                mEquivalentsSubsystemsRouter->topologyCacheManager(message->equivalent()),
+                mLog),
+            false,
+            false,
+            true);
+    } catch (ConflictError &e) {
+        throw ConflictError(e.message());
+    } catch (NotFoundError &e) {
+        error() << "There are no subsystems for ReceiveMaxFlowCalculationForExchangeOnTargetTransaction "
                    "with equivalent " << message->equivalent() << " Details are: " << e.what();
     }
 }

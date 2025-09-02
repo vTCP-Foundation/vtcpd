@@ -124,8 +124,9 @@ void BaseCollectTopologyForExchangeTransaction::fillRates()
             debug() << "Processing exchange rates message with " << kMessage->exchangeRates().size() << " rates";
 #endif
             // Store external exchange rates in ExchangeRatesManager
+            auto senderID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(kMessage->senderAddresses.at(0));
             for (const auto& rate : kMessage->exchangeRates()) {
-                mExchangeRatesManager->addOrUpdateExternal(*rate);
+                mExchangeRatesManager->addOrUpdateExternal(senderID, *rate);
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
                 debug() << "Added external rate: " << rate->equivFrom() << " -> " << rate->equivTo()
                         << " rate: " << rate->exchangeRate() << " shift: " << rate->exchangeRateShift();

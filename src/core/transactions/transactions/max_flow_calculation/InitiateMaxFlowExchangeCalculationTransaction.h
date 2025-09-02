@@ -46,18 +46,15 @@ private:
         const TrustLineAmount &currentFlow,
         byte_t level);
 
-    TransactionResult::SharedConst resultFinalOk();
-
-    TransactionResult::SharedConst resultIntermediateOk();
+    TransactionResult::SharedConst resultOk();
 
     TransactionResult::SharedConst resultProtocolError();
 
 private:
-    static const byte_t kShortMaxPathLength = 5;
-    static const byte_t kLongMaxPathLength = 6;
-    static const uint32_t kWaitMillisecondsForCalculatingMaxFlow = 1000;
+    static const byte_t kMaxPathLength = 6;
+    static const uint32_t kWaitMillisecondsForCalculatingMaxFlow = 4000;
     static const uint32_t kWaitMillisecondsForCalculatingMaxFlowAgain = 500;
-    static const uint32_t kMaxWaitMillisecondsForCalculatingMaxFlow = 10000;
+    static const uint32_t kMaxWaitMillisecondsForCalculatingMaxFlow = 15000;
     static const uint16_t kCountRunningProcessCollectingTopologyStage =
         (kMaxWaitMillisecondsForCalculatingMaxFlow - kWaitMillisecondsForCalculatingMaxFlow * 2) /
         kWaitMillisecondsForCalculatingMaxFlowAgain;
@@ -79,7 +76,6 @@ private:
     size_t mCurrentGlobalContractorIdx;
     bool mFinalTopologyCollected;
     byte_t mMaxPathLength;
-    bool mIamGateway;
     HopsCount_t mHopsCnt;
 };
 

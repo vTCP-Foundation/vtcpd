@@ -182,6 +182,14 @@ public:
     void setMeAsGateway();
 #endif
 
+    /**
+     * Prints participants mapping to the log for debugging purposes.
+     *
+     * Outputs every pair of BaseAddress and ContractorID stored in
+     * mParticipantsAddresses using the debug() logger stream.
+     */
+    void printParticipants() const;
+
 protected:
     string logHeader() const;
 

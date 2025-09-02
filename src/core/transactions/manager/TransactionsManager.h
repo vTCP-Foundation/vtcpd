@@ -56,6 +56,7 @@
 #include "../transactions/max_flow_calculation/InitiateMaxFlowExchangeCalculationTransaction.h"
 #include "../transactions/max_flow_calculation/MaxFlowCalculationFullyTransaction.h"
 #include "../transactions/max_flow_calculation/ReceiveMaxFlowCalculationOnTargetTransaction.h"
+#include "../transactions/max_flow_calculation/ReceiveMaxFlowCalculationForExchangeOnTargetTransaction.h"
 #include "../transactions/max_flow_calculation/MaxFlowCalculationSourceFstLevelTransaction.h"
 #include "../transactions/max_flow_calculation/MaxFlowCalculationTargetFstLevelTransaction.h"
 #include "../transactions/max_flow_calculation/MaxFlowCalculationSourceSndLevelTransaction.h"
@@ -261,6 +262,9 @@ protected: // Transactions
 
     void launchReceiveMaxFlowCalculationOnTargetTransaction(
         InitiateMaxFlowCalculationMessage::Shared message);
+
+    void launchReceiveMaxFlowCalculationForExchangeOnTargetTransaction(
+        InitiateMaxFlowForExchangeCalculationMessage::Shared message);
 
     void launchMaxFlowCalculationSourceFstLevelTransaction(
         MaxFlowCalculationSourceFstLevelMessage::Shared message);

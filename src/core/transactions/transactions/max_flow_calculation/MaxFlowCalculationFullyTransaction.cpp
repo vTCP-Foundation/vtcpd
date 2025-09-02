@@ -23,7 +23,6 @@ MaxFlowCalculationFullyTransaction::MaxFlowCalculationFullyTransaction(
 TransactionResult::SharedConst MaxFlowCalculationFullyTransaction::sendRequestForCollectingTopology()
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
-    info() << "run\t" << "targets count: " << mCommand->contractorAddresses().size();
     info() << "SendRequestForCollectingTopology";
 #endif
     info() << "Contractors addresses:";
@@ -141,7 +140,7 @@ TrustLineAmount MaxFlowCalculationFullyTransaction::calculateMaxFlow(
     ContractorID contractorID)
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
-    info() << "calculateMaxFlowNew\tstart found flow to: " << contractorID;
+    info() << "calculateMaxFlowNew. start found flow to: " << contractorID;
 #endif
     DateTime startTime = utc_now();
 

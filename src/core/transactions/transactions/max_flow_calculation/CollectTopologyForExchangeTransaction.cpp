@@ -7,8 +7,6 @@ CollectTopologyForExchangeTransaction::CollectTopologyForExchangeTransaction(
     ContractorsManager *contractorsManager,
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     ExchangeRatesManager *exchangeRatesManager,
-    TopologyCacheManager *topologyCacheManager,
-    MaxFlowCacheManager *maxFlowCacheManager,
     Logger &logger,
     HopsCount_t hopsCount) :
 
@@ -20,8 +18,6 @@ CollectTopologyForExchangeTransaction::CollectTopologyForExchangeTransaction(
     mContractorsManager(contractorsManager),
     mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
     mExchangeRatesManager(exchangeRatesManager),
-    mTopologyCacheManager(topologyCacheManager),
-    mMaxFlowCacheManager(maxFlowCacheManager),
     mHopsCnt(hopsCount)
 {
     // Store sender's payment equivalents
@@ -42,10 +38,9 @@ TransactionResult::SharedConst CollectTopologyForExchangeTransaction::run()
 
     for (const auto& exchangeEquivalent : mExchangeEquivalents) {
         bool iAmGatewayForEquivalent = mEquivalentsSubsystemsRouter->iAmGateway(exchangeEquivalent);
-        if (iAmGatewayForEquivalent) {
-            auto trustLinesManager = mEquivalentsSubsystemsRouter->trustLinesManager(exchangeEquivalent);
-            auto topologyTrustLineManager = mEquivalentsSubsystemsRouter->topologyTrustLineManager(exchangeEquivalent);
-            
+        auto trustLinesManager = mEquivalentsSubsystemsRouter->trustLinesManager(exchangeEquivalent);
+        auto topologyTrustLineManager = mEquivalentsSubsystemsRouter->topologyTrustLineManager(exchangeEquivalent);
+        if (iAmGatewayForEquivalent) {    
             for (auto const &nodeAddressAndOutgoingFlow : trustLinesManager->outgoingFlows()) {
                 auto targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(nodeAddressAndOutgoingFlow.first);
                 auto trustLineAmountShared = nodeAddressAndOutgoingFlow.second;
@@ -55,21 +50,30 @@ TransactionResult::SharedConst CollectTopologyForExchangeTransaction::run()
                             0,
                             targetID,
                             trustLineAmountShared));
+                    continue;
                 }
-            }
-            for (auto const &nodeAddressAndIncomingFlow : trustLinesManager->incomingFlows()) {
-                auto sourceID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(nodeAddressAndIncomingFlow.first);
-                auto trustLineAmountShared = nodeAddressAndIncomingFlow.second;
-                if (trustLinesManager->isContractorGateway(sourceID)) {
+                if (isNodeListedInTransactionContractors(nodeAddressAndOutgoingFlow.first)) {
                     topologyTrustLineManager->addTrustLine(
                         make_shared<TopologyTrustLine>(
-                            sourceID,
                             0,
+                            targetID,
                             trustLineAmountShared));
                 }
             }
+        } else {
+            for (auto const &nodeAddressAndOutgoingFlow : trustLinesManager->outgoingFlows()) {
+                auto targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(nodeAddressAndOutgoingFlow.first);
+                auto trustLineAmountShared = nodeAddressAndOutgoingFlow.second;
+                topologyTrustLineManager->addTrustLine(
+                    make_shared<TopologyTrustLine>(
+                        0,
+                        targetID,
+                        trustLineAmountShared));
+            }
         }
     }
+
+    sendMessagesOnFirstLevel();
 
     debug() << "topology sent";
     return resultDone();
@@ -77,30 +81,53 @@ TransactionResult::SharedConst CollectTopologyForExchangeTransaction::run()
 
 void CollectTopologyForExchangeTransaction::sendMessagesToContractors()
 {
-    if (mContractorAddresses.empty()) {
-        sendMessagesOnFirstLevel();
-        return;
-    }
-    
+    debug() << "Send messages to contractors";
+
+    // calc hops count for target;
+    //===============================================================
+    // [Hops count |  A  |  B   => calc B ]
+    // [ 0         |  0  |  0   => (mHopsCnt - 1) = -1 ~> 0 ]
+    // [ 1         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+    // [ 2         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+    // [ 3         |  1  |  1   => (mHopsCnt - 1)/2 = 1     ]
+    // [ 4         |  2  |  1   => (mHopsCnt - 1)/2 = 1     ]
+    // [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
+    //===============================================================
+    HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
+
     // Send InitiateMaxFlowForExchangeCalculationMessage to contractors according to PRD semantics
     auto senderAddresses = mContractorsManager->ownAddresses();
-    bool iAmGatewayForReceiver = mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent);
+    //bool iAmGatewayForReceiver = mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent);
     for (const auto& contractorAddress : mContractorAddresses) {
-        if (!isNodeListedInTransactionContractors(contractorAddress)) {
-            sendMessage<InitiateMaxFlowForExchangeCalculationMessage>(
-                contractorAddress,
-                mEquivalent, // Receiver's target equivalent
-                senderAddresses,
-                iAmGatewayForReceiver,
-                mHopsCnt,
-                mExchangeEquivalents); // Sender's payment equivalents
-        }
+        sendMessage<InitiateMaxFlowForExchangeCalculationMessage>(
+            contractorAddress,
+            mEquivalent, // Receiver's target equivalent
+            senderAddresses,
+            //iAmGatewayForReceiver,
+            false,
+            target_hops_count,
+            mExchangeEquivalents); // Sender's payment equivalents
     }
-    sendMessagesOnFirstLevel();
 }
 
 void CollectTopologyForExchangeTransaction::sendMessagesOnFirstLevel()
 {
+    debug() << "Send messages on first level";
+
+    // calc hops count for source;
+    //===============================================================
+    // [Hops count |  A  |  B   => calc B ]
+    // [ 0         |  0  |  0   => (mHopsCnt - 1) = -1 ~> 0 ]
+    // [ 1         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+    // [ 2         |  1  |  0   => (mHopsCnt - 1)/2 = 0     ]
+    // [ 3         |  1  |  1   => (mHopsCnt - 1)/2 = 1     ]
+    // [ 4         |  2  |  1   => (mHopsCnt - 1)/2 = 1     ]
+    // [ 5         |  2  |  2   => (mHopsCnt - 1)/2 = 2     ]
+    //===============================================================
+
+    HopsCount_t target_hops_count = (this->mHopsCnt > 1 ? ((this->mHopsCnt - 1) / 2) : 0);
+    HopsCount_t source_hops_count = (this->mHopsCnt == 1 ? 1 : (this->mHopsCnt - 1 - target_hops_count));
+
     // According to PRD: iterate over exchangeEquivalents and send messages per sender equivalent
     for (const auto& exchangeEquivalent : mExchangeEquivalents) {
         auto exchangeEquivTrustLinesManager = mEquivalentsSubsystemsRouter->trustLinesManager(exchangeEquivalent);
@@ -115,7 +142,7 @@ void CollectTopologyForExchangeTransaction::sendMessagesOnFirstLevel()
                     nodeAddress,
                     exchangeEquivalent, // Current exchange equivalent
                     mContractorsManager->idOnContractorSide(nodeIDWithOutgoingFlow),
-                    mHopsCnt,
+                    source_hops_count,
                     receiverEquivalents); // Single receiver equivalent
             }
         }

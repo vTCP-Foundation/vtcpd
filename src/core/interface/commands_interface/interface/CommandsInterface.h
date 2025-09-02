@@ -20,6 +20,7 @@
 #include "../commands/payments/CreditUsageCommand.h"
 #include "../commands/max_flow_calculation/InitiateMaxFlowCalculationCommand.h"
 #include "../commands/max_flow_calculation/InitiateMaxFlowCalculationFullyCommand.h"
+#include "../commands/max_flow_calculation/InitiateMaxFlowExchangeCalculationCommand.h"
 #include "../commands/total_balances/TotalBalancesCommand.h"
 #include "../commands/history/HistoryPaymentsCommand.h"
 #include "../commands/history/HistoryPaymentsAllEquivalentsCommand.h"

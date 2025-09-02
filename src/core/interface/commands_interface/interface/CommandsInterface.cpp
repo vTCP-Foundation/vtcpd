@@ -219,6 +219,11 @@ pair<bool, BaseUserCommand::Shared> CommandsParser::tryParseCommand(
                 uuid,
                 buffer);
 
+        } else if (identifier == InitiateMaxFlowExchangeCalculationCommand::identifier()) {
+            command = new InitiateMaxFlowExchangeCalculationCommand(
+                uuid,
+                buffer);
+
         } else if (identifier == InitiateMaxFlowCalculationFullyCommand::identifier()) {
             command = new InitiateMaxFlowCalculationFullyCommand(
                 uuid,

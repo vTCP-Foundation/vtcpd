@@ -25,8 +25,6 @@ public:
         ContractorsManager *contractorsManager,
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         ExchangeRatesManager *exchangeRatesManager,
-        TopologyCacheManager *topologyCacheManager,
-        MaxFlowCacheManager *maxFlowCacheManager,
         Logger &logger,
         HopsCount_t hopsCount);
 
@@ -47,8 +45,6 @@ private:
     ContractorsManager *mContractorsManager;
     EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
     ExchangeRatesManager *mExchangeRatesManager;
-    TopologyCacheManager *mTopologyCacheManager;
-    MaxFlowCacheManager *mMaxFlowCacheManager;
     HopsCount_t mHopsCnt;
 
     vector<BaseAddress::Shared> mContractorAddresses;
