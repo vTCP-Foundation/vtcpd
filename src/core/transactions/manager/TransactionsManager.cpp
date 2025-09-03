@@ -1242,8 +1242,7 @@ void TransactionsManager::launchMaxFlowCalculationSourceFstLevelTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter,
                 mExchangeRatesManager,
-                mLog,
-                mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
+                mLog),
             false,
             false,
             true);
@@ -1269,8 +1268,7 @@ void TransactionsManager::launchMaxFlowCalculationTargetFstLevelTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter,
                 mExchangeRatesManager,
-                mLog,
-                mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
+                mLog),
             false,
             false,
             true);
@@ -1296,8 +1294,7 @@ void TransactionsManager::launchMaxFlowCalculationSourceSndLevelTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter,
                 mExchangeRatesManager,
-                mLog,
-                mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
+                mLog),
             false,
             false,
             true);
@@ -1323,8 +1320,7 @@ void TransactionsManager::launchMaxFlowCalculationTargetSndLevelTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter,
                 mExchangeRatesManager,
-                mLog,
-                mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
+                mLog),
             false,
             false,
             true);

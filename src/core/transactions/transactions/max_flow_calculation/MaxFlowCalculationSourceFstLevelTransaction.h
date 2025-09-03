@@ -22,8 +22,7 @@ public:
         ContractorsManager *contractorsManager,
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         ExchangeRatesManager *exchangeRatesManager,
-        Logger &logger,
-        bool iAmGateway);
+        Logger &logger);
 
     TransactionResult::SharedConst run() override;
 
@@ -45,7 +44,6 @@ private:
     ContractorsManager *mContractorsManager;
     EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
     ExchangeRatesManager *mExchangeRatesManager;
-    bool mIAmGateway;
 };
 
 

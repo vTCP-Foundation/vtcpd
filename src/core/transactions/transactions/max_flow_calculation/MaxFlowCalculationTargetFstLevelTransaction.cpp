@@ -5,8 +5,7 @@ MaxFlowCalculationTargetFstLevelTransaction::MaxFlowCalculationTargetFstLevelTra
     ContractorsManager *contractorsManager,
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     ExchangeRatesManager *exchangeRatesManager,
-    Logger &logger,
-    bool iAmGateway) :
+    Logger &logger) :
 
     BaseTransaction(
         BaseTransaction::MaxFlowCalculationTargetFstLevelTransactionType,
@@ -15,8 +14,7 @@ MaxFlowCalculationTargetFstLevelTransaction::MaxFlowCalculationTargetFstLevelTra
     mMessage(message),
     mContractorsManager (contractorsManager),
     mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
-    mExchangeRatesManager(exchangeRatesManager),
-    mIAmGateway(iAmGateway)
+    mExchangeRatesManager(exchangeRatesManager)
 {}
 
 TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run()
@@ -24,7 +22,7 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
     info() <<  "sender: " << mMessage->idOnReceiverSide;
     info() << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
-    info() << "i am is gateway: " << mIAmGateway;
+    info() << "i am is gateway: " << mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent);
     info() << "OutgoingFlows: " << mEquivalentsSubsystemsRouter->trustLinesManager(mEquivalent)->outgoingFlows().size();
     info() << "IncomingFlows: " << mEquivalentsSubsystemsRouter->trustLinesManager(mEquivalent)->incomingFlows().size();
 #endif
@@ -42,7 +40,7 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
             try {
                 auto rate = mExchangeRatesManager->get(exchangeEquiv, mEquivalent);
                 if (rate != nullptr) {
-                    if(mIAmGateway)
+                    if(mEquivalentsSubsystemsRouter->iAmGateway(exchangeEquiv))
                         sendGatewayResultToInitiator(exchangeEquiv);
                     else
                         sendResultToInitiator(exchangeEquiv);
@@ -55,7 +53,7 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
 
      // Send topology to initiator in case you don't need to extend the request to the 2nd level
     if(mMessage->getHopsCount() == 1) {
-        if(mIAmGateway) {
+        if(mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent)) {
             sendGatewayResultToInitiator(mEquivalent);
         } else {
             sendResultToInitiator(mEquivalent);
@@ -66,7 +64,7 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
     // Send topology request to 2nd level. in this case it is not required to send topology to initiator, 
     // because we will send topology to initiator in 2nd level transaction.
     pair<vector<ContractorID>, vector<ContractorID>> incomingFlowIDs;
-    if(mIAmGateway) {
+    if(mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent)) {
         vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;
         vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
         // inform that I am is gateway

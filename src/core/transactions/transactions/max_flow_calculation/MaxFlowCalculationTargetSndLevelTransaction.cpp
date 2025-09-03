@@ -5,8 +5,7 @@ MaxFlowCalculationTargetSndLevelTransaction::MaxFlowCalculationTargetSndLevelTra
     ContractorsManager *contractorsManager,
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     ExchangeRatesManager *exchangeRatesManager,
-    Logger &logger,
-    bool iAmGateway) :
+    Logger &logger) :
 
     BaseTransaction(
         BaseTransaction::MaxFlowCalculationTargetSndLevelTransactionType,
@@ -15,8 +14,7 @@ MaxFlowCalculationTargetSndLevelTransaction::MaxFlowCalculationTargetSndLevelTra
     mMessage(message),
     mContractorsManager(contractorsManager),
     mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
-    mExchangeRatesManager(exchangeRatesManager),
-    mIAmGateway(iAmGateway)
+    mExchangeRatesManager(exchangeRatesManager)
 {}
 
 TransactionResult::SharedConst MaxFlowCalculationTargetSndLevelTransaction::run()
@@ -24,10 +22,10 @@ TransactionResult::SharedConst MaxFlowCalculationTargetSndLevelTransaction::run(
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
     info() << "sender: " << mMessage->idOnReceiverSide;
     info() << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
-    info() << "i am is gateway: " << mIAmGateway;
+    info() << "i am is gateway: " << mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent);
 #endif
 
-    if (mIAmGateway) {
+    if (mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent)) {
         sendGatewayResultToInitiator(mEquivalent);
     } else {
         sendResultToInitiator(mEquivalent);
@@ -42,7 +40,7 @@ TransactionResult::SharedConst MaxFlowCalculationTargetSndLevelTransaction::run(
             try {
                 auto rate = mExchangeRatesManager->get(exchangeEquiv, mEquivalent);
                 if (rate != nullptr) {
-                    if(mIAmGateway)
+                    if(mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent))
                         sendGatewayResultToInitiator(exchangeEquiv);
                     else
                         sendResultToInitiator(exchangeEquiv);

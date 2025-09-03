@@ -5,8 +5,7 @@ MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTra
     ContractorsManager *contractorsManager,
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     ExchangeRatesManager *exchangeRatesManager,
-    Logger &logger,
-    bool iAmGateway) :
+    Logger &logger) :
 
     BaseTransaction(
         BaseTransaction::MaxFlowCalculationSourceFstLevelTransactionType,
@@ -15,8 +14,7 @@ MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTra
     mMessage(message),
     mContractorsManager(contractorsManager),
     mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
-    mExchangeRatesManager(exchangeRatesManager),
-    mIAmGateway(iAmGateway)
+    mExchangeRatesManager(exchangeRatesManager)
 {}
 
 TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run()
@@ -42,7 +40,7 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
             try {
                 auto rate = mExchangeRatesManager->get(mEquivalent, exchangeEquiv);
                 if (rate != nullptr) {
-                    if(mIAmGateway)
+                    if(mEquivalentsSubsystemsRouter->iAmGateway(exchangeEquiv))
                         sendGatewayResultToInitiator(exchangeEquiv);
                     else
                         sendResultToInitiator(exchangeEquiv);
@@ -55,7 +53,7 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
 
     // Send topology to initiator in case you don't need to extend the request to the 2nd level
     if (this->mMessage->getHopsCount() == 1) {
-		if(mIAmGateway)
+		if(mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent))
 			sendGatewayResultToInitiator(mEquivalent);
 		else
 			this->sendResultToInitiator(mEquivalent);
@@ -66,7 +64,7 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
     // Send topology request to 2nd level. in this case it is not required to send topology to initiator, 
     // because we will send topology to initiator in 2nd level transaction.
     pair<vector<ContractorID>, vector<ContractorID>> outgoingFlowIDs;
-    if (mIAmGateway) {
+    if (mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent)) {
         vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;
         vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
         // inform that I am is gateway
