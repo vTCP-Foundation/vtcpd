@@ -3,12 +3,11 @@
 
 #include "../base/BaseTransaction.h"
 #include "../../../contractors/ContractorsManager.h"
+#include "../../../equivalents/EquivalentsSubsystemsRouter.h"
 #include "../../../network/messages/max_flow_calculation/MaxFlowCalculationTargetFstLevelMessage.h"
 #include "../../../network/messages/max_flow_calculation/MaxFlowCalculationTargetSndLevelMessage.h"
 #include "../../../network/messages/max_flow_calculation/ResultMaxFlowCalculationGatewayMessage.h"
 #include "../../../network/messages/max_flow_calculation/ExchangeRatesMessage.h"
-#include "../../../trust_lines/manager/TrustLinesManager.h"
-#include "../../../topology/cache/TopologyCacheManager.h"
 #include "../../../rates/manager/ExchangeRatesManager.h"
 
 class MaxFlowCalculationTargetFstLevelTransaction : public BaseTransaction
@@ -21,8 +20,7 @@ public:
     MaxFlowCalculationTargetFstLevelTransaction(
         MaxFlowCalculationTargetFstLevelMessage::Shared message,
         ContractorsManager *contractorsManager,
-        TrustLinesManager *manager,
-        TopologyCacheManager *topologyCacheManager,
+        EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         ExchangeRatesManager *exchangeRatesManager,
         Logger &logger,
         bool iAmGateway);
@@ -34,23 +32,24 @@ protected:
 
 private:
 
-	void sendResultToInitiator();
+	void sendResultToInitiator(SerializedEquivalent equivalent);
 
     void sendCachedResultToInitiator(
-        TopologyCache::Shared maxFlowCalculationCachePtr);
+        TopologyCache::Shared maxFlowCalculationCachePtr,
+        SerializedEquivalent equivalent);
 
-    void sendGatewayResultToInitiator();
+    void sendGatewayResultToInitiator(SerializedEquivalent equivalent);
 
     void sendCachedGatewayResultToInitiator(
-        TopologyCache::Shared maxFlowCalculationCachePtr);
+        TopologyCache::Shared maxFlowCalculationCachePtr,
+        SerializedEquivalent equivalent);
     
     void sendExchangeRatesIfNeeded();
 
 private:
     MaxFlowCalculationTargetFstLevelMessage::Shared mMessage;
     ContractorsManager *mContractorsManager;
-    TrustLinesManager *mTrustLinesManager;
-    TopologyCacheManager *mTopologyCacheManager;
+    EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
     ExchangeRatesManager *mExchangeRatesManager;
     bool mIAmGateway;
 };

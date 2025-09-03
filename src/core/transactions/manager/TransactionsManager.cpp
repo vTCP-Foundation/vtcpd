@@ -1240,8 +1240,7 @@ void TransactionsManager::launchMaxFlowCalculationSourceFstLevelTransaction(
             make_shared<MaxFlowCalculationSourceFstLevelTransaction>(
                 message,
                 mContractorsManager,
-                mEquivalentsSubsystemsRouter->trustLinesManager(message->equivalent()),
-                mEquivalentsSubsystemsRouter->topologyCacheManager(message->equivalent()),
+                mEquivalentsSubsystemsRouter,
                 mExchangeRatesManager,
                 mLog,
                 mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
@@ -1268,8 +1267,7 @@ void TransactionsManager::launchMaxFlowCalculationTargetFstLevelTransaction(
             make_shared<MaxFlowCalculationTargetFstLevelTransaction>(
                 message,
                 mContractorsManager,
-                mEquivalentsSubsystemsRouter->trustLinesManager(message->equivalent()),
-                mEquivalentsSubsystemsRouter->topologyCacheManager(message->equivalent()),
+                mEquivalentsSubsystemsRouter,
                 mExchangeRatesManager,
                 mLog,
                 mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
@@ -1296,8 +1294,7 @@ void TransactionsManager::launchMaxFlowCalculationSourceSndLevelTransaction(
             make_shared<MaxFlowCalculationSourceSndLevelTransaction>(
                 message,
                 mContractorsManager,
-                mEquivalentsSubsystemsRouter->trustLinesManager(message->equivalent()),
-                mEquivalentsSubsystemsRouter->topologyCacheManager(message->equivalent()),
+                mEquivalentsSubsystemsRouter,
                 mExchangeRatesManager,
                 mLog,
                 mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),
@@ -1324,8 +1321,7 @@ void TransactionsManager::launchMaxFlowCalculationTargetSndLevelTransaction(
             make_shared<MaxFlowCalculationTargetSndLevelTransaction>(
                 message,
                 mContractorsManager,
-                mEquivalentsSubsystemsRouter->trustLinesManager(message->equivalent()),
-                mEquivalentsSubsystemsRouter->topologyCacheManager(message->equivalent()),
+                mEquivalentsSubsystemsRouter,
                 mExchangeRatesManager,
                 mLog,
                 mEquivalentsSubsystemsRouter->iAmGateway(message->equivalent())),

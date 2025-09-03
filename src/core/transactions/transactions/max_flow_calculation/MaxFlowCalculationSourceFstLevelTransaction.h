@@ -3,12 +3,11 @@
 
 #include "../base/BaseTransaction.h"
 #include "../../../contractors/ContractorsManager.h"
-#include "../../../trust_lines/manager/TrustLinesManager.h"
+#include "../../../equivalents/EquivalentsSubsystemsRouter.h"
 #include "../../../network/messages/max_flow_calculation/MaxFlowCalculationSourceFstLevelMessage.h"
 #include "../../../network/messages/max_flow_calculation/MaxFlowCalculationSourceSndLevelMessage.h"
 #include "../../../network/messages/max_flow_calculation/ResultMaxFlowCalculationGatewayMessage.h"
 #include "../../../network/messages/max_flow_calculation/ExchangeRatesMessage.h"
-#include "../../../topology/cache/TopologyCacheManager.h"
 #include "../../../rates/manager/ExchangeRatesManager.h"
 
 class MaxFlowCalculationSourceFstLevelTransaction : public BaseTransaction
@@ -21,8 +20,7 @@ public:
     MaxFlowCalculationSourceFstLevelTransaction(
         MaxFlowCalculationSourceFstLevelMessage::Shared message,
         ContractorsManager *contractorsManager,
-        TrustLinesManager *trustLinesManager,
-        TopologyCacheManager *topologyCacheManager,
+        EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         ExchangeRatesManager *exchangeRatesManager,
         Logger &logger,
         bool iAmGateway);
@@ -33,18 +31,19 @@ protected:
     const string logHeader() const override;
 
 private:
-	void sendResultToInitiator();
+	void sendResultToInitiator(SerializedEquivalent equivalent);
 	void sendCachedResultToInitiator(
-		TopologyCache::Shared maxFlowCalculationCachePtr);
-	void sendGatewayResultToInitiator();
+		TopologyCache::Shared maxFlowCalculationCachePtr,
+		SerializedEquivalent equivalent);
+	void sendGatewayResultToInitiator(SerializedEquivalent equivalent);
     void sendCachedGatewayResultToInitiator(
-        TopologyCache::Shared maxFlowCalculationCachePtr);
+        TopologyCache::Shared maxFlowCalculationCachePtr,
+        SerializedEquivalent equivalent);
     void sendExchangeRatesIfNeeded();
 
     MaxFlowCalculationSourceFstLevelMessage::Shared mMessage;
     ContractorsManager *mContractorsManager;
-    TrustLinesManager *mTrustLinesManager;
-    TopologyCacheManager *mTopologyCacheManager;
+    EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
     ExchangeRatesManager *mExchangeRatesManager;
     bool mIAmGateway;
 };

@@ -3,8 +3,7 @@
 
 #include "../base/BaseTransaction.h"
 #include "../../../contractors/ContractorsManager.h"
-#include "../../../trust_lines/manager/TrustLinesManager.h"
-#include "../../../topology/cache/TopologyCacheManager.h"
+#include "../../../equivalents/EquivalentsSubsystemsRouter.h"
 #include "../../../network/messages/max_flow_calculation/MaxFlowCalculationTargetSndLevelMessage.h"
 #include "../../../network/messages/max_flow_calculation/ResultMaxFlowCalculationMessage.h"
 #include "../../../network/messages/max_flow_calculation/ResultMaxFlowCalculationGatewayMessage.h"
@@ -21,8 +20,7 @@ public:
     MaxFlowCalculationTargetSndLevelTransaction(
         MaxFlowCalculationTargetSndLevelMessage::Shared message,
         ContractorsManager *contractorsManager,
-        TrustLinesManager *manager,
-        TopologyCacheManager *topologyCacheManager,
+        EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         ExchangeRatesManager *exchangeRatesManager,
         Logger &logger,
         bool iAmGateway);
@@ -33,23 +31,24 @@ protected:
     const string logHeader() const override;
 
 private:
-    void sendResultToInitiator();
+    void sendResultToInitiator(SerializedEquivalent equivalent);
 
     void sendCachedResultToInitiator(
-        TopologyCache::Shared maxFlowCalculationCachePtr);
+        TopologyCache::Shared maxFlowCalculationCachePtr,
+        SerializedEquivalent equivalent);
 
-    void sendGatewayResultToInitiator();
+    void sendGatewayResultToInitiator(SerializedEquivalent equivalent);
 
     void sendCachedGatewayResultToInitiator(
-        TopologyCache::Shared maxFlowCalculationCachePtr);
+        TopologyCache::Shared maxFlowCalculationCachePtr,
+        SerializedEquivalent equivalent);
 
     void sendExchangeRatesIfNeeded();
 
 private:
     MaxFlowCalculationTargetSndLevelMessage::Shared mMessage;
     ContractorsManager *mContractorsManager;
-    TrustLinesManager *mTrustLinesManager;
-    TopologyCacheManager *mTopologyCacheManager;
+    EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
     ExchangeRatesManager *mExchangeRatesManager;
     bool mIAmGateway;
 };

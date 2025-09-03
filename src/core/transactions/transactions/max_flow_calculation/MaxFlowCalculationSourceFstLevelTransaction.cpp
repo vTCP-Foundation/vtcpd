@@ -3,8 +3,7 @@
 MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTransaction(
     MaxFlowCalculationSourceFstLevelMessage::Shared message,
     ContractorsManager *contractorsManager,
-    TrustLinesManager *trustLinesManager,
-    TopologyCacheManager *topologyCacheManager,
+    EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     ExchangeRatesManager *exchangeRatesManager,
     Logger &logger,
     bool iAmGateway) :
@@ -15,8 +14,7 @@ MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTra
         logger),
     mMessage(message),
     mContractorsManager(contractorsManager),
-    mTrustLinesManager(trustLinesManager),
-    mTopologyCacheManager(topologyCacheManager),
+    mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
     mExchangeRatesManager(exchangeRatesManager),
     mIAmGateway(iAmGateway)
 {}
@@ -25,9 +23,9 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
     info() << "sender: " << mMessage->idOnReceiverSide;
-    info() << "i am is gateway: " << mIAmGateway;
-    info() << "OutgoingFlows: " << mTrustLinesManager->outgoingFlows().size();
-    info() << "IncomingFlows: " << mTrustLinesManager->incomingFlows().size();
+    info() << "i am is gateway: " << mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent);
+    info() << "OutgoingFlows: " << mEquivalentsSubsystemsRouter->trustLinesManager(mEquivalent)->outgoingFlows().size();
+    info() << "IncomingFlows: " << mEquivalentsSubsystemsRouter->trustLinesManager(mEquivalent)->incomingFlows().size();
     info() << "Hops count: " << mMessage->getHopsCount();
 #endif
 
@@ -35,17 +33,38 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
 		return resultDone();
 	}
 
+    // Send exchange rates if this is an exchange-aware flow
+    sendExchangeRatesIfNeeded();
+        
+    // Enhanced topology sending: send additional topology for exchange equivalents where rates exist
+    if (!mMessage->exchangeEquivalents().empty()) {
+        for (const auto& exchangeEquiv : mMessage->exchangeEquivalents()) {
+            try {
+                auto rate = mExchangeRatesManager->get(mEquivalent, exchangeEquiv);
+                if (rate != nullptr) {
+                    if(mIAmGateway)
+                        sendGatewayResultToInitiator(exchangeEquiv);
+                    else
+                        sendResultToInitiator(exchangeEquiv);
+                }
+            } catch (const NotFoundError&) {
+                // No rate found, skip this equivalent
+            }
+        }
+    }
+
+    // Send topology to initiator in case you don't need to extend the request to the 2nd level
     if (this->mMessage->getHopsCount() == 1) {
 		if(mIAmGateway)
-			sendGatewayResultToInitiator();
+			sendGatewayResultToInitiator(mEquivalent);
 		else
-			this->sendResultToInitiator();
+			this->sendResultToInitiator(mEquivalent);
         
-        // Send exchange rates if this is an exchange-aware flow
-        sendExchangeRatesIfNeeded();
         return resultDone();
     }
 
+    // Send topology request to 2nd level. in this case it is not required to send topology to initiator, 
+    // because we will send topology to initiator in 2nd level transaction.
     pair<vector<ContractorID>, vector<ContractorID>> outgoingFlowIDs;
     if (mIAmGateway) {
         vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;
@@ -60,10 +79,10 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
             mContractorsManager->ownAddresses(),
             outgoingFlows,
             incomingFlows);
-        outgoingFlowIDs = mTrustLinesManager->firstLevelGatewayNeighborsWithOutgoingFlow();
+        outgoingFlowIDs = mEquivalentsSubsystemsRouter->trustLinesManager(mEquivalent)->firstLevelGatewayNeighborsWithOutgoingFlow();
     } 
 	else {
-        outgoingFlowIDs = mTrustLinesManager->firstLevelNeighborsWithOutgoingFlow();
+        outgoingFlowIDs = mEquivalentsSubsystemsRouter->trustLinesManager(mEquivalent)->firstLevelNeighborsWithOutgoingFlow();
     }
 
 	for(auto const &nodeIDWithOutgoingFlow : outgoingFlowIDs.first) {
@@ -79,14 +98,14 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
 			mContractorsManager->idOnContractorSide(nodeIDWithOutgoingFlow),
 			mContractorsManager->contractorAddresses(mMessage->idOnReceiverSide),
 			mMessage->exchangeEquivalents());
-		mTopologyCacheManager->addIntoFirstLevelCache(
+		mEquivalentsSubsystemsRouter->topologyCacheManager(mEquivalent)->addIntoFirstLevelCache(
 			nodeIDWithOutgoingFlow);
 	}
 	for(auto const &nodeIDWithOutgoingFlow : outgoingFlowIDs.second) {
 		if(nodeIDWithOutgoingFlow == mMessage->idOnReceiverSide) {
 			continue;
 		}
-		if(!mTopologyCacheManager->isInFirstLevelCache(nodeIDWithOutgoingFlow)) {
+		if(!mEquivalentsSubsystemsRouter->topologyCacheManager(mEquivalent)->isInFirstLevelCache(nodeIDWithOutgoingFlow)) {
 			continue;
 		}
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
@@ -110,17 +129,17 @@ const string MaxFlowCalculationSourceFstLevelTransaction::logHeader() const
     return s.str();
 }
 
-void MaxFlowCalculationSourceFstLevelTransaction::sendResultToInitiator() {
+void MaxFlowCalculationSourceFstLevelTransaction::sendResultToInitiator(SerializedEquivalent equivalent) {
 	
 	vector<BaseAddress::Shared> targetAddresses = mContractorsManager->contractorAddresses(
                 mMessage->idOnReceiverSide);
 
-	TopologyCache::Shared maxFlowCalculationCachePtr = mTopologyCacheManager->cacheByAddress(
+	TopologyCache::Shared maxFlowCalculationCachePtr = mEquivalentsSubsystemsRouter->topologyCacheManager(equivalent)->cacheByAddress(
         targetAddresses.at(0));
     
 	if (maxFlowCalculationCachePtr != nullptr) {
         sendCachedResultToInitiator(
-            maxFlowCalculationCachePtr);
+            maxFlowCalculationCachePtr, equivalent);
         return;
     }
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
@@ -130,7 +149,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendResultToInitiator() {
 	vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;
 
 	auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-	for(auto const &outgoingFlow : mTrustLinesManager->outgoingFlows()) {
+	for(auto const &outgoingFlow : mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->outgoingFlows()) {
 		if(*outgoingFlow.second.get() > TrustLine::kZeroAmount() &&
 			outgoingFlow.first != senderMainAddress &&
 			outgoingFlow.first != targetAddresses.at(0)) {
@@ -140,7 +159,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendResultToInitiator() {
 	}
 
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
-    const auto incomingFlow = mTrustLinesManager->incomingFlow(mMessage->idOnReceiverSide);
+    const auto incomingFlow = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(mMessage->idOnReceiverSide);
     if (*incomingFlow.second.get() > TrustLine::kZeroAmount()) {
         incomingFlows.push_back(
             incomingFlow);
@@ -152,7 +171,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendResultToInitiator() {
     if (!outgoingFlows.empty() || !incomingFlows.empty()) {
         sendMessage<ResultMaxFlowCalculationMessage>(
             targetAddresses.at(0),
-            mEquivalent,
+            equivalent,
             mContractorsManager->ownAddresses(),
             outgoingFlows,
             incomingFlows);
@@ -166,7 +185,9 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendResultToInitiator() {
 
 }
 
-void MaxFlowCalculationSourceFstLevelTransaction::sendCachedResultToInitiator(TopologyCache::Shared maxFlowCalculationCachePtr) {
+void MaxFlowCalculationSourceFstLevelTransaction::sendCachedResultToInitiator(
+    TopologyCache::Shared maxFlowCalculationCachePtr,
+    SerializedEquivalent equivalent) {
 
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
     info() << "sendCachedResultToInitiator";
@@ -178,7 +199,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendCachedResultToInitiator(To
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlowsForSending;
    
 	auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-	for(auto const &outgoingFlow : mTrustLinesManager->outgoingFlows()) {
+	for(auto const &outgoingFlow : mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->outgoingFlows()) {
 		if(outgoingFlow.first != senderMainAddress &&
 			outgoingFlow.first != targetAddresses.at(0) &&
 			!maxFlowCalculationCachePtr->containsOutgoingFlow(outgoingFlow.first, outgoingFlow.second)) {
@@ -188,7 +209,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendCachedResultToInitiator(To
 	}
 
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlowsForSending;
-    auto const incomingFlow = mTrustLinesManager->incomingFlow(mMessage->idOnReceiverSide);
+    auto const incomingFlow = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(mMessage->idOnReceiverSide);
     if (!maxFlowCalculationCachePtr->containsIncomingFlow(incomingFlow.first, incomingFlow.second)) {
         incomingFlowsForSending.push_back(
             incomingFlow);
@@ -200,23 +221,23 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendCachedResultToInitiator(To
     if (!outgoingFlowsForSending.empty() || !incomingFlowsForSending.empty()) {
         sendMessage<ResultMaxFlowCalculationMessage>(
             targetAddresses.at(0),
-            mEquivalent,
+            equivalent,
             mContractorsManager->ownAddresses(),
             outgoingFlowsForSending,
             incomingFlowsForSending);
     }
 }
 
-void MaxFlowCalculationSourceFstLevelTransaction::sendGatewayResultToInitiator() {
+void MaxFlowCalculationSourceFstLevelTransaction::sendGatewayResultToInitiator(SerializedEquivalent equivalent) {
 
 	vector<BaseAddress::Shared> targetAddresses = mContractorsManager->contractorAddresses(
                 mMessage->idOnReceiverSide);
 
-	TopologyCache::Shared maxFlowCalculationCachePtr = mTopologyCacheManager->cacheByAddress(
+	TopologyCache::Shared maxFlowCalculationCachePtr = mEquivalentsSubsystemsRouter->topologyCacheManager(equivalent)->cacheByAddress(
 		targetAddresses.at(0));
 	if(maxFlowCalculationCachePtr != nullptr) {
 		sendCachedGatewayResultToInitiator(
-			maxFlowCalculationCachePtr);
+			maxFlowCalculationCachePtr, equivalent);
 		return;
 	}
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
@@ -225,7 +246,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendGatewayResultToInitiator()
 	vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;
 
 	auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-	for(auto const &outgoingFlow : mTrustLinesManager->outgoingFlowsToGateways()) {
+	for(auto const &outgoingFlow : mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->outgoingFlowsToGateways()) {
 		if(*outgoingFlow.second.get() > TrustLine::kZeroAmount() &&
 			outgoingFlow.first != senderMainAddress &&
 			outgoingFlow.first != targetAddresses.at(0)) {
@@ -235,7 +256,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendGatewayResultToInitiator()
 	}
 
 	vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
-	const auto incomingFlow = mTrustLinesManager->incomingFlow(mMessage->idOnReceiverSide);
+	const auto incomingFlow = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(mMessage->idOnReceiverSide);
 	if(*incomingFlow.second.get() > TrustLine::kZeroAmount()) {
 		incomingFlows.push_back(
 			incomingFlow);
@@ -247,7 +268,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendGatewayResultToInitiator()
 	if(!outgoingFlows.empty() || !incomingFlows.empty()) {
 		sendMessage<ResultMaxFlowCalculationGatewayMessage>(
 			targetAddresses.at(0),
-			mEquivalent,
+			equivalent,
 			mContractorsManager->ownAddresses(),
 			outgoingFlows,
 			incomingFlows);
@@ -261,7 +282,9 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendGatewayResultToInitiator()
 
 }
 
-void MaxFlowCalculationSourceFstLevelTransaction::sendCachedGatewayResultToInitiator(TopologyCache::Shared maxFlowCalculationCachePtr) {
+void MaxFlowCalculationSourceFstLevelTransaction::sendCachedGatewayResultToInitiator(
+    TopologyCache::Shared maxFlowCalculationCachePtr,
+    SerializedEquivalent equivalent) {
 
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
 	info() << "sendCachedGatewayResultToInitiator";
@@ -272,7 +295,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendCachedGatewayResultToIniti
 	vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlowsForSending;
 
 	auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-	for(auto const &outgoingFlow : mTrustLinesManager->outgoingFlowsToGateways()) {
+	for(auto const &outgoingFlow : mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->outgoingFlowsToGateways()) {
 		if(outgoingFlow.first != senderMainAddress &&
 			outgoingFlow.first != targetAddresses.at(0) &&
 			!maxFlowCalculationCachePtr->containsOutgoingFlow(outgoingFlow.first, outgoingFlow.second)) {
@@ -282,7 +305,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendCachedGatewayResultToIniti
 	}
 
 	vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlowsForSending;
-	auto const incomingFlow = mTrustLinesManager->incomingFlow(mMessage->idOnReceiverSide);
+	auto const incomingFlow = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(mMessage->idOnReceiverSide);
 	if(!maxFlowCalculationCachePtr->containsIncomingFlow(incomingFlow.first, incomingFlow.second)) {
 		incomingFlowsForSending.push_back(
 			incomingFlow);
@@ -294,7 +317,7 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendCachedGatewayResultToIniti
 	if(!outgoingFlowsForSending.empty() || !incomingFlowsForSending.empty()) {
 		sendMessage<ResultMaxFlowCalculationGatewayMessage>(
 			targetAddresses.at(0),
-			mEquivalent,
+			equivalent,
 			mContractorsManager->ownAddresses(),
 			outgoingFlowsForSending,
 			incomingFlowsForSending);

@@ -3,8 +3,7 @@
 MaxFlowCalculationSourceSndLevelTransaction::MaxFlowCalculationSourceSndLevelTransaction(
     MaxFlowCalculationSourceSndLevelMessage::Shared message,
     ContractorsManager *contractorsManager,
-    TrustLinesManager *manager,
-    TopologyCacheManager *topologyCacheManager,
+    EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     ExchangeRatesManager *exchangeRatesManager,
     Logger &logger,
     bool iAmGateway) :
@@ -15,8 +14,7 @@ MaxFlowCalculationSourceSndLevelTransaction::MaxFlowCalculationSourceSndLevelTra
         logger),
     mMessage(message),
     mContractorsManager(contractorsManager),
-    mTrustLinesManager(manager),
-    mTopologyCacheManager(topologyCacheManager),
+    mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
     mExchangeRatesManager(exchangeRatesManager),
     mIAmGateway(iAmGateway)
 {}
@@ -29,23 +27,41 @@ TransactionResult::SharedConst MaxFlowCalculationSourceSndLevelTransaction::run(
     info() << "target: " << mMessage->targetAddresses().at(0)->fullAddress();
 #endif
     if (mIAmGateway) {
-        sendGatewayResultToInitiator();
+        sendGatewayResultToInitiator(mEquivalent);
     } else {
-        sendResultToInitiator();
+        sendResultToInitiator(mEquivalent);
     }
     
     // Send exchange rates if this is an exchange-aware flow
     sendExchangeRatesIfNeeded();
+
+    // Enhanced topology sending: send additional topology for exchange equivalents where rates exist
+    if (!mMessage->exchangeEquivalents().empty()) {
+        for (const auto& exchangeEquiv : mMessage->exchangeEquivalents()) {
+            try {
+                auto rate = mExchangeRatesManager->get(mEquivalent, exchangeEquiv);
+                if (rate != nullptr) {
+                    if(mIAmGateway)
+                        sendGatewayResultToInitiator(exchangeEquiv);
+                    else
+                        sendResultToInitiator(exchangeEquiv);
+                }
+            } catch (const NotFoundError&) {
+                // No rate found, skip this equivalent
+            }
+        }
+    }
+    
     return resultDone();
 }
 
-void MaxFlowCalculationSourceSndLevelTransaction::sendResultToInitiator()
+void MaxFlowCalculationSourceSndLevelTransaction::sendResultToInitiator(SerializedEquivalent equivalent)
 {
-    TopologyCache::Shared maxFlowCalculationCachePtr = mTopologyCacheManager->cacheByAddress(
+    TopologyCache::Shared maxFlowCalculationCachePtr = mEquivalentsSubsystemsRouter->topologyCacheManager(equivalent)->cacheByAddress(
             mMessage->targetAddresses().at(0));
     if (maxFlowCalculationCachePtr != nullptr) {
         sendCachedResultToInitiator(
-            maxFlowCalculationCachePtr);
+            maxFlowCalculationCachePtr, equivalent);
         return;
     }
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
@@ -55,14 +71,14 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendResultToInitiator()
     bool isSourceFirstLevelNode = false;
     auto initiatorID = mContractorsManager->contractorIDByAddress(mMessage->targetAddresses().at(0));
     if (initiatorID != ContractorsManager::kNotFoundContractorID) {
-        if (mTrustLinesManager->trustLineIsPresent(initiatorID) and
-                *mTrustLinesManager->incomingFlow(initiatorID).second > TrustLine::kZeroAmount()) {
+        if (mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->trustLineIsPresent(initiatorID) and
+                *mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(initiatorID).second > TrustLine::kZeroAmount()) {
             isSourceFirstLevelNode = true;
         }
     }
     if (!isSourceFirstLevelNode) {
         auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-        for (auto const &outgoingFlow : mTrustLinesManager->outgoingFlows()) {
+        for (auto const &outgoingFlow : mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->outgoingFlows()) {
             if (*outgoingFlow.second.get() > TrustLine::kZeroAmount() &&
                     outgoingFlow.first != senderMainAddress &&
                     outgoingFlow.first != mMessage->targetAddresses().at(0)) {
@@ -72,7 +88,7 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendResultToInitiator()
         }
     }
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
-    const auto incomingFlow = mTrustLinesManager->incomingFlow(mMessage->idOnReceiverSide);
+    const auto incomingFlow = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(mMessage->idOnReceiverSide);
     if (*incomingFlow.second.get() > TrustLine::kZeroAmount()) {
         incomingFlows.push_back(
             incomingFlow);
@@ -84,12 +100,12 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendResultToInitiator()
     if (!outgoingFlows.empty() || !incomingFlows.empty()) {
         sendMessage<ResultMaxFlowCalculationMessage>(
             mMessage->targetAddresses().at(0),
-            mEquivalent,
+            equivalent,
             mContractorsManager->ownAddresses(),
             outgoingFlows,
             incomingFlows);
         // todo : add config if cache need
-        /*mTopologyCacheManager->addCache(
+        /*mEquivalentsSubsystemsRouter->topologyCacheManager(equivalent)->addCache(
             mMessage->targetAddresses().at(0),
             make_shared<TopologyCache>(
                 outgoingFlows,
@@ -98,7 +114,8 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendResultToInitiator()
 }
 
 void MaxFlowCalculationSourceSndLevelTransaction::sendCachedResultToInitiator(
-    TopologyCache::Shared maxFlowCalculationCachePtr)
+    TopologyCache::Shared maxFlowCalculationCachePtr,
+    SerializedEquivalent equivalent)
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
     info() << "sendCachedResultToInitiator";
@@ -107,14 +124,14 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendCachedResultToInitiator(
     bool isSourceFirstLevelNode = false;
     auto initiatorID = mContractorsManager->contractorIDByAddress(mMessage->targetAddresses().at(0));
     if (initiatorID != ContractorsManager::kNotFoundContractorID) {
-        if (mTrustLinesManager->trustLineIsPresent(initiatorID) and
-                *mTrustLinesManager->incomingFlow(initiatorID).second > TrustLine::kZeroAmount()) {
+        if (mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->trustLineIsPresent(initiatorID) and
+                *mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(initiatorID).second > TrustLine::kZeroAmount()) {
             isSourceFirstLevelNode = true;
         }
     }
     if (!isSourceFirstLevelNode) {
         auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-        for (auto const &outgoingFlow : mTrustLinesManager->outgoingFlows()) {
+        for (auto const &outgoingFlow : mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->outgoingFlows()) {
             if (outgoingFlow.first != senderMainAddress &&
                     outgoingFlow.first != mMessage->targetAddresses().at(0) &&
                     !maxFlowCalculationCachePtr->containsOutgoingFlow(outgoingFlow.first, outgoingFlow.second)) {
@@ -125,7 +142,7 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendCachedResultToInitiator(
     }
 
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlowsForSending;
-    auto const incomingFlow = mTrustLinesManager->incomingFlow(mMessage->idOnReceiverSide);
+    auto const incomingFlow = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(mMessage->idOnReceiverSide);
     if (!maxFlowCalculationCachePtr->containsIncomingFlow(incomingFlow.first, incomingFlow.second)) {
         incomingFlowsForSending.push_back(
             incomingFlow);
@@ -137,20 +154,20 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendCachedResultToInitiator(
     if (!outgoingFlowsForSending.empty() || !incomingFlowsForSending.empty()) {
         sendMessage<ResultMaxFlowCalculationMessage>(
             mMessage->targetAddresses().at(0),
-            mEquivalent,
+            equivalent,
             mContractorsManager->ownAddresses(),
             outgoingFlowsForSending,
             incomingFlowsForSending);
     }
 }
 
-void MaxFlowCalculationSourceSndLevelTransaction::sendGatewayResultToInitiator()
+void MaxFlowCalculationSourceSndLevelTransaction::sendGatewayResultToInitiator(SerializedEquivalent equivalent)
 {
-    TopologyCache::Shared maxFlowCalculationCachePtr = mTopologyCacheManager->cacheByAddress(
+    TopologyCache::Shared maxFlowCalculationCachePtr = mEquivalentsSubsystemsRouter->topologyCacheManager(equivalent)->cacheByAddress(
             mMessage->targetAddresses().at(0));
     if (maxFlowCalculationCachePtr != nullptr) {
         sendCachedGatewayResultToInitiator(
-            maxFlowCalculationCachePtr);
+            maxFlowCalculationCachePtr, equivalent);
         return;
     }
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
@@ -160,14 +177,14 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendGatewayResultToInitiator()
     bool isSourceFirstLevelNode = false;
     auto initiatorID = mContractorsManager->contractorIDByAddress(mMessage->targetAddresses().at(0));
     if (initiatorID != ContractorsManager::kNotFoundContractorID) {
-        if (mTrustLinesManager->trustLineIsPresent(initiatorID) and
-                *mTrustLinesManager->incomingFlow(initiatorID).second > TrustLine::kZeroAmount()) {
+        if (mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->trustLineIsPresent(initiatorID) and
+                *mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(initiatorID).second > TrustLine::kZeroAmount()) {
             isSourceFirstLevelNode = true;
         }
     }
     if (!isSourceFirstLevelNode) {
         auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-        for (auto const &outgoingFlow : mTrustLinesManager->outgoingFlowsToGateways()) {
+        for (auto const &outgoingFlow : mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->outgoingFlowsToGateways()) {
             if (*outgoingFlow.second.get() > TrustLine::kZeroAmount() &&
                     outgoingFlow.first != senderMainAddress &&
                     outgoingFlow.first != mMessage->targetAddresses().at(0)) {
@@ -178,7 +195,7 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendGatewayResultToInitiator()
     }
 
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
-    const auto incomingFlow = mTrustLinesManager->incomingFlow(mMessage->idOnReceiverSide);
+    const auto incomingFlow = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(mMessage->idOnReceiverSide);
     if (*incomingFlow.second.get() > TrustLine::kZeroAmount()) {
         incomingFlows.push_back(
             incomingFlow);
@@ -190,12 +207,12 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendGatewayResultToInitiator()
     if (!outgoingFlows.empty() || !incomingFlows.empty()) {
         sendMessage<ResultMaxFlowCalculationGatewayMessage>(
             mMessage->targetAddresses().at(0),
-            mEquivalent,
+            equivalent,
             mContractorsManager->ownAddresses(),
             outgoingFlows,
             incomingFlows);
         // todo : add config if cache need
-        /*mTopologyCacheManager->addCache(
+        /*mEquivalentsSubsystemsRouter->topologyCacheManager(equivalent)->addCache(
             mMessage->targetAddresses().at(0),
             make_shared<TopologyCache>(
                 outgoingFlows,
@@ -204,7 +221,8 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendGatewayResultToInitiator()
 }
 
 void MaxFlowCalculationSourceSndLevelTransaction::sendCachedGatewayResultToInitiator(
-    TopologyCache::Shared maxFlowCalculationCachePtr)
+    TopologyCache::Shared maxFlowCalculationCachePtr,
+    SerializedEquivalent equivalent)
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
     info() << "sendCachedGatewayResultToInitiator";
@@ -213,14 +231,14 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendCachedGatewayResultToIniti
     bool isSourceFirstLevelNode = false;
     auto initiatorID = mContractorsManager->contractorIDByAddress(mMessage->targetAddresses().at(0));
     if (initiatorID != ContractorsManager::kNotFoundContractorID) {
-        if (mTrustLinesManager->trustLineIsPresent(initiatorID) and
-                *mTrustLinesManager->incomingFlow(initiatorID).second > TrustLine::kZeroAmount()) {
+        if (mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->trustLineIsPresent(initiatorID) and
+                *mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(initiatorID).second > TrustLine::kZeroAmount()) {
             isSourceFirstLevelNode = true;
         }
     }
     if (!isSourceFirstLevelNode) {
         auto senderMainAddress = mContractorsManager->contractorMainAddress(mMessage->idOnReceiverSide);
-        for (auto const &outgoingFlow : mTrustLinesManager->outgoingFlowsToGateways()) {
+        for (auto const &outgoingFlow : mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->outgoingFlowsToGateways()) {
             if (outgoingFlow.first != senderMainAddress &&
                     outgoingFlow.first != mMessage->targetAddresses().at(0) &&
                     !maxFlowCalculationCachePtr->containsOutgoingFlow(outgoingFlow.first, outgoingFlow.second)) {
@@ -231,7 +249,7 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendCachedGatewayResultToIniti
     }
 
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlowsForSending;
-    auto const incomingFlow = mTrustLinesManager->incomingFlow(mMessage->idOnReceiverSide);
+    auto const incomingFlow = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent)->incomingFlow(mMessage->idOnReceiverSide);
     if (!maxFlowCalculationCachePtr->containsIncomingFlow(incomingFlow.first, incomingFlow.second)) {
         incomingFlowsForSending.push_back(
             incomingFlow);
@@ -243,7 +261,7 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendCachedGatewayResultToIniti
     if (!outgoingFlowsForSending.empty() || !incomingFlowsForSending.empty()) {
         sendMessage<ResultMaxFlowCalculationGatewayMessage>(
             mMessage->targetAddresses().at(0),
-            mEquivalent,
+            equivalent,
             mContractorsManager->ownAddresses(),
             outgoingFlowsForSending,
             incomingFlowsForSending);
