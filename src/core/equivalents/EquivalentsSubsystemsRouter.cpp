@@ -87,6 +87,7 @@ EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
                                                      equivalent,
                                                      contractorsManager->selfContractor()->mainAddress(),
                                                      mIAmGateways[equivalent],
+                                                     mIOCtx,
                                                      mLogger);
                 if (!topologyTrustLinesManager) {
                     throw IOError("EquivalentsSubsystemsRouter::constructor: Failed to create TopologyTrustLinesManager for equivalent " + to_string(equivalent));
@@ -285,6 +286,7 @@ void EquivalentsSubsystemsRouter::initNewEquivalent(
                                              equivalent,
                                              mContractorsManager->selfContractor()->mainAddress(),
                                              false, // New equivalents start as non-gateway
+                                             mIOCtx,
                                              mLogger);
         if (!topologyTrustLinesManager) {
             throw IOError("EquivalentsSubsystemsRouter::initNewEquivalent: Failed to create TopologyTrustLinesManager for equivalent " + to_string(equivalent));

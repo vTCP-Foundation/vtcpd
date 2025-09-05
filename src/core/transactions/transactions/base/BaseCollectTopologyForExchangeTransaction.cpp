@@ -71,6 +71,14 @@ void BaseCollectTopologyForExchangeTransaction::fillTopology()
                         senderID,
                         incomingFlow.second));
             }
+            
+            // Store commission if present and amount > 0
+            if (kMessage->commission() && kMessage->commission()->amount() > 0) {
+                topologyTrustLineManager->storeCommission(
+                    senderID,
+                    kMessage->equivalent(),
+                    kMessage->commission());
+            }
         } else if (mContext.front()->typeID() == Message::MaxFlow_ResultMaxFlowCalculationFromGateway) {
             const auto kMessage = popNextMessage<ResultMaxFlowCalculationGatewayMessage>(mContext);
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
@@ -101,6 +109,14 @@ void BaseCollectTopologyForExchangeTransaction::fillTopology()
                         incomingFlow.second));
             }
 
+            // Store commission if present and amount > 0
+            if (kMessage->commission() && kMessage->commission()->amount() > 0) {
+                topologyTrustLineManager->storeCommission(
+                    senderID,
+                    kMessage->equivalent(),
+                    kMessage->commission());
+            }
+            
             if (kMessage->equivalent() == mEquivalent) {
                 mGateways.insert(
                     senderID);

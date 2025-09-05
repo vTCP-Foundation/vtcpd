@@ -5,9 +5,16 @@
 #include "../../contractors/addresses/BaseAddress.h"
 #include "../../common/time/TimeUtils.h"
 #include "../../logger/Logger.h"
+#include "../../rates/Commission.h"
 
 #include <set>
 #include <unordered_map>
+#include <optional>
+#include <boost/asio/steady_timer.hpp>
+#include <boost/asio.hpp>
+#include <boost/bind.hpp>
+
+namespace as = boost::asio;
 
 class TopologyTrustLinesManager
 {
@@ -20,6 +27,7 @@ public:
         const SerializedEquivalent equivalent,
         BaseAddress::Shared ownAddress,
         bool iAmGateway,
+        as::io_context &ioContext,
         Logger &logger);
 
     void addTrustLine(
@@ -65,8 +73,20 @@ public:
         ContractorID source,
         ContractorID destination);
 
+    void storeCommission(
+        const ContractorID contractorID,
+        const SerializedEquivalent equivalent,
+        Commission::Shared commission);
+
+    Commission::Shared getCommission(
+        const ContractorID contractorID,
+        const SerializedEquivalent equivalent) const;
+
+    void printCommissions() const;
+
 public:
     static const ContractorID kCurrentNodeID = 0;
+    static const uint32_t kCommissionsTTLSeconds = 300;
 
 private:
     static const uint8_t kResetTrustLinesHours = 0;
@@ -102,6 +122,18 @@ private:
 
     const string logHeader() const;
 
+    void cleanupExpiredCommissions();
+    
+    // Commission expiry management
+    void scheduleExpiryTimer();
+    
+    void onExpiryTimer(
+        const boost::system::error_code &error);
+    
+    DateTime earliestCommissionExpiryTime() const;
+    
+    void removeExpiredCommissions();
+
 private:
     unordered_map<ContractorID, TrustLineWithPtrHashSet *> msTrustLines;
     map<DateTime, TopologyTrustLineWithPtr *> mtTrustLines;
@@ -110,6 +142,13 @@ private:
     bool mPreventDeleting;
     set<ContractorID> mGateways;
     DateTime mLastTrustLineTimeAdding;
+    
+    // Commission cache: map key <ContractorID, SerializedEquivalent> -> value <Commission::Shared, expiredAt>
+    map<pair<ContractorID, SerializedEquivalent>, pair<Commission::Shared, DateTime>> mCommissionsCache;
+    
+    // Commission expiry timer
+    as::io_context &mIOContext;
+    unique_ptr<as::steady_timer> mCommissionExpiryTimer;
 };
 
 #endif // VTCPD_TOPOLOGYTRUSTLINESMANAGER_H

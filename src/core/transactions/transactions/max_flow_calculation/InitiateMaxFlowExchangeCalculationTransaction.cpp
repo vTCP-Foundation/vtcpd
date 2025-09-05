@@ -107,6 +107,13 @@ TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::pr
     }
     debug() << "Exchange rates:";
     mExchangeRatesManager->printExtqrnalRates();
+    debug() << "Participants commissions in receiver equivalent:";
+    mEquivalentsSubsystemsRouter->topologyTrustLineManager(mEquivalent)->printCommissions();
+    debug() << "Participants commissions in exchange equivalents:";
+    for (const auto &exchangeEquivalent : mExchangeEquivalents) {
+        mEquivalentsSubsystemsRouter->topologyTrustLineManager(exchangeEquivalent)->printCommissions();
+    }
+    
 #endif
 
     mStep = CustomLogic;

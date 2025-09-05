@@ -20,6 +20,7 @@
 #include "features/FeaturesManager.h"
 #include "providing/ProvidingHandler.h"
 #include "rates/manager/ExchangeRatesManager.h"
+#include "rates/manager/CommissionsManager.h"
 
 #include "logger/Logger.h"
 
@@ -104,6 +105,9 @@ private:
         const json &conf);
 
     int initExchangeRatesManager();
+    
+    int initCommissionsManager(
+        const json &conf);
 
     void connectCommunicatorSignals();
 
@@ -233,6 +237,7 @@ protected:
     unique_ptr<FeaturesManager> mFeaturesManager;
     unique_ptr<ProvidingHandler> mProvidingHandler;
     unique_ptr<ExchangeRatesManager> mExchangeRatesManager;
+    unique_ptr<CommissionsManager> mCommissionsManager;
 };
 
 #endif //VTCPD_CORE_H

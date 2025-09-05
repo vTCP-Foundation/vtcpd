@@ -9,6 +9,7 @@
 #include "../../../network/messages/max_flow_calculation/ResultMaxFlowCalculationGatewayMessage.h"
 #include "../../../network/messages/max_flow_calculation/ExchangeRatesMessage.h"
 #include "../../../rates/manager/ExchangeRatesManager.h"
+#include "../../../rates/manager/CommissionsManager.h"
 
 class MaxFlowCalculationSourceSndLevelTransaction : public BaseTransaction
 {
@@ -22,6 +23,7 @@ public:
         ContractorsManager *contractorsManager,
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         ExchangeRatesManager *exchangeRatesManager,
+        CommissionsManager *commissionsManager,
         Logger &logger);
 
     TransactionResult::SharedConst run() override;
@@ -49,6 +51,7 @@ private:
     ContractorsManager *mContractorsManager;
     EquivalentsSubsystemsRouter *mEquivalentsSubsystemsRouter;
     ExchangeRatesManager *mExchangeRatesManager;
+    CommissionsManager *mCommissionsManager;
 };
 
 

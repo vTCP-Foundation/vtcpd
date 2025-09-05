@@ -330,3 +330,33 @@ void Settings::validateDatabaseConfiguration(const DatabaseConfiguration &config
         // Note: database name is optional - if not provided, default names will be used
     }
 }
+
+vector<pair<SerializedEquivalent, uint64_t>> Settings::commissions(
+    const json *conf) const
+{
+    if (conf == nullptr) {
+        auto j = loadParsedJSON();
+        conf = &j;
+    }
+    
+    vector<pair<SerializedEquivalent, uint64_t>> result;
+    try {
+        if (conf->contains("commissions") && conf->at("commissions").contains("byEquivalent")) {
+            auto commissionsByEquiv = conf->at("commissions").at("byEquivalent");
+            
+            for (auto& [key, value] : commissionsByEquiv.items()) {
+                try {
+                    SerializedEquivalent equivalent = stoul(key);
+                    uint64_t amount = value.at("amount").get<uint64_t>();
+                    result.emplace_back(equivalent, amount);
+                } catch (const exception& e) {
+                    // Skip malformed entries
+                    continue;
+                }
+            }
+        }
+        return result;
+    } catch (...) {
+        return result;
+    }
+}

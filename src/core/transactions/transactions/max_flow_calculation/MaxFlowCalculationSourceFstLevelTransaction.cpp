@@ -5,6 +5,7 @@ MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTra
     ContractorsManager *contractorsManager,
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     ExchangeRatesManager *exchangeRatesManager,
+    CommissionsManager *commissionsManager,
     Logger &logger) :
 
     BaseTransaction(
@@ -14,7 +15,8 @@ MaxFlowCalculationSourceFstLevelTransaction::MaxFlowCalculationSourceFstLevelTra
     mMessage(message),
     mContractorsManager(contractorsManager),
     mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
-    mExchangeRatesManager(exchangeRatesManager)
+    mExchangeRatesManager(exchangeRatesManager),
+    mCommissionsManager(commissionsManager)
 {}
 
 TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run()
@@ -63,23 +65,35 @@ TransactionResult::SharedConst MaxFlowCalculationSourceFstLevelTransaction::run(
 
     // Send topology request to 2nd level. in this case it is not required to send topology to initiator, 
     // because we will send topology to initiator in 2nd level transaction.
+    // but we need to send commissions and inform that I am is gateway if I am is gateway
     pair<vector<ContractorID>, vector<ContractorID>> outgoingFlowIDs;
+    Commission::Shared commission = mCommissionsManager->getCommission(mEquivalent);
+    auto contractorsAddress = mContractorsManager->contractorMainAddress(
+        mMessage->idOnReceiverSide);
+    vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;
+    vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
     if (mEquivalentsSubsystemsRouter->iAmGateway(mEquivalent)) {
-        vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> outgoingFlows;
-        vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> incomingFlows;
         // inform that I am is gateway
         // todo : it is not required inform about gateway, because this info initiator can obtain on it side
-        auto contractorsAddress = mContractorsManager->contractorMainAddress(
-                                      mMessage->idOnReceiverSide);
         sendMessage<ResultMaxFlowCalculationGatewayMessage>(
             contractorsAddress,
             mEquivalent,
             mContractorsManager->ownAddresses(),
             outgoingFlows,
-            incomingFlows);
+            incomingFlows,
+            commission);
         outgoingFlowIDs = mEquivalentsSubsystemsRouter->trustLinesManager(mEquivalent)->firstLevelGatewayNeighborsWithOutgoingFlow();
     } 
 	else {
+        if (commission != nullptr) {
+            sendMessage<ResultMaxFlowCalculationMessage>(
+                contractorsAddress,
+                mEquivalent,
+                mContractorsManager->ownAddresses(),
+                outgoingFlows,
+                incomingFlows,
+                commission);
+            }
         outgoingFlowIDs = mEquivalentsSubsystemsRouter->trustLinesManager(mEquivalent)->firstLevelNeighborsWithOutgoingFlow();
     }
 
@@ -167,12 +181,14 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendResultToInitiator(Serializ
     info() << "IncomingFlows: " << incomingFlows.size();
 #endif
     if (!outgoingFlows.empty() || !incomingFlows.empty()) {
+        Commission::Shared commission = mCommissionsManager->getCommission(equivalent);
         sendMessage<ResultMaxFlowCalculationMessage>(
             targetAddresses.at(0),
             equivalent,
             mContractorsManager->ownAddresses(),
             outgoingFlows,
-            incomingFlows);
+            incomingFlows,
+            commission);
         // todo : add config if cache need
         /*mTopologyCacheManager->addCache(
             mMessage->targetAddresses().at(0),
@@ -217,12 +233,14 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendCachedResultToInitiator(
     info() << "IncomingFlows: " << incomingFlowsForSending.size();
 #endif
     if (!outgoingFlowsForSending.empty() || !incomingFlowsForSending.empty()) {
+        Commission::Shared commission = mCommissionsManager->getCommission(equivalent);
         sendMessage<ResultMaxFlowCalculationMessage>(
             targetAddresses.at(0),
             equivalent,
             mContractorsManager->ownAddresses(),
             outgoingFlowsForSending,
-            incomingFlowsForSending);
+            incomingFlowsForSending,
+            commission);
     }
 }
 
@@ -264,12 +282,14 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendGatewayResultToInitiator(S
 	info() << "IncomingFlows: " << incomingFlows.size();
 #endif
 	if(!outgoingFlows.empty() || !incomingFlows.empty()) {
+		Commission::Shared commission = mCommissionsManager->getCommission(equivalent);
 		sendMessage<ResultMaxFlowCalculationGatewayMessage>(
 			targetAddresses.at(0),
 			equivalent,
 			mContractorsManager->ownAddresses(),
 			outgoingFlows,
-			incomingFlows);
+			incomingFlows,
+			commission);
 		// todo : add config if cache need
 		/*mTopologyCacheManager->addCache(
 			mMessage->targetAddresses().at(0),
@@ -313,12 +333,14 @@ void MaxFlowCalculationSourceFstLevelTransaction::sendCachedGatewayResultToIniti
 	info() << "IncomingFlows: " << incomingFlowsForSending.size();
 #endif
 	if(!outgoingFlowsForSending.empty() || !incomingFlowsForSending.empty()) {
+		Commission::Shared commission = mCommissionsManager->getCommission(equivalent);
 		sendMessage<ResultMaxFlowCalculationGatewayMessage>(
 			targetAddresses.at(0),
 			equivalent,
 			mContractorsManager->ownAddresses(),
 			outgoingFlowsForSending,
-			incomingFlowsForSending);
+			incomingFlowsForSending,
+			commission);
 	}
 
 }

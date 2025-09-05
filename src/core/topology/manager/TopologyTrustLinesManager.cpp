@@ -1,17 +1,22 @@
 #include "TopologyTrustLinesManager.h"
+#include <chrono>
 
 // Static constant definition
 const ContractorID TopologyTrustLinesManager::kCurrentNodeID;
+const uint32_t TopologyTrustLinesManager::kCommissionsTTLSeconds;
 
 TopologyTrustLinesManager::TopologyTrustLinesManager(
     const SerializedEquivalent equivalent,
     BaseAddress::Shared ownAddress,
     bool iAmGateway,
+    as::io_context &ioContext,
     Logger &logger):
 
     mEquivalent(equivalent),
     mLog(logger),
-    mPreventDeleting(false)
+    mPreventDeleting(false),
+    mIOContext(ioContext),
+    mCommissionExpiryTimer(make_unique<as::steady_timer>(ioContext))
 {
     // Use kCurrentNodeID for current node
     if (iAmGateway) {
@@ -337,4 +342,183 @@ const string TopologyTrustLinesManager::logHeader() const
     stringstream s;
     s << "TopologyTrustLinesManager: " << mEquivalent << " ";
     return s.str();
+}
+
+void TopologyTrustLinesManager::storeCommission(
+    const ContractorID contractorID,
+    const SerializedEquivalent equivalent,
+    Commission::Shared commission)
+{
+    if (!commission || commission->amount() == 0) {
+        return;  // Don't store zero commissions
+    }
+    
+    auto key = make_pair(contractorID, equivalent);
+    auto expiryTime = utc_now() + boost::posix_time::seconds(kCommissionsTTLSeconds);
+    auto value = make_pair(commission, expiryTime);
+    
+    auto it = mCommissionsCache.find(key);
+    if (it != mCommissionsCache.end()) {
+        // Update existing entry and refresh TTL
+        it->second = value;
+        debug() << "Updated commission for contractor " << contractorID 
+               << " equivalent " << equivalent << " amount " << commission->amount();
+    } else {
+        // Insert new entry
+        mCommissionsCache[key] = value;
+        debug() << "Stored commission for contractor " << contractorID 
+               << " equivalent " << equivalent << " amount " << commission->amount();
+    }
+    
+    // Schedule expiry timer
+    scheduleExpiryTimer();
+}
+
+Commission::Shared TopologyTrustLinesManager::getCommission(
+    const ContractorID contractorID,
+    const SerializedEquivalent equivalent) const
+{
+    auto key = make_pair(contractorID, equivalent);
+    auto it = mCommissionsCache.find(key);
+    
+    if (it == mCommissionsCache.end()) {
+        return nullptr;
+    }
+    
+    // Check if entry has expired
+    if (it->second.second < utc_now()) {
+        return nullptr;
+    }
+    
+    return it->second.first;
+}
+
+void TopologyTrustLinesManager::cleanupExpiredCommissions()
+{
+    auto now = utc_now();
+    
+    for (auto it = mCommissionsCache.begin(); it != mCommissionsCache.end();) {
+        if (it->second.second < now) {
+            debug() << "Removing expired commission for contractor " << it->first.first 
+                   << " equivalent " << it->first.second;
+            it = mCommissionsCache.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+DateTime TopologyTrustLinesManager::earliestCommissionExpiryTime() const
+{
+    if (mCommissionsCache.empty()) {
+        return utc_now() + boost::posix_time::hours(24);  // Return far future if no commissions
+    }
+    
+    DateTime earliest = boost::posix_time::max_date_time;
+    for (const auto& entry : mCommissionsCache) {
+        if (entry.second.second < earliest) {
+            earliest = entry.second.second;
+        }
+    }
+    
+    return earliest;
+}
+
+void TopologyTrustLinesManager::printCommissions() const
+{
+    if (mCommissionsCache.empty()) {
+        debug() << "No commissions cached";
+        return;
+    }
+    
+    debug() << "Cached commissions (" << mCommissionsCache.size() << " entries):";
+    
+    for (const auto& entry : mCommissionsCache) {
+        ContractorID contractorID = entry.first.first;
+        SerializedEquivalent equivalent = entry.first.second;
+        Commission::Shared commission = entry.second.first;
+        const DateTime& expiryTime = entry.second.second;
+        
+        debug() << "  Contractor " << contractorID 
+               << ", Equivalent " << equivalent 
+               << ": amount=" << commission->amount() 
+               << ", expires at " << expiryTime;
+    }
+}
+
+void TopologyTrustLinesManager::removeExpiredCommissions()
+{
+    auto now = utc_now();
+    auto it = mCommissionsCache.begin();
+    
+    size_t removedCount = 0;
+    while (it != mCommissionsCache.end()) {
+        if (it->second.second <= now) {  // expiryTime <= now
+            debug() << "Removing expired commission for contractor " << it->first.first 
+                   << ", equivalent " << it->first.second 
+                   << ", amount " << it->second.first->amount();
+            it = mCommissionsCache.erase(it);
+            removedCount++;
+        } else {
+            ++it;
+        }
+    }
+    
+    if (removedCount > 0) {
+        debug() << "Removed " << removedCount << " expired commissions, " 
+               << mCommissionsCache.size() << " remain cached";
+    }
+}
+
+void TopologyTrustLinesManager::scheduleExpiryTimer()
+{
+    if (mCommissionsCache.empty()) {
+        return;
+    }
+    
+    DateTime earliestExpiry = earliestCommissionExpiryTime();
+    DateTime now = utc_now();
+    
+    if (earliestExpiry <= now) {
+        // Some commissions have already expired, remove them immediately
+        removeExpiredCommissions();
+        if (mCommissionsCache.empty()) {
+            return;
+        }
+        earliestExpiry = earliestCommissionExpiryTime();
+    }
+    
+    auto delayMs = (earliestExpiry - now).total_milliseconds();
+    if (delayMs < 0) {
+        delayMs = 0;
+    }
+    
+    debug() << "Scheduling commission expiry timer in " << delayMs << "ms";
+    
+    mCommissionExpiryTimer->expires_after(chrono::milliseconds(delayMs));
+    mCommissionExpiryTimer->async_wait(boost::bind(
+        &TopologyTrustLinesManager::onExpiryTimer,
+        this,
+        as::placeholders::error));
+}
+
+void TopologyTrustLinesManager::onExpiryTimer(
+    const boost::system::error_code &error)
+{
+    if (error == as::error::operation_aborted) {
+        return; // Timer was cancelled
+    }
+    
+    if (error) {
+        debug() << "Commission expiry timer error: " << error.message();
+        return;
+    }
+    
+    debug() << "Commission expiry timer fired, removing expired commissions";
+    removeExpiredCommissions();
+    
+    // Reschedule timer if there are still commissions remaining
+    if (!mCommissionsCache.empty()) {
+        scheduleExpiryTimer();
+    }
 }

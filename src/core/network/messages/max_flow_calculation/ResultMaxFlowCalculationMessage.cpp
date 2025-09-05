@@ -4,14 +4,16 @@ ResultMaxFlowCalculationMessage::ResultMaxFlowCalculationMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> senderAddresses,
     vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> &outgoingFlows,
-    vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> &incomingFlows) :
+    vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> &incomingFlows,
+    Commission::Shared commission) :
 
     MaxFlowCalculationConfirmationMessage(
         equivalent,
         senderAddresses,
         0),
     mOutgoingFlows(outgoingFlows),
-    mIncomingFlows(incomingFlows)
+    mIncomingFlows(incomingFlows),
+    mCommission(commission)
 {
 }
 
@@ -63,6 +65,17 @@ ResultMaxFlowCalculationMessage::ResultMaxFlowCalculationMessage(
             make_shared<const TrustLineAmount>(
                 trustLineAmount));
     }
+    
+    // Read commission (always present in protocol)
+    auto hasCommission = *(buffer.get() + bytesBufferOffset);
+    bytesBufferOffset += sizeof(byte_t);
+    
+    if (hasCommission) {
+        uint64_t commissionAmount;
+        memcpy(&commissionAmount, buffer.get() + bytesBufferOffset, sizeof(uint64_t));
+        mCommission = make_shared<Commission>(commissionAmount);
+        bytesBufferOffset += sizeof(uint64_t);
+    }
 }
 
 const Message::MessageType ResultMaxFlowCalculationMessage::typeID() const
@@ -84,6 +97,12 @@ pair<BytesShared, size_t> ResultMaxFlowCalculationMessage::serializeToBytes() co
     }
     for (const auto &incomingFlow : mIncomingFlows) {
         bytesCount += incomingFlow.first->serializedSize() + kTrustLineAmountBytesCount;
+    }
+    
+    // Add bytes for commission (has_commission flag + commission amount)
+    bytesCount += sizeof(byte_t);
+    if (mCommission) {
+        bytesCount += sizeof(uint64_t);
     }
     BytesShared dataBytesShared = tryCalloc(bytesCount);
 
@@ -142,6 +161,25 @@ pair<BytesShared, size_t> ResultMaxFlowCalculationMessage::serializeToBytes() co
         dataBytesOffset += kTrustLineAmountBytesCount;
     }
     //----------------------------------------------------
+    
+    // Serialize commission
+    byte_t hasCommission = mCommission ? 1 : 0;
+    memcpy(
+        dataBytesShared.get() + dataBytesOffset,
+        &hasCommission,
+        sizeof(byte_t));
+    dataBytesOffset += sizeof(byte_t);
+    
+    if (mCommission) {
+        uint64_t commissionAmount = mCommission->amount();
+        memcpy(
+            dataBytesShared.get() + dataBytesOffset,
+            &commissionAmount,
+            sizeof(uint64_t));
+        dataBytesOffset += sizeof(uint64_t);
+    }
+    
+    //----------------------------------------------------
     return make_pair(
                dataBytesShared,
                bytesCount);
@@ -154,4 +192,9 @@ const vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> ResultMaxFlo
 const vector<pair<BaseAddress::Shared, ConstSharedTrustLineAmount>> ResultMaxFlowCalculationMessage::incomingFlows() const
 {
     return mIncomingFlows;
+}
+
+Commission::Shared ResultMaxFlowCalculationMessage::commission() const
+{
+    return mCommission;
 }

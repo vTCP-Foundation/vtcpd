@@ -3,8 +3,12 @@ cmake_minimum_required(VERSION 3.14)
 add_library(rates
     ExchangeRate.cpp
     ExchangeRate.h
+    Commission.cpp
+    Commission.h
     manager/ExchangeRatesManager.cpp
-    manager/ExchangeRatesManager.h)
+    manager/ExchangeRatesManager.h
+    manager/CommissionsManager.cpp
+    manager/CommissionsManager.h)
 
 target_include_directories(rates
     PUBLIC
@@ -20,6 +24,7 @@ target_link_libraries(rates
     PUBLIC
         common
         logger
+        settings
         ${Boost_SYSTEM_LIBRARIES}
         ${Boost_THREAD_LIBRARIES}
         ${Boost_DATE_TIME_LIBRARIES}

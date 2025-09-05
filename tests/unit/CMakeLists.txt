@@ -28,6 +28,8 @@ add_executable(unit_tests
     network/TailManagerTest.cpp
     network/IncomingRemoteNodeTest.cpp
     commands/InitiateMaxFlowExchangeCalculationCommandTest.cpp
+    commissions/CommissionsManagerTest.cpp
+    commissions/TopologyTrustLinesManagerCommissionsTest.cpp
 )
 
 # Include directories for tests

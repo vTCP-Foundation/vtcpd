@@ -5,6 +5,7 @@
 #include "../../interface/results_interface/interface/ResultsInterface.h"
 #include "../../interface/commands_interface/commands/ErrorUserCommand.h"
 #include "../../rates/manager/ExchangeRatesManager.h"
+#include "../../rates/manager/CommissionsManager.h"
 
 /*
  * Transactions
@@ -135,6 +136,7 @@ public:
         SubsystemsController *subsystemsController,
         TrustLinesInfluenceController *trustLinesInfluenceController,
         ExchangeRatesManager *exchangeRatesManager,
+        CommissionsManager *commissionsManager,
 		uint8_t hops_count);
 
     void processCommand(
@@ -604,6 +606,7 @@ private:
     SubsystemsController *mSubsystemsController;
     TrustLinesInfluenceController *mTrustLinesInfluenceController;
     ExchangeRatesManager *mExchangeRatesManager;
+    CommissionsManager *mCommissionsManager;
 
     unique_ptr<TransactionsScheduler> mScheduler;
     unique_ptr<EquivalentsCyclesSubsystemsRouter> mEquivalentsCyclesSubsystemsRouter;

@@ -53,6 +53,18 @@
         "cycles_clearing_period_sec": 600,
         "cycles_clearing_enabled": true
     },
-    "max_hops_count": 5
+    "max_hops_count": 5,
+    "commissions": {
+        "byEquivalent": {
+            "1": {
+                "amount": 100
+            },
+            "2": {
+                "amount": 250
+            },
+            "3": {
+                "amount": 500
+            }
+        }
+    }
 }
-  

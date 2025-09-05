@@ -28,6 +28,9 @@ public:
 
     vector<SerializedEquivalent> iAmGateway(
         const json *conf = nullptr) const;
+    
+    vector<pair<SerializedEquivalent, uint64_t>> commissions(
+        const json *conf = nullptr) const;
 
     string equivalentsRegistryAddress(
         const json *conf = nullptr) const;

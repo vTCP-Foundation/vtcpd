@@ -165,6 +165,11 @@ int Core::initSubsystems()
         return initCode;
     }
 
+    initCode = initCommissionsManager(conf);
+    if (initCode != 0) {
+        return initCode;
+    }
+
     initCode = initTransactionsManager(conf);
     if (initCode != 0) {
         return initCode;
@@ -382,6 +387,7 @@ int Core::initTransactionsManager(
                                    mSubsystemsController.get(),
                                    mTrustLinesInfluenceController.get(),
                                    mExchangeRatesManager.get(),
+                                   mCommissionsManager.get(),
                                    mSettings->hopsCount(&conf));
         info() << "Transactions handler is successfully initialised";
         return 0;
@@ -577,6 +583,22 @@ int Core::initExchangeRatesManager()
                                     mIOCtx,
                                     *mLog);
         info() << "Exchange Rates Manager is successfully initialized";
+        return 0;
+    } catch (const std::exception &e) {
+        mLog->logException("Core", e);
+        return -1;
+    }
+}
+
+int Core::initCommissionsManager(
+    const json &conf)
+{
+    try {
+        auto commissionsData = mSettings->commissions(&conf);
+        mCommissionsManager = make_unique<CommissionsManager>(
+                                  *mLog,
+                                  commissionsData);
+        info() << "Commissions Manager is successfully initialized";
         return 0;
     } catch (const std::exception &e) {
         mLog->logException("Core", e);
