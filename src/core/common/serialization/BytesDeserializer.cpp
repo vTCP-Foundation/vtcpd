@@ -1,4 +1,5 @@
 #include "BytesDeserializer.h"
+#include <cstring>  // for std::memcpy
 
 BytesDeserializer::BytesDeserializer(
     BytesShared buffer,
@@ -20,33 +21,40 @@ void BytesDeserializer::copyInto(
 void BytesDeserializer::copyInto(
     uint16_t* v) noexcept
 {
-    copyInto(
-        (void*)v,
-        sizeof(*v));
+    // Ensure proper alignment for uint16_t (2-byte alignment)
+    alignas(uint16_t) uint16_t aligned_value;
+    std::memcpy(&aligned_value, buffer.get() + mCurrentOffset, sizeof(uint16_t));
+    *v = aligned_value;
+    mCurrentOffset += sizeof(uint16_t);
 }
 
 void BytesDeserializer::copyInto(
     uint32_t* v) noexcept
 {
-    copyInto(
-        (void*)v,
-        sizeof(*v));
+    // Ensure proper alignment for uint32_t (4-byte alignment)
+    alignas(uint32_t) uint32_t aligned_value;
+    std::memcpy(&aligned_value, buffer.get() + mCurrentOffset, sizeof(uint32_t));
+    *v = aligned_value;
+    mCurrentOffset += sizeof(uint32_t);
 }
 
 void BytesDeserializer::copyInto(
     NodeUUID *nodeUUID) noexcept
 {
-    copyInto(
-        nodeUUID->data,
-        NodeUUID::kBytesSize);
+    std::copy(
+        buffer.get() + mCurrentOffset,
+        buffer.get() + mCurrentOffset + NodeUUID::kBytesSize,
+        nodeUUID->begin()
+    );
+    mCurrentOffset += NodeUUID::kBytesSize;
 }
 
 void BytesDeserializer::copyInto(
     void* destination,
     const size_t bytesCount) noexcept
 {
-
-    memcpy(
+    // Use std::memcpy for better alignment handling
+    std::memcpy(
         destination,
         buffer.get() + mCurrentOffset,
         bytesCount);

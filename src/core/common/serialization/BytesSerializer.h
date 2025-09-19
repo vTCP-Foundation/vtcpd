@@ -109,7 +109,8 @@ protected:
         virtual void* pointer() const
         noexcept
         {
-            return reinterpret_cast<void*>(
+            // Return pointer to properly aligned member
+            return static_cast<void*>(
                        const_cast<T*>(&mValue));
         }
 
@@ -120,7 +121,7 @@ protected:
     using InlineSizeTRecord = OptimizedPrimitiveTypeInlineRecord<size_t>;
     using InlineUInt16TRecord = OptimizedPrimitiveTypeInlineRecord<uint16_t>;
     using InlineUInt32TRecord = OptimizedPrimitiveTypeInlineRecord<uint32_t>;
-    using InlineUInt64TRecord = OptimizedPrimitiveTypeInlineRecord<uint32_t>;
+    using InlineUInt64TRecord = OptimizedPrimitiveTypeInlineRecord<uint64_t>;
     using InlineByteRecord = OptimizedPrimitiveTypeInlineRecord<byte_t>;
     using InlineBoolRecord = OptimizedPrimitiveTypeInlineRecord<bool>;
 
