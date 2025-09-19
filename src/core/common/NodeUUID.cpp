@@ -1,50 +1,33 @@
 #include "NodeUUID.h"
+#include <algorithm>  // for std::copy
 
 NodeUUID::NodeUUID()
-    :uuid(boost::uuids::random_generator()())
+    : uuid(boost::uuids::random_generator()())
 {
 }
 
-NodeUUID::NodeUUID(uuid const &u):
-    boost::uuids::uuid(u) {}
-
-NodeUUID::NodeUUID(NodeUUID &u)
+NodeUUID::NodeUUID(uuid const &u)
+    : boost::uuids::uuid(u)
 {
-    memcpy(data, u.data, kBytesSize);
-}
-
-NodeUUID::NodeUUID(const NodeUUID &u)
-{
-    memcpy(data, u.data, kBytesSize);
 }
 
 NodeUUID::NodeUUID(const string &hex)
+    : uuid(boost::lexical_cast<uuid>(hex))
 {
-    uuid u = boost::lexical_cast<uuid>(hex);
-    memcpy(data, u.data, kBytesSize);
 }
 
 NodeUUID::NodeUUID(const uint8_t* bytes)
 {
-    memcpy(data, bytes, kBytesSize);
+    std::copy(bytes, bytes + kBytesSize, begin());
 }
 
 const string NodeUUID::stringUUID() const
 {
-    uuid u;
-    memcpy(&u.data, data, 16);
-    return boost::lexical_cast<string>(u);
+    return boost::lexical_cast<string>(*this);
 }
 
-NodeUUID& NodeUUID::operator=(const boost::uuids::uuid &u)
-{
-    memcpy(data, u.data, kBytesSize);
-    return *this;
-}
-
-const NodeUUID& NodeUUID::empty ()
+const NodeUUID& NodeUUID::empty()
 {
     static const NodeUUID kEmpty("00000000-0000-0000-0000-000000000000");
     return kEmpty;
 }
-
