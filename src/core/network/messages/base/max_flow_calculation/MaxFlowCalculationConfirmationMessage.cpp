@@ -1,4 +1,6 @@
 #include "MaxFlowCalculationConfirmationMessage.h"
+#include "../../../../common/serialization/BytesDeserializer.h"
+#include "../../../../common/serialization/BytesSerializer.h"
 
 MaxFlowCalculationConfirmationMessage::MaxFlowCalculationConfirmationMessage(
     const SerializedEquivalent equivalent,
@@ -16,10 +18,9 @@ MaxFlowCalculationConfirmationMessage::MaxFlowCalculationConfirmationMessage(
 
     SenderMessage(buffer)
 {
-    size_t bytesBufferOffset = SenderMessage::kOffsetToInheritedBytes();
-    //----------------------------------------------------
-    ConfirmationID *confirmationID = new (buffer.get() + bytesBufferOffset) ConfirmationID;
-    mConfirmationID = (ConfirmationID) (*confirmationID);
+    auto currentOffset = SenderMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, currentOffset);
+    deserializer.copyInto(&mConfirmationID);
 }
 
 void MaxFlowCalculationConfirmationMessage::setConfirmationID(
@@ -40,35 +41,23 @@ const ConfirmationID MaxFlowCalculationConfirmationMessage::confirmationID() con
 
 pair<BytesShared, size_t> MaxFlowCalculationConfirmationMessage::serializeToBytes() const
 {
+    // TODO: Serialization architecture optimization needed across entire inheritance chain:
+    // This base class pattern causes redundant parent serialization in all child classes.
+    // Each child calls parent::serializeToBytes() then copies that buffer again via enqueue().
+    // Consider: void serializeToSerializer(BytesSerializer& serializer) pattern to avoid copies.
+    // NOTE: This method also has redundant parentBytesAndCount variable (serializes parent twice!)
     auto parentBytesAndCount = SenderMessage::serializeToBytes();
 
-    size_t bytesCount =
-        parentBytesAndCount.second
-        + sizeof(ConfirmationID);
-
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mConfirmationID,
-        sizeof(ConfirmationID));
-    //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    BytesSerializer serializer;
+    serializer.enqueue(SenderMessage::serializeToBytes());
+    serializer.copy(mConfirmationID);
+    return serializer.collect();
 }
 
 const size_t MaxFlowCalculationConfirmationMessage::kOffsetToInheritedBytes() const
 {
     const auto kOffset =
         SenderMessage::kOffsetToInheritedBytes()
-        + sizeof(ConfirmationID);
+        + BytesSerializer::kSerializedUInt16Size;
     return kOffset;
 }

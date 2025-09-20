@@ -1,4 +1,6 @@
 #include "FinalAmountsConfigurationResponseMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 FinalAmountsConfigurationResponseMessage::FinalAmountsConfigurationResponseMessage(
     const SerializedEquivalent equivalent,
@@ -33,14 +35,15 @@ FinalAmountsConfigurationResponseMessage::FinalAmountsConfigurationResponseMessa
 
     TransactionMessage(buffer)
 {
-    size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    size_t currentOffset = TransactionMessage::kOffsetToInheritedBytes();
     //----------------------------------------------------
-    auto *state = new (buffer.get() + bytesBufferOffset) SerializedOperationState;
-    mState = (OperationState) (*state);
+    BytesDeserializer deserializer(buffer, currentOffset);
+    SerializedOperationState state;
+    deserializer.copyInto(&state);
+    mState = (OperationState) state;
     if (mState == Accepted) {
-        bytesBufferOffset += sizeof(SerializedOperationState);
         auto publicKey = make_shared<lamport::PublicKey>(
-                             buffer.get() + bytesBufferOffset);
+                             buffer.get() + currentOffset + sizeof(SerializedOperationState));
         mPublicKey = publicKey;
     }
 }
@@ -57,41 +60,16 @@ const lamport::PublicKey::Shared FinalAmountsConfigurationResponseMessage::publi
 
 pair<BytesShared, size_t> FinalAmountsConfigurationResponseMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-
-    size_t bytesCount =
-        parentBytesAndCount.second
-        + sizeof(SerializedOperationState);
-
-    if (mState == Accepted) {
-        bytesCount += mPublicKey->keySize();
-    }
-
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    SerializedOperationState state(mState);
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &state,
-        sizeof(SerializedOperationState));
+    BytesSerializer serializer;
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+    serializer.copy((SerializedOperationState)mState);
     //----------------------------------------------------
     if (mState == Accepted) {
-        dataBytesOffset += sizeof(SerializedOperationState);
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
+        serializer.copy(
             mPublicKey->data(),
             mPublicKey->keySize());
     }
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    return serializer.collect();
 }
 
 const Message::MessageType FinalAmountsConfigurationResponseMessage::typeID() const

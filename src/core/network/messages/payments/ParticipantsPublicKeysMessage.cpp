@@ -1,4 +1,5 @@
 #include "ParticipantsPublicKeysMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 ParticipantsPublicKeysMessage::ParticipantsPublicKeysMessage(
     const SerializedEquivalent equivalent,
@@ -18,24 +19,18 @@ ParticipantsPublicKeysMessage::ParticipantsPublicKeysMessage(
 {
     auto bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
 
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
     SerializedRecordsCount kRecordsCount;
-    memcpy(
-        &kRecordsCount,
-        buffer.get() + bytesBufferOffset,
-        sizeof(SerializedRecordsCount));
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
+    deserializer.copyInto(&kRecordsCount);
 
     for (SerializedRecordNumber i = 0; i < kRecordsCount; ++i) {
         PaymentNodeID paymentNodeID;
-        memcpy(
-            &paymentNodeID,
-            buffer.get() + bytesBufferOffset,
-            sizeof(PaymentNodeID));
-        bytesBufferOffset += sizeof(PaymentNodeID);
+        deserializer.copyInto(&paymentNodeID);
 
-        auto publicKey = make_shared<lamport::PublicKey>(
-                             buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += lamport::PublicKey::keySize();
+        // Get current offset for crypto key creation
+        auto currentOffset = deserializer.getCurrentOffset();
+        auto publicKey = make_shared<lamport::PublicKey>(buffer.get() + currentOffset);
+        deserializer.skipBytes(lamport::PublicKey::keySize());
 
         mPublicKeys.insert(
             make_pair(
@@ -56,6 +51,10 @@ const map<PaymentNodeID, lamport::PublicKey::Shared>& ParticipantsPublicKeysMess
 
 pair<BytesShared, size_t> ParticipantsPublicKeysMessage::serializeToBytes() const
 {
+    // TODO: Performance optimization - parent data is serialized twice:
+    // 1. TransactionMessage::serializeToBytes() creates buffer
+    // 2. serializer.enqueue() copies that buffer again
+    // Consider passing serializer down inheritance chain to avoid redundant allocation/copy
     const auto parentBytesAndCount = TransactionMessage::serializeToBytes();
 
     const auto kBufferSize =
@@ -64,40 +63,19 @@ pair<BytesShared, size_t> ParticipantsPublicKeysMessage::serializeToBytes() cons
         + mPublicKeys.size()
         * (sizeof(PaymentNodeID) + lamport::PublicKey::keySize());
 
-    BytesShared buffer = tryMalloc(kBufferSize);
-
-    size_t dataBytesOffset = 0;
-    // Parent message content
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
 
     // Records count
     auto kTotalParticipantsCount = mPublicKeys.size();
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &kTotalParticipantsCount,
-        sizeof(SerializedRecordsCount));
-    dataBytesOffset += sizeof(SerializedRecordsCount);
+    serializer.copy((SerializedRecordsCount)kTotalParticipantsCount);
 
     // Nodes IDs and publicKeys
     for (const auto &nodeIDAndPublicKey : mPublicKeys) {
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            &nodeIDAndPublicKey.first,
-            sizeof(PaymentNodeID));
-        dataBytesOffset += sizeof(PaymentNodeID);
-
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            nodeIDAndPublicKey.second->data(),
-            lamport::PublicKey::keySize());
-        dataBytesOffset += lamport::PublicKey::keySize();
+        serializer.copy(nodeIDAndPublicKey.first);
+        serializer.copy(nodeIDAndPublicKey.second->data(), lamport::PublicKey::keySize());
     }
 
-    return make_pair(
-               buffer,
-               kBufferSize);
+    return serializer.collect();
 }

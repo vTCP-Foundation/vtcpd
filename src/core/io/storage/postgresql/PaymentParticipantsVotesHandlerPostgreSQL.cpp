@@ -1,5 +1,6 @@
 #include "PaymentParticipantsVotesHandlerPostgreSQL.h"
 #include <sstream>
+#include "../../../common/serialization/BytesSerializer.h"
 
 using namespace std;
 
@@ -69,7 +70,10 @@ void PaymentParticipantsVotesHandlerPostgreSQL::saveRecord(
     int lengths[kParams];
     int formats[kParams]={1,1,0,1,1};
 
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     auto contractorBytes = contractor->serializeToBytes();
     params[1]=reinterpret_cast<const char*>(contractorBytes.get()); lengths[1]=contractor->serializedSize();
     string nodeStr=to_string(paymentNodeID); params[2]=nodeStr.c_str(); lengths[2]=0;
@@ -86,7 +90,10 @@ map<PaymentNodeID, Signature::Shared> PaymentParticipantsVotesHandlerPostgreSQL:
 {
     const string query="SELECT payment_node_id, signature FROM " + mTableName + " WHERE transaction_uuid=$1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
     checkTuples(mDataBase,res,"participantsSignatures");
     map<PaymentNodeID, Signature::Shared> result;
@@ -105,7 +112,10 @@ void PaymentParticipantsVotesHandlerPostgreSQL::deleteRecords(
 {
     const string query="DELETE FROM " + mTableName + " WHERE transaction_uuid=$1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"deleteRecords");
     PQclear(res);

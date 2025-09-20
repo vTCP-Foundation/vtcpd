@@ -1,4 +1,6 @@
 #include "CyclesFourNodesNegativeBalanceRequestMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 CyclesFourNodesNegativeBalanceRequestMessage::CyclesFourNodesNegativeBalanceRequestMessage(
     const SerializedEquivalent equivalent,
@@ -20,76 +22,50 @@ CyclesFourNodesNegativeBalanceRequestMessage::CyclesFourNodesNegativeBalanceRequ
 
     TransactionMessage(buffer)
 {
-    size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    size_t currentOffset = TransactionMessage::kOffsetToInheritedBytes();
+
     // contractorAddress
     mContractorAddress = deserializeAddress(
-                             buffer.get() + bytesBufferOffset);
-    bytesBufferOffset += mContractorAddress->serializedSize();
+                             buffer.get() + currentOffset);
+    currentOffset += mContractorAddress->serializedSize();
 
     // checkedNodes
+    auto deserializer = BytesDeserializer(
+        buffer,
+        currentOffset);
+
     SerializedRecordsCount checkedNodesCount;
-    memcpy(
-        &checkedNodesCount,
-        buffer.get() + bytesBufferOffset,
-        sizeof(SerializedRecordsCount));
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
+    deserializer.copyInto(&checkedNodesCount);
+    currentOffset += BytesSerializer::kSerializedRecordsCountSize;
 
     for (SerializedRecordNumber i = 1; i <= checkedNodesCount; ++i) {
         auto stepAddress = deserializeAddress(
-                               buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += stepAddress->serializedSize();
+                               buffer.get() + currentOffset);
+        currentOffset += stepAddress->serializedSize();
         mCheckedNodes.push_back(stepAddress);
     }
 }
 
 pair<BytesShared, size_t> CyclesFourNodesNegativeBalanceRequestMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
+    auto serializer = BytesSerializer();
 
+    // Serialize parent data
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+
+    // Serialize contractor address
+    serializer.enqueue(mContractorAddress->serializeToBytes(), mContractorAddress->serializedSize());
+
+    // Serialize checked nodes count
     auto debtorsCount = (SerializedRecordsCount)mCheckedNodes.size();
-    size_t bytesCount = parentBytesAndCount.second
-                        + mContractorAddress->serializedSize()
-                        + sizeof(SerializedRecordsCount);
-    for (const auto &address : mCheckedNodes) {
-        bytesCount += address->serializedSize();
-    }
+    serializer.copy(debtorsCount);
 
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-
-    // For mContractor
-    auto serializedContractorAddress = mContractorAddress->serializeToBytes();
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        serializedContractorAddress.get(),
-        mContractorAddress->serializedSize());
-    dataBytesOffset += mContractorAddress->serializedSize();
-
-    // For mCheckedNodes
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &debtorsCount,
-        sizeof(SerializedRecordsCount));
-    dataBytesOffset += sizeof(SerializedRecordsCount);
-
+    // Serialize checked nodes
     for(auto const &address: mCheckedNodes) {
-        auto serializedAddress = address->serializeToBytes();
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            serializedAddress.get(),
-            address->serializedSize());
-        dataBytesOffset += address->serializedSize();
+        serializer.enqueue(address->serializeToBytes(), address->serializedSize());
     }
 
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    return serializer.collect();
 }
 
 const Message::MessageType CyclesFourNodesNegativeBalanceRequestMessage::typeID() const

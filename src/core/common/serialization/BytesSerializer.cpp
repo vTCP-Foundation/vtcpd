@@ -1,4 +1,5 @@
 #include "BytesSerializer.h"
+#include "../multiprecision/MultiprecisionUtils.h"
 
 /**
  * @param bytesCount - specifies how many bytes must be reserved in to the memory
@@ -188,8 +189,22 @@ void BytesSerializer::copy(
     const NodeUUID &nodeUUID) noexcept(false)
 {
     copy(
-        nodeUUID.data,
+        &(*nodeUUID.begin()),
         NodeUUID::kBytesSize);
+}
+
+/**
+ * SAFE FOR USAGE WITH TEMPORARY VALUE.
+ *
+ * @throws bad_alloc;
+ */
+void BytesSerializer::copy(
+    const TrustLineAmount &amount) noexcept(false)
+{
+    auto serializedAmount = trustLineAmountToBytes(amount);
+    copy(
+        serializedAmount.data(),
+        kSerializedTrustLineAmountSize);
 }
 
 /**
@@ -211,7 +226,7 @@ void BytesSerializer::enqueue(
     const NodeUUID &nodeUUID) noexcept(false)
 {
     enqueue(
-        nodeUUID.data,
+        &(*nodeUUID.begin()),
         NodeUUID::kBytesSize);
 }
 
@@ -227,7 +242,7 @@ void BytesSerializer::copy(
 #endif
 
     auto buffer = tryMalloc(bytesCount);
-    memcpy(
+    std::memcpy(
         buffer.get(),
         src,
         bytesCount);
@@ -305,7 +320,7 @@ noexcept(false)
 
     for (auto record : mRecords) {
         if (record != nullptr && record->pointer() != nullptr && record->bytesCount() > 0) {
-            memcpy(
+            std::memcpy(
                 data.get() + dataOffset,
                 record->pointer(),
                 record->bytesCount());

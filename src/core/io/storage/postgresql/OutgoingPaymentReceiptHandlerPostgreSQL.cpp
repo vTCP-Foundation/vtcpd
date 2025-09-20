@@ -1,5 +1,6 @@
 #include "OutgoingPaymentReceiptHandlerPostgreSQL.h"
 #include <sstream>
+#include "../../../common/serialization/BytesSerializer.h"
 
 using namespace std;
 
@@ -88,7 +89,10 @@ void OutgoingPaymentReceiptHandlerPostgreSQL::saveRecord(
     params[0] = tlIdStr.c_str(); lengths[0]=0;
     params[1] = auditStr.c_str(); lengths[1]=0;
 
-    params[2] = reinterpret_cast<const char*>(transactionUUID.data); lengths[2]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[2] = reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[2]=TransactionUUID::kBytesSize;
 
     params[3] = reinterpret_cast<const char*>(ownPublicKeyHash->data()); lengths[3]=KeyHash::kBytesSize;
 
@@ -212,7 +216,10 @@ void OutgoingPaymentReceiptHandlerPostgreSQL::deleteRecords(
 {
     const string query = "DELETE FROM " + mTableName + " WHERE transaction_uuid=$1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer2;
+    serializer2.copy(transactionUUID);
+    auto serializedUUID2 = serializer2.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID2.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"deleteRecords uuid");
     PQclear(res);
@@ -248,7 +255,10 @@ bool OutgoingPaymentReceiptHandlerPostgreSQL::isContainsTransaction(
 {
     const string query = "SELECT transaction_uuid FROM " + mTableName + " WHERE transaction_uuid=$1 LIMIT 1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer2;
+    serializer2.copy(transactionUUID);
+    auto serializedUUID2 = serializer2.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID2.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
     checkTuples(mDataBase,res,"containsTransaction");
     bool result = PQntuples(res) > 0;

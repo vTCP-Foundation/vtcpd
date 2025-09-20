@@ -20,25 +20,22 @@ SenderMessage::SenderMessage(
     BytesShared buffer) : EquivalentMessage(buffer)
 {
     auto bytesBufferOffset = EquivalentMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-    memcpy(
-        &idOnReceiverSide,
-        buffer.get() + bytesBufferOffset,
-        sizeof(ContractorID));
-    bytesBufferOffset += sizeof(ContractorID);
+    // Use BytesDeserializer for consistent offset management
+    deserializer.copyInto(&idOnReceiverSide);
 
     byte_t senderAddressesCnt;
-    memcpy(
-        &senderAddressesCnt,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte_t));
-    bytesBufferOffset += sizeof(byte_t);
+    deserializer.copyInto(&senderAddressesCnt);
 
     for (int idx = 0; idx < senderAddressesCnt; idx++) {
-        auto senderAddress = deserializeAddress(
-                                 buffer.get() + bytesBufferOffset);
+        // Get current position from deserializer for address parsing
+        auto currentOffset = deserializer.getCurrentOffset();
+        auto senderAddress = deserializeAddress(buffer.get() + currentOffset);
         senderAddresses.push_back(senderAddress);
-        bytesBufferOffset += senderAddress->serializedSize();
+
+        // Keep deserializer in sync by advancing past the address data
+        deserializer.skipBytes(senderAddress->serializedSize());
     }
 }
 
@@ -60,7 +57,9 @@ pair<BytesShared, size_t> SenderMessage::serializeToBytes() const
 const size_t SenderMessage::kOffsetToInheritedBytes() const
 {
     auto kOffset =
-        EquivalentMessage::kOffsetToInheritedBytes() + sizeof(ContractorID) + sizeof(byte_t);
+        EquivalentMessage::kOffsetToInheritedBytes() +
+        BytesSerializer::kSerializedContractorIDSize +
+        BytesSerializer::kSerializedByteSize;
     for (const auto &address : senderAddresses) {
         kOffset += address->serializedSize();
     }

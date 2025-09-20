@@ -1,4 +1,6 @@
 #include "AuditResponseMessage.h"
+#include "../../common/serialization/BytesDeserializer.h"
+#include "../../common/serialization/BytesSerializer.h"
 
 AuditResponseMessage::AuditResponseMessage(
     const SerializedEquivalent equivalent,
@@ -35,17 +37,16 @@ AuditResponseMessage::AuditResponseMessage(
     BytesShared buffer) :
     ConfirmationMessage(buffer)
 {
-    auto bytesBufferOffset = ConfirmationMessage::kOffsetToInheritedBytes();
-
     if (state() == ConfirmationMessage::OK) {
-        memcpy(
-            &mKeyNumber,
-            buffer.get() + bytesBufferOffset,
-            sizeof(KeyNumber));
-        bytesBufferOffset += sizeof(KeyNumber);
+        BytesDeserializer deserializer(
+            buffer,
+            ConfirmationMessage::kOffsetToInheritedBytes());
+
+        deserializer.copyInto(&mKeyNumber);
 
         mSignature = make_shared<lamport::Signature>(
-                         buffer.get() + bytesBufferOffset);
+            buffer.get() + deserializer.getCurrentOffset());
+        deserializer.skipBytes(lamport::Signature::signatureSize());
     }
 }
 
@@ -66,36 +67,16 @@ const lamport::Signature::Shared AuditResponseMessage::signature() const
 
 pair<BytesShared, size_t> AuditResponseMessage::serializeToBytes() const
 {
-    const auto parentBytesAndCount = ConfirmationMessage::serializeToBytes();
-    auto kBufferSize = parentBytesAndCount.second;
-    if (state() == ConfirmationMessage::OK) {
-        kBufferSize += sizeof(KeyNumber) + mSignature->signatureSize();
-    }
-    BytesShared buffer = tryMalloc(kBufferSize);
+    BytesSerializer serializer;
 
-    size_t dataBytesOffset = 0;
-    // Parent message content
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
+    serializer.enqueue(ConfirmationMessage::serializeToBytes());
 
     if (state() == ConfirmationMessage::OK) {
-        dataBytesOffset += parentBytesAndCount.second;
-
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            &mKeyNumber,
-            sizeof(KeyNumber));
-        dataBytesOffset += sizeof(KeyNumber);
-
-        memcpy(
-            buffer.get() + dataBytesOffset,
+        serializer.copy(mKeyNumber);
+        serializer.copy(
             mSignature->data(),
             mSignature->signatureSize());
     }
 
-    return make_pair(
-               buffer,
-               kBufferSize);
+    return serializer.collect();
 }

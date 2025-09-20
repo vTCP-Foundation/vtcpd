@@ -1,4 +1,6 @@
 ﻿#include "ResponseMessage.h"
+#include "../../../../common/serialization/BytesDeserializer.h"
+#include "../../../../common/serialization/BytesSerializer.h"
 
 
 ResponseMessage::ResponseMessage(
@@ -21,14 +23,14 @@ ResponseMessage::ResponseMessage(
 
     TransactionMessage(buffer)
 {
-    size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    size_t currentOffset = TransactionMessage::kOffsetToInheritedBytes();
     //----------------------------------------------------
-    PathID *pathID = new (buffer.get() + bytesBufferOffset) PathID;
-    mPathID = *pathID;
-    bytesBufferOffset += sizeof(PathID);
+    BytesDeserializer deserializer(buffer, currentOffset);
+    deserializer.copyInto(&mPathID);
     //----------------------------------------------------
-    SerializedOperationState *state = new (buffer.get() + bytesBufferOffset) SerializedOperationState;
-    mState = (OperationState) (*state);
+    SerializedOperationState state;
+    deserializer.copyInto(&state);
+    mState = (OperationState) state;
 }
 
 const ResponseMessage::OperationState ResponseMessage::state() const
@@ -44,42 +46,20 @@ const PathID ResponseMessage::pathID() const
 const size_t ResponseMessage::kOffsetToInheritedBytes() const
 {
     return TransactionMessage::kOffsetToInheritedBytes()
-           + sizeof(PathID)
-           + sizeof(SerializedOperationState);
+           + BytesSerializer::kSerializedPathIDSize
+           + BytesSerializer::kSerializedByteSize;
 }
 
 pair<BytesShared, size_t> ResponseMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-
-    size_t bytesCount =
-        parentBytesAndCount.second
-        + sizeof(PathID)
-        + sizeof(SerializedOperationState);
-
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mPathID,
-        sizeof(PathID));
-    dataBytesOffset += sizeof(PathID);
-    //----------------------------------------------------
-    SerializedOperationState state(mState);
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &state,
-        sizeof(SerializedOperationState));
-    //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    // TODO: Serialization architecture optimization needed across entire inheritance chain:
+    // This base class pattern causes redundant parent serialization in all child classes.
+    // Each child calls parent::serializeToBytes() then copies that buffer again via enqueue().
+    // Consider: void serializeToSerializer(BytesSerializer& serializer) pattern to avoid copies.
+    BytesSerializer serializer;
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+    serializer.copy(mPathID);
+    serializer.copy((SerializedOperationState)mState);
+    return serializer.collect();
 }
 

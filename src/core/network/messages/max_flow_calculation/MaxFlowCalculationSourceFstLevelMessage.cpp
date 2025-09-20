@@ -1,4 +1,5 @@
 #include "MaxFlowCalculationSourceFstLevelMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 
 MaxFlowCalculationSourceFstLevelMessage::MaxFlowCalculationSourceFstLevelMessage(
@@ -26,11 +27,9 @@ MaxFlowCalculationSourceFstLevelMessage::MaxFlowCalculationSourceFstLevelMessage
 	BytesShared buffer) : SenderMessage(buffer) {
 	
 	size_t bytesBufferOffset = SenderMessage::kOffsetToInheritedBytes();
-	    
-	memcpy(
-        &mHopsCnt,
-        buffer.get() + bytesBufferOffset,
-        sizeof(HopsCount_t));
+	BytesDeserializer deserializer(buffer, bytesBufferOffset);
+
+	deserializer.copyInto(&mHopsCnt);
 }
 
 pair<BytesShared, size_t>
@@ -41,21 +40,10 @@ MaxFlowCalculationSourceFstLevelMessage::serializeToBytes() const {
             parentBytesAndCount.second +
             sizeof(HopsCount_t);
 
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mHopsCnt);
 
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mHopsCnt,
-        sizeof(HopsCount_t));
-
-    return make_pair(
-        dataBytesShared,
-        bytesCount);
+    return serializer.collect();
 }

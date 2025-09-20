@@ -1,4 +1,5 @@
 #include "MaxFlowCalculationTargetSndLevelMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 MaxFlowCalculationTargetSndLevelMessage::MaxFlowCalculationTargetSndLevelMessage(
     const SerializedEquivalent equivalent,
@@ -15,11 +16,9 @@ MaxFlowCalculationTargetSndLevelMessage::MaxFlowCalculationTargetSndLevelMessage
     BytesShared buffer) : MaxFlowCalculationMessage(buffer)
 {
     size_t bytesBufferOffset = MaxFlowCalculationMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-    memcpy(
-        &mIsTargetGateway,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte_t));
+    deserializer.copyInto(&mIsTargetGateway);
 }
 
 bool MaxFlowCalculationTargetSndLevelMessage::isTargetGateway() const
@@ -39,20 +38,10 @@ pair<BytesShared, size_t> MaxFlowCalculationTargetSndLevelMessage::serializeToBy
         parentBytesAndCount.second +
         sizeof(byte_t);
 
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mIsTargetGateway,
-        sizeof(byte_t));
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mIsTargetGateway);
 
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    return serializer.collect();
 }

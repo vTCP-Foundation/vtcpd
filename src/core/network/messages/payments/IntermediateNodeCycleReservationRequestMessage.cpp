@@ -1,4 +1,5 @@
 #include "IntermediateNodeCycleReservationRequestMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 IntermediateNodeCycleReservationRequestMessage::IntermediateNodeCycleReservationRequestMessage(
     const SerializedEquivalent equivalent,
@@ -22,14 +23,14 @@ IntermediateNodeCycleReservationRequestMessage::IntermediateNodeCycleReservation
 
     RequestCycleMessage(buffer)
 {
-    auto parentMessageOffset = RequestCycleMessage::kOffsetToInheritedBytes();
-    auto dataBytesOffset = buffer.get() + parentMessageOffset;
+    auto currentOffset = RequestCycleMessage::kOffsetToInheritedBytes();
+    auto dataBytesOffset = buffer.get() + currentOffset;
 
     mCoordinatorAddress = deserializeAddress(dataBytesOffset);
     dataBytesOffset += mCoordinatorAddress->serializedSize();
 
-    SerializedPathLengthSize *cycleLength = new (dataBytesOffset) SerializedPathLengthSize;
-    mCycleLength = *cycleLength;
+    BytesDeserializer deserializer(buffer, dataBytesOffset - buffer.get());
+    deserializer.copyIntoDespiteConst(&mCycleLength);
 }
 
 const Message::MessageType IntermediateNodeCycleReservationRequestMessage::typeID() const
@@ -49,33 +50,16 @@ BaseAddress::Shared IntermediateNodeCycleReservationRequestMessage::coordinatorA
 
 pair<BytesShared, size_t> IntermediateNodeCycleReservationRequestMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = RequestCycleMessage::serializeToBytes();
-    size_t totalBytesCount =
-        + parentBytesAndCount.second
-        + mCoordinatorAddress->serializedSize()
-        + sizeof(SerializedPathLengthSize);
+    BytesSerializer serializer;
 
-    BytesShared buffer = tryMalloc(totalBytesCount);
-    auto bytesBufferOffset = buffer.get();
-    memcpy(
-        bytesBufferOffset,
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    bytesBufferOffset += parentBytesAndCount.second;
+    serializer.enqueue(RequestCycleMessage::serializeToBytes());
 
     auto serializedAddress = mCoordinatorAddress->serializeToBytes();
-    memcpy(
-        bytesBufferOffset,
-        serializedAddress.get(),
+    serializer.enqueue(
+        serializedAddress,
         mCoordinatorAddress->serializedSize());
-    bytesBufferOffset += mCoordinatorAddress->serializedSize();
 
-    memcpy(
-        bytesBufferOffset,
-        &mCycleLength,
-        sizeof(SerializedPathLengthSize));
+    serializer.copy(mCycleLength);
 
-    return make_pair(
-               buffer,
-               totalBytesCount);
+    return serializer.collect();
 }

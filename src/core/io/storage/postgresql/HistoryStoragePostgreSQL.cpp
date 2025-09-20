@@ -1,6 +1,7 @@
 #include "HistoryStoragePostgreSQL.h"
 #include <sstream>
 #include <cstring>
+#include "../../../common/serialization/BytesSerializer.h"
 
 using namespace std;
 
@@ -111,7 +112,10 @@ void HistoryStoragePostgreSQL::saveTrustLineRecord(
     int lengths[kParams];
     int formats[kParams];
     // operation_uuid (binary)
-    params[0] = reinterpret_cast<const char*>(record->operationUUID().data);
+    BytesSerializer serializer;
+    serializer.copy(record->operationUUID());
+    auto serializedUUID = serializer.collect();
+    params[0] = reinterpret_cast<const char*>(serializedUUID.first.get());
     lengths[0] = TransactionUUID::kBytesSize;
     formats[0] = 1;
     // timestamp
@@ -143,13 +147,19 @@ void HistoryStoragePostgreSQL::savePaymentMainOutgoingRecord(
 
     const int kParams = 7;
     const char *params[kParams]; int lengths[kParams]; int formats[kParams];
-    params[0]=reinterpret_cast<const char*>(record->operationUUID().data); lengths[0]=TransactionUUID::kBytesSize; formats[0]=1;
+    BytesSerializer serializer1;
+    serializer1.copy(record->operationUUID());
+    auto serializedUUID1 = serializer1.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID1.first.get()); lengths[0]=TransactionUUID::kBytesSize; formats[0]=1;
     string tsStr=to_string(ts); params[1]=tsStr.c_str(); lengths[1]=0; formats[1]=0;
     string eqStr=to_string(equivalent); params[2]=eqStr.c_str(); lengths[2]=0; formats[2]=0;
     string rtStr=to_string(record->recordType()); params[3]=rtStr.c_str(); lengths[3]=0; formats[3]=0;
     params[4]=reinterpret_cast<const char*>(bodyPair.first.get()); lengths[4]=static_cast<int>(bodyPair.second); formats[4]=1;
     string szStr=to_string(bodyPair.second); params[5]=szStr.c_str(); lengths[5]=0; formats[5]=0;
-    params[6]=reinterpret_cast<const char*>(record->commandUUID().data); lengths[6]=CommandUUID::kBytesSize; formats[6]=1;
+    BytesSerializer serializer2;
+    serializer2.copy(record->commandUUID());
+    auto serializedCommandUUID = serializer2.collect();
+    params[6]=reinterpret_cast<const char*>(serializedCommandUUID.first.get()); lengths[6]=CommandUUID::kBytesSize; formats[6]=1;
 
     PGresult *res=PQexecParams(mDataBase,query.c_str(),kParams,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"savePaymentMainOutgoingRecord");
@@ -169,7 +179,10 @@ void HistoryStoragePostgreSQL::savePaymentMainIncomingRecord(
 
     const int kParams = 6;
     const char *params[kParams]; int lengths[kParams]; int formats[kParams];
-    params[0]=reinterpret_cast<const char*>(record->operationUUID().data); lengths[0]=TransactionUUID::kBytesSize; formats[0]=1;
+    BytesSerializer serializer3;
+    serializer3.copy(record->operationUUID());
+    auto serializedUUID3 = serializer3.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID3.first.get()); lengths[0]=TransactionUUID::kBytesSize; formats[0]=1;
     string tsStr=to_string(ts); params[1]=tsStr.c_str(); lengths[1]=0; formats[1]=0;
     string eqStr=to_string(equivalent); params[2]=eqStr.c_str(); lengths[2]=0; formats[2]=0;
     string rtStr=to_string(record->recordType()); params[3]=rtStr.c_str(); lengths[3]=0; formats[3]=0;
@@ -210,7 +223,10 @@ void HistoryStoragePostgreSQL::savePaymentAdditionalRecord(
                          "VALUES ($1,$2,$3,$4,$5,$6);";
     const int kParams=6;
     const char *params[kParams]; int lengths[kParams]; int formats[kParams];
-    params[0]=reinterpret_cast<const char*>(record->operationUUID().data); lengths[0]=TransactionUUID::kBytesSize; formats[0]=1;
+    BytesSerializer serializer4;
+    serializer4.copy(record->operationUUID());
+    auto serializedUUID4 = serializer4.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID4.first.get()); lengths[0]=TransactionUUID::kBytesSize; formats[0]=1;
     string tsStr=to_string(ts); params[1]=tsStr.c_str(); lengths[1]=0; formats[1]=0;
     string eqStr=to_string(equivalent); params[2]=eqStr.c_str(); lengths[2]=0; formats[2]=0;
     string rtStr=to_string(record->recordType()); params[3]=rtStr.c_str(); lengths[3]=0; formats[3]=0;
@@ -308,7 +324,10 @@ bool HistoryStoragePostgreSQL::whetherOperationWasConducted(
 {
     const string query = "SELECT 1 FROM " + mMainTableName + " WHERE operation_uuid=$1 LIMIT 1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res = PQexecParams(mDataBase, query.c_str(), 1, nullptr, params, lengths, formats, 0);
     checkTuples(mDataBase,res,"whetherOperationWasConducted");
     bool found = PQntuples(res) > 0;

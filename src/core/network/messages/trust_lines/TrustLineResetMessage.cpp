@@ -1,4 +1,5 @@
 #include "TrustLineResetMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 TrustLineResetMessage::TrustLineResetMessage(
     const SerializedEquivalent equivalent,
@@ -25,23 +26,11 @@ TrustLineResetMessage::TrustLineResetMessage(
     TransactionMessage(buffer)
 {
     auto bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-    memcpy(
-        &mAuditNumber,
-        buffer.get() + bytesBufferOffset,
-        sizeof(AuditNumber));
-    bytesBufferOffset += sizeof(AuditNumber);
-
-    vector<byte_t> incomingAmountBytes(
-        buffer.get() + bytesBufferOffset,
-        buffer.get() + bytesBufferOffset + kTrustLineAmountBytesCount);
-    mIncomingAmount = bytesToTrustLineAmount(incomingAmountBytes);
-    bytesBufferOffset += kTrustLineAmountBytesCount;
-
-    vector<byte_t> outgoingAmountBytes(
-        buffer.get() + bytesBufferOffset,
-        buffer.get() + bytesBufferOffset + kTrustLineAmountBytesCount);
-    mOutgoingAmount = bytesToTrustLineAmount(outgoingAmountBytes);
+    deserializer.copyInto(&mAuditNumber);
+    deserializer.copyInto(&mIncomingAmount);
+    deserializer.copyInto(&mOutgoingAmount);
     bytesBufferOffset += kTrustLineAmountBytesCount;
 
     vector<byte_t> balance(
@@ -82,49 +71,25 @@ const bool TrustLineResetMessage::isCheckCachedResponse() const
 
 pair<BytesShared, size_t> TrustLineResetMessage::serializeToBytes() const
 {
+    // TODO: Performance optimization - parent data is serialized twice:
+    // 1. TransactionMessage::serializeToBytes() creates buffer
+    // 2. serializer.enqueue() copies that buffer again
+    // Consider passing serializer down inheritance chain to avoid redundant allocation/copy
     const auto parentBytesAndCount = TransactionMessage::serializeToBytes();
     auto kBufferSize = parentBytesAndCount.second
                        + sizeof(AuditNumber)
                        + kTrustLineAmountBytesCount
                        + kTrustLineAmountBytesCount
                        + kTrustLineBalanceSerializeBytesCount;
-    BytesShared buffer = tryMalloc(kBufferSize);
-
-    size_t dataBytesOffset = 0;
-    // Parent message content
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &mAuditNumber,
-        sizeof(AuditNumber));
-    dataBytesOffset += sizeof(AuditNumber);
-
-    vector<byte_t> incomingAmountBuffer = trustLineAmountToBytes(mIncomingAmount);
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        incomingAmountBuffer.data(),
-        incomingAmountBuffer.size());
-    dataBytesOffset += kTrustLineAmountBytesCount;
-
-    vector<byte_t> outgoingAmountBuffer = trustLineAmountToBytes(mOutgoingAmount);
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        outgoingAmountBuffer.data(),
-        outgoingAmountBuffer.size());
-    dataBytesOffset += kTrustLineAmountBytesCount;
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mAuditNumber);
+    serializer.copy(mIncomingAmount);
+    serializer.copy(mOutgoingAmount);
 
     vector<byte_t> balanceBuffer = trustLineBalanceToBytes(mBalance);
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        balanceBuffer.data(),
-        balanceBuffer.size());
+    serializer.copy(balanceBuffer.data(), balanceBuffer.size());
 
-    return make_pair(
-               buffer,
-               kBufferSize);
+    return serializer.collect();
 }

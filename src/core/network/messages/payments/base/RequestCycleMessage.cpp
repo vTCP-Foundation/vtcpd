@@ -1,4 +1,5 @@
 #include "RequestCycleMessage.h"
+#include "../../../../common/serialization/BytesDeserializer.h"
 
 RequestCycleMessage::RequestCycleMessage(
     const SerializedEquivalent equivalent,
@@ -19,14 +20,10 @@ RequestCycleMessage::RequestCycleMessage(
 
     TransactionMessage(buffer)
 {
-    auto parentMessageOffset = TransactionMessage::kOffsetToInheritedBytes();
-    auto bytesBufferOffset = buffer.get() + parentMessageOffset;
-    auto amountEndOffset = bytesBufferOffset + kTrustLineBalanceBytesCount; // TODO: deserialize only non-zero
-    vector<byte_t> amountBytes(
-        bytesBufferOffset,
-        amountEndOffset);
+    auto currentOffset = TransactionMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, currentOffset);
 
-    mAmount = bytesToTrustLineAmount(amountBytes);
+    deserializer.copyInto(&mAmount);
 }
 
 const TrustLineAmount &RequestCycleMessage::amount() const
@@ -36,34 +33,23 @@ const TrustLineAmount &RequestCycleMessage::amount() const
 
 pair<BytesShared, size_t> RequestCycleMessage::serializeToBytes() const
 {
-    auto serializedAmount = trustLineAmountToBytes(mAmount); // TODO: serialize only non-zero
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-    size_t bytesCount =
-        +parentBytesAndCount.second + kTrustLineAmountBytesCount;
+    // TODO: Serialization architecture optimization needed across entire inheritance chain:
+    // This base class pattern causes redundant parent serialization in all child classes.
+    // Each child calls parent::serializeToBytes() then copies that buffer again via enqueue().
+    // Consider: void serializeToSerializer(BytesSerializer& serializer) pattern to avoid copies.
+    BytesSerializer serializer;
 
-    BytesShared buffer = tryMalloc(bytesCount);
-    auto initialOffset = buffer.get();
-    memcpy(
-        initialOffset,
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+    serializer.copy(mAmount);
 
-    auto bytesBufferOffset = initialOffset + parentBytesAndCount.second;
-
-    memcpy(
-        bytesBufferOffset,
-        serializedAmount.data(),
-        kTrustLineAmountBytesCount);
-
-    return make_pair(
-               buffer,
-               bytesCount);
+    return serializer.collect();
 }
 
 const size_t RequestCycleMessage::kOffsetToInheritedBytes() const
 {
     const size_t offset =
-        TransactionMessage::kOffsetToInheritedBytes() + kTrustLineAmountBytesCount;
+        TransactionMessage::kOffsetToInheritedBytes() +
+        BytesSerializer::kSerializedTrustLineAmountSize;
 
     return offset;
 }

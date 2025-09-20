@@ -1,6 +1,7 @@
 #include "CommunicatorMessagesQueueHandlerPostgreSQL.h"
 #include <sstream>
 #include "../../../common/time/TimeUtils.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 using namespace std;
 
@@ -62,7 +63,10 @@ void CommunicatorMessagesQueueHandlerPostgreSQL::saveRecord(
     const char *params[kParams]; int lengths[kParams]; int formats[kParams];
     string contractorStr=to_string(contractorID); params[0]=contractorStr.c_str(); lengths[0]=0; formats[0]=0;
     string eqStr=to_string(equivalent); params[1]=eqStr.c_str(); lengths[1]=0; formats[1]=0;
-    params[2]=reinterpret_cast<const char*>(transactionUUID.data); lengths[2]=TransactionUUID::kBytesSize; formats[2]=1;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[2]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[2]=TransactionUUID::kBytesSize; formats[2]=1;
     string typeStr=to_string((int)messageType); params[3]=typeStr.c_str(); lengths[3]=0; formats[3]=0;
     params[4]=reinterpret_cast<const char*>(message.get()); lengths[4]=static_cast<int>(messageBytesCount); formats[4]=1;
     string bytesStr=to_string(messageBytesCount); params[5]=bytesStr.c_str(); lengths[5]=0; formats[5]=0;
@@ -122,7 +126,10 @@ void CommunicatorMessagesQueueHandlerPostgreSQL::deleteRecord(
     string query = "DELETE FROM " + mTableName + " WHERE contractor_id=$1 AND transaction_uuid=$2;";
     const char *params[2]; int lengths[2]; int formats[2]={0,1};
     string cStr=to_string(contractorID); params[0]=cStr.c_str(); lengths[0]=0;
-    params[1]=reinterpret_cast<const char*>(transactionUUID.data); lengths[1]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer2;
+    serializer2.copy(transactionUUID);
+    auto serializedUUID2 = serializer2.collect();
+    params[1]=reinterpret_cast<const char*>(serializedUUID2.first.get()); lengths[1]=TransactionUUID::kBytesSize;
     PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"deleteRecord uuid");
     PQclear(res);

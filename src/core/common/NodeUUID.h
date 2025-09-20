@@ -28,13 +28,8 @@ public:
 public:
     explicit NodeUUID();
     NodeUUID(uuid const &u);
-    NodeUUID(NodeUUID &u);
-    NodeUUID(const NodeUUID &u);
     NodeUUID(const string &hex);
     explicit NodeUUID(const uint8_t* bytes);
-
-    NodeUUID& operator=(
-        const boost::uuids::uuid &u);
 
     const string stringUUID() const;
 };

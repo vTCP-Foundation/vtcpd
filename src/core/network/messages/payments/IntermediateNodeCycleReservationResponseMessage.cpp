@@ -45,23 +45,12 @@ pair<BytesShared, size_t> IntermediateNodeCycleReservationResponseMessage::seria
     size_t bytesCount =
         parentBytesAndCount.second + serializedAmount.size();
 
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        serializedAmount.data(),
-        serializedAmount.size());
-    //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mAmountReserved);
+
+    return serializer.collect();
 }
 
 const Message::MessageType IntermediateNodeCycleReservationResponseMessage::typeID() const
