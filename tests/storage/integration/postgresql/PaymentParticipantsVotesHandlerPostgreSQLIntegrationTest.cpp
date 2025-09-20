@@ -7,6 +7,7 @@
 #include "../../../../src/core/logger/Logger.h"
 #include "../../../../src/core/common/exceptions/IOError.h"
 #include "../../../../src/core/common/exceptions/ValueError.h"
+#include "../../../../src/core/common/serialization/BytesSerializer.h"
 #include "../fixtures/DatabaseTestHelper.h"
 #include "gtest/gtest.h"
 #include <sstream>
@@ -128,7 +129,10 @@ protected:
         int lengths[2];
         int formats[2] = {1, 0};
         
-        params[0] = reinterpret_cast<const char*>(transactionUUID.data);
+        BytesSerializer serializer;
+        serializer.copy(transactionUUID);
+        auto serializedUUID = serializer.collect();
+        params[0] = reinterpret_cast<const char*>(serializedUUID.first.get());
         lengths[0] = TransactionUUID::kBytesSize;
         
         std::string nodeStr = std::to_string(nodeID);

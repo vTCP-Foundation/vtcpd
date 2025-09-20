@@ -13,6 +13,7 @@
 #include "core/common/Types.h"
 #include "core/network/messages/Message.hpp"
 #include "core/transactions/transactions/base/TransactionUUID.h"
+#include "../../../../src/core/common/serialization/BytesSerializer.h"
 #include "core/common/memory/MemoryUtils.h"
 
 using namespace std;
@@ -162,7 +163,10 @@ protected:
         
         params[0] = contractorStr.c_str(); lengths[0] = 0; formats[0] = 0;
         params[1] = equivalentStr.c_str(); lengths[1] = 0; formats[1] = 0;
-        params[2] = reinterpret_cast<const char*>(transactionUUID.data); lengths[2] = TransactionUUID::kBytesSize; formats[2] = 1;
+        BytesSerializer serializer;
+        serializer.copy(transactionUUID);
+        auto serializedUUID = serializer.collect();
+        params[2] = reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[2] = TransactionUUID::kBytesSize; formats[2] = 1;
         params[3] = messageTypeStr.c_str(); lengths[3] = 0; formats[3] = 0;
         params[4] = message.c_str(); lengths[4] = static_cast<int>(message.length()); formats[4] = 1;
         params[5] = messageBytesCountStr.c_str(); lengths[5] = 0; formats[5] = 0;

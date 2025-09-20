@@ -1,4 +1,5 @@
 #include "TransactionPublicKeyHashMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     const SerializedEquivalent equivalent,
@@ -42,33 +43,25 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     BytesShared buffer) : TransactionMessage(buffer)
 {
     auto bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-    memcpy(
-        &mPaymentNodeID,
-        buffer.get() + bytesBufferOffset,
-        sizeof(PaymentNodeID));
-    bytesBufferOffset += sizeof(PaymentNodeID);
+    deserializer.copyInto(&mPaymentNodeID);
 
-    mTransactionPublicKeyHash = make_shared<lamport::KeyHash>(
-                                    buffer.get() + bytesBufferOffset);
-    bytesBufferOffset += lamport::KeyHash::kBytesSize;
+    // Get current offset for crypto key creation
+    auto currentOffset = deserializer.getCurrentOffset();
+    mTransactionPublicKeyHash = make_shared<lamport::KeyHash>(buffer.get() + currentOffset);
+    deserializer.skipBytes(lamport::KeyHash::kBytesSize);
 
-    memcpy(
-        &mIsReceiptContains,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte_t));
+    deserializer.copyInto(&mIsReceiptContains);
 
     if (mIsReceiptContains) {
-        bytesBufferOffset += sizeof(byte_t);
-        memcpy(
-            &mPublicKeyNumber,
-            buffer.get() + bytesBufferOffset,
-            sizeof(KeyNumber));
-        bytesBufferOffset += sizeof(KeyNumber);
+        deserializer.copyInto(&mPublicKeyNumber);
 
-        auto signature = make_shared<lamport::Signature>(
-                             buffer.get() + bytesBufferOffset);
+        // Get current offset for signature creation
+        currentOffset = deserializer.getCurrentOffset();
+        auto signature = make_shared<lamport::Signature>(buffer.get() + currentOffset);
         mSignature = signature;
+        deserializer.skipBytes(lamport::Signature::signatureSize());
     }
 }
 
@@ -104,6 +97,10 @@ const lamport::Signature::Shared TransactionPublicKeyHashMessage::signature() co
 
 pair<BytesShared, size_t> TransactionPublicKeyHashMessage::serializeToBytes() const
 {
+    // TODO: Performance optimization - parent data is serialized twice:
+    // 1. TransactionMessage::serializeToBytes() creates buffer
+    // 2. serializer.enqueue() copies that buffer again
+    // Consider passing serializer down inheritance chain to avoid redundant allocation/copy
     const auto parentBytesAndCount = TransactionMessage::serializeToBytes();
 
     auto kBufferSize =
@@ -112,47 +109,17 @@ pair<BytesShared, size_t> TransactionPublicKeyHashMessage::serializeToBytes() co
         kBufferSize += (sizeof(KeyNumber) + lamport::Signature::signatureSize());
     }
 
-    BytesShared buffer = tryMalloc(kBufferSize);
-
-    size_t dataBytesOffset = 0;
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &mPaymentNodeID,
-        sizeof(PaymentNodeID));
-    dataBytesOffset += sizeof(PaymentNodeID);
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        mTransactionPublicKeyHash->data(),
-        lamport::KeyHash::kBytesSize);
-    dataBytesOffset += lamport::KeyHash::kBytesSize;
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &mIsReceiptContains,
-        sizeof(byte_t));
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mPaymentNodeID);
+    serializer.copy(mTransactionPublicKeyHash->data(), lamport::KeyHash::kBytesSize);
+    serializer.copy(mIsReceiptContains);
 
     if (mIsReceiptContains) {
-        dataBytesOffset += sizeof(byte_t);
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            &mPublicKeyNumber,
-            sizeof(KeyNumber));
-        dataBytesOffset += sizeof(KeyNumber);
-
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            mSignature->data(),
-            mSignature->signatureSize());
+        serializer.copy(mPublicKeyNumber);
+        serializer.copy(mSignature->data(), mSignature->signatureSize());
     }
 
-    return make_pair(
-               buffer,
-               kBufferSize);
+    return serializer.collect();
 }

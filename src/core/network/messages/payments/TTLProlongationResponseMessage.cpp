@@ -1,4 +1,6 @@
 #include "TTLProlongationResponseMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 TTLProlongationResponseMessage::TTLProlongationResponseMessage(
     const SerializedEquivalent equivalent,
@@ -18,10 +20,12 @@ TTLProlongationResponseMessage::TTLProlongationResponseMessage(
 
     TransactionMessage(buffer)
 {
-    size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    size_t currentOffset = TransactionMessage::kOffsetToInheritedBytes();
     //----------------------------------------------------
-    SerializedOperationState *state = new (buffer.get() + bytesBufferOffset) SerializedOperationState;
-    mState = (OperationState) (*state);
+    BytesDeserializer deserializer(buffer, currentOffset);
+    SerializedOperationState state;
+    deserializer.copyInto(&state);
+    mState = (OperationState) state;
 }
 
 const TTLProlongationResponseMessage::OperationState TTLProlongationResponseMessage::state() const
@@ -31,30 +35,10 @@ const TTLProlongationResponseMessage::OperationState TTLProlongationResponseMess
 
 pair<BytesShared, size_t> TTLProlongationResponseMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-
-    size_t bytesCount =
-        parentBytesAndCount.second
-        + sizeof(SerializedOperationState);
-
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    SerializedOperationState state(mState);
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &state,
-        sizeof(SerializedOperationState));
-    //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    BytesSerializer serializer;
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+    serializer.copy((SerializedOperationState)mState);
+    return serializer.collect();
 }
 
 const Message::MessageType TTLProlongationResponseMessage::typeID() const

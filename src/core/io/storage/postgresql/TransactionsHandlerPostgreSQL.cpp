@@ -1,6 +1,7 @@
 #include "TransactionsHandlerPostgreSQL.h"
 #include <sstream>
 #include <arpa/inet.h>
+#include "../../../common/serialization/BytesSerializer.h"
 
 using namespace std;
 
@@ -62,7 +63,10 @@ void TransactionsHandlerPostgreSQL::saveRecord(
                          "ON CONFLICT (transaction_uuid) DO UPDATE SET transaction_body=EXCLUDED.transaction_body, transaction_bytes_count=EXCLUDED.transaction_bytes_count;";
     const int kParams=3;
     const char *params[kParams]; int lengths[kParams]; int formats[kParams]={1,1,0};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     params[1]=reinterpret_cast<const char*>(transaction.get()); lengths[1]=transactionBytesCount;
     string cntStr=to_string(transactionBytesCount); params[2]=cntStr.c_str(); lengths[2]=0;
     PGresult *res=PQexecParams(mDataBase,query.c_str(),kParams,nullptr,params,lengths,formats,0);
@@ -75,7 +79,10 @@ BytesShared TransactionsHandlerPostgreSQL::getTransaction(
 {
     const string query="SELECT transaction_body, transaction_bytes_count FROM " + mTableName + " WHERE transaction_uuid=$1 LIMIT 1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     
     // Use binary format for the result to get raw bytes
     PGresult *res=PQexecParams(mDataBase,query.c_str(),1,nullptr,params,lengths,formats,1);
@@ -102,7 +109,10 @@ bool TransactionsHandlerPostgreSQL::isTransactionSerialized(
 {
     const string query="SELECT 1 FROM " + mTableName + " WHERE transaction_uuid=$1 LIMIT 1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res=PQexecParams(mDataBase,query.c_str(),1,nullptr,params,lengths,formats,0);
     checkTuples(mDataBase,res,"isSerialized");
     bool present = PQntuples(res)>0;
@@ -115,7 +125,10 @@ void TransactionsHandlerPostgreSQL::deleteRecordIfExists(
 {
     const string query="DELETE FROM " + mTableName + " WHERE transaction_uuid=$1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res=PQexecParams(mDataBase,query.c_str(),1,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"deleteRecordIfExists");
     PQclear(res);

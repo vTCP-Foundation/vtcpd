@@ -1,4 +1,6 @@
 #include "CyclesBaseFiveOrSixNodesBoundaryMessage.h"
+#include "../../../../common/serialization/BytesDeserializer.h"
+#include "../../../../common/serialization/BytesSerializer.h"
 
 CyclesBaseFiveOrSixNodesBoundaryMessage::CyclesBaseFiveOrSixNodesBoundaryMessage(
     const SerializedEquivalent equivalent,
@@ -18,62 +20,41 @@ CyclesBaseFiveOrSixNodesBoundaryMessage::CyclesBaseFiveOrSixNodesBoundaryMessage
     CycleBaseFiveOrSixNodesInBetweenMessage(
         buffer)
 {
-    size_t bytesBufferOffset = CycleBaseFiveOrSixNodesInBetweenMessage::kOffsetToInheritedBytes();
+    auto deserializer = BytesDeserializer(
+        buffer,
+        CycleBaseFiveOrSixNodesInBetweenMessage::kOffsetToInheritedBytes());
+
     //    Get NodesCount
     SerializedRecordsCount boundaryNodesCount;
-    memcpy(
-        &boundaryNodesCount,
-        buffer.get() + bytesBufferOffset,
-        sizeof(SerializedRecordsCount));
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
+    deserializer.copyInto(&boundaryNodesCount);
+
     //    Parse boundary nodes
+    size_t currentOffset = CycleBaseFiveOrSixNodesInBetweenMessage::kOffsetToInheritedBytes() + BytesSerializer::kSerializedRecordsCountSize;
     for (SerializedRecordNumber idx = 0; idx < boundaryNodesCount; idx++) {
         auto stepAddress = deserializeAddress(
-                               buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += stepAddress->serializedSize();
+                               buffer.get() + currentOffset);
+        currentOffset += stepAddress->serializedSize();
         mBoundaryNodes.push_back(stepAddress);
     }
 }
 
 pair<BytesShared, size_t> CyclesBaseFiveOrSixNodesBoundaryMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = CycleBaseFiveOrSixNodesInBetweenMessage::serializeToBytes();
+    auto serializer = BytesSerializer();
 
+    // Serialize parent data
+    serializer.enqueue(CycleBaseFiveOrSixNodesInBetweenMessage::serializeToBytes());
+
+    // Serialize boundary nodes count
     auto boundaryNodesCount = (SerializedRecordsCount) mBoundaryNodes.size();
-    size_t bytesCount =
-        parentBytesAndCount.second +
-        sizeof(SerializedRecordsCount);
-    for (const auto &address : mBoundaryNodes) {
-        bytesCount += address->serializedSize();
-    }
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    // for parent node
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //    for boundaryNodes
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &boundaryNodesCount,
-        sizeof(SerializedRecordsCount));
-    dataBytesOffset += sizeof(SerializedRecordsCount);
+    serializer.copy(boundaryNodesCount);
 
+    // Serialize boundary nodes
     for(const auto &address: mBoundaryNodes) {
-        auto serializedAddress = address->serializeToBytes();
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            serializedAddress.get(),
-            address->serializedSize());
-        dataBytesOffset += address->serializedSize();
+        serializer.enqueue(address->serializeToBytes(), address->serializedSize());
     }
 
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    return serializer.collect();
 }
 
 vector<BaseAddress::Shared> CyclesBaseFiveOrSixNodesBoundaryMessage::boundaryNodes() const

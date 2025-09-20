@@ -1,4 +1,5 @@
 #include "InitiateMaxFlowCalculationMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
     const SerializedEquivalent equivalent,
@@ -16,17 +17,10 @@ InitiateMaxFlowCalculationMessage::InitiateMaxFlowCalculationMessage(
     BytesShared buffer) : SenderMessage(buffer)
 {
     size_t bytesBufferOffset = SenderMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-    memcpy(
-        &mIsSenderGateway,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte));
-    bytesBufferOffset += sizeof(byte);
-
-    memcpy(
-        &mHopsCount,
-        buffer.get() + bytesBufferOffset,
-        sizeof(uint8_t));
+    deserializer.copyInto(&mIsSenderGateway);
+    deserializer.copyInto(&mHopsCount);
 }
 
 bool InitiateMaxFlowCalculationMessage::isSenderGateway() const
@@ -52,28 +46,11 @@ pair<BytesShared, size_t> InitiateMaxFlowCalculationMessage::serializeToBytes() 
         sizeof(mIsSenderGateway) +
         sizeof(mHopsCount);
 
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mIsSenderGateway);
+    serializer.copy(mHopsCount);
 
-    // Marshal parent message bytes
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-
-    // Marshal mIsSenderGateway
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mIsSenderGateway,
-        sizeof(mIsSenderGateway));
-    dataBytesOffset += sizeof(mIsSenderGateway);
-
-    // Marshal mHopsCount
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mHopsCount,
-        sizeof(mHopsCount));
-
-    return make_pair(dataBytesShared, bytesCount);
+    return serializer.collect();
 }

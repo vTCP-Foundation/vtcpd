@@ -1,4 +1,5 @@
 #include "InitChannelMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 InitChannelMessage::InitChannelMessage(
     vector<BaseAddress::Shared> senderAddresses,
@@ -19,21 +20,13 @@ InitChannelMessage::InitChannelMessage(
     BytesShared buffer):
     TransactionMessage(buffer)
 {
-    // todo: use deserializer
-
     size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
-    //----------------------------------------------------
-    memcpy(
-        &mContractorID,
-        buffer.get() + bytesBufferOffset,
-        sizeof(ContractorID));
-    bytesBufferOffset += sizeof(ContractorID);
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
+
+    deserializer.copyInto(&mContractorID);
 
     mPublicKey = make_shared<MsgEncryptor::PublicKey>();
-    memcpy(
-        mPublicKey->key,
-        buffer.get() + bytesBufferOffset,
-        mPublicKey->kBytesSize);
+    deserializer.copyInto(mPublicKey->key, mPublicKey->kBytesSize);
 }
 
 
@@ -62,27 +55,11 @@ pair<BytesShared, size_t> InitChannelMessage::serializeToBytes() const
                         + sizeof(ContractorID)
                         + mPublicKey->kBytesSize;
 
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mContractorID,
-        sizeof(ContractorID));
-    dataBytesOffset += sizeof(ContractorID);
-    //----------------------------
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mPublicKey->key,
-        mPublicKey->kBytesSize);
-    //----------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mContractorID);
+    serializer.copy(&mPublicKey->key, mPublicKey->kBytesSize);
+
+    return serializer.collect();
 }

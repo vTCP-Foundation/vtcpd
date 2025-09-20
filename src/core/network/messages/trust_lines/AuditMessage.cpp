@@ -1,4 +1,6 @@
 #include "AuditMessage.h"
+#include "../../common/serialization/BytesDeserializer.h"
+#include "../../common/serialization/BytesSerializer.h"
 
 AuditMessage::AuditMessage(
     const SerializedEquivalent equivalent,
@@ -23,34 +25,18 @@ AuditMessage::AuditMessage(
 AuditMessage::AuditMessage(
     BytesShared buffer) : TransactionMessage(buffer)
 {
-    auto bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(
+        buffer,
+        TransactionMessage::kOffsetToInheritedBytes());
 
-    memcpy(
-        &mAuditNumber,
-        buffer.get() + bytesBufferOffset,
-        sizeof(AuditNumber));
-    bytesBufferOffset += sizeof(AuditNumber);
-
-    vector<byte_t> incomingAmountBytes(
-        buffer.get() + bytesBufferOffset,
-        buffer.get() + bytesBufferOffset + kTrustLineAmountBytesCount);
-    mIncomingAmount = bytesToTrustLineAmount(incomingAmountBytes);
-    bytesBufferOffset += kTrustLineAmountBytesCount;
-
-    vector<byte_t> outgoingAmountBytes(
-        buffer.get() + bytesBufferOffset,
-        buffer.get() + bytesBufferOffset + kTrustLineAmountBytesCount);
-    mOutgoingAmount = bytesToTrustLineAmount(outgoingAmountBytes);
-    bytesBufferOffset += kTrustLineAmountBytesCount;
-
-    memcpy(
-        &mKeyNumber,
-        buffer.get() + bytesBufferOffset,
-        sizeof(KeyNumber));
-    bytesBufferOffset += sizeof(KeyNumber);
+    deserializer.copyInto(&mAuditNumber);
+    deserializer.copyInto(&mIncomingAmount);
+    deserializer.copyInto(&mOutgoingAmount);
+    deserializer.copyInto(&mKeyNumber);
 
     mSignature = make_shared<lamport::Signature>(
-                     buffer.get() + bytesBufferOffset);
+        buffer.get() + deserializer.getCurrentOffset());
+    deserializer.skipBytes(lamport::Signature::signatureSize());
 }
 
 const Message::MessageType AuditMessage::typeID() const
@@ -90,52 +76,18 @@ const bool AuditMessage::isCheckCachedResponse() const
 
 pair<BytesShared, size_t> AuditMessage::serializeToBytes() const
 {
-    const auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-    auto kBufferSize = parentBytesAndCount.second + sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + sizeof(KeyNumber) + mSignature->signatureSize();
-    BytesShared buffer = tryMalloc(kBufferSize);
+    BytesSerializer serializer;
 
-    size_t dataBytesOffset = 0;
-    // Parent message content
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &mAuditNumber,
-        sizeof(AuditNumber));
-    dataBytesOffset += sizeof(AuditNumber);
-
-    vector<byte_t> incomingAmountBuffer = trustLineAmountToBytes(mIncomingAmount);
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        incomingAmountBuffer.data(),
-        incomingAmountBuffer.size());
-    dataBytesOffset += kTrustLineAmountBytesCount;
-
-    vector<byte_t> outgoingAmountBuffer = trustLineAmountToBytes(mOutgoingAmount);
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        outgoingAmountBuffer.data(),
-        outgoingAmountBuffer.size());
-    dataBytesOffset += kTrustLineAmountBytesCount;
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &mKeyNumber,
-        sizeof(KeyNumber));
-    dataBytesOffset += sizeof(KeyNumber);
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+    serializer.copy(mAuditNumber);
+    serializer.copy(mIncomingAmount);
+    serializer.copy(mOutgoingAmount);
+    serializer.copy(mKeyNumber);
+    serializer.copy(
         mSignature->data(),
         mSignature->signatureSize());
 
-    return make_pair(
-               buffer,
-               kBufferSize);
+    return serializer.collect();
 }
 
 const size_t AuditMessage::kOffsetToInheritedBytes() const

@@ -1,4 +1,6 @@
 #include "FinalAmountsConfigurationMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const SerializedEquivalent equivalent,
@@ -47,51 +49,38 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
 FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     BytesShared buffer) : RequestMessageWithReservations(buffer)
 {
-    auto parentMessageOffset = RequestMessageWithReservations::kOffsetToInheritedBytes();
-    auto bytesBufferOffset = buffer.get() + parentMessageOffset;
-    //----------------------------------------------------
-    auto *paymentParticipantsCount = new (bytesBufferOffset) SerializedRecordsCount;
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
-    //-----------------------------------------------------
-    for (SerializedRecordNumber idx = 0; idx < *paymentParticipantsCount; idx++) {
-        auto *paymentNodeID = new (bytesBufferOffset) PaymentNodeID;
-        bytesBufferOffset += sizeof(PaymentNodeID);
-        //---------------------------------------------------
-        auto contractor = make_shared<Contractor>(bytesBufferOffset);
-        bytesBufferOffset += contractor->serializedSize();
-        //---------------------------------------------------
-        mPaymentParticipants.insert(
-            make_pair(
-                *paymentNodeID,
-                contractor));
+    BytesDeserializer deserializer(
+        buffer,
+        RequestMessageWithReservations::kOffsetToInheritedBytes());
+
+    SerializedRecordsCount paymentParticipantsCount;
+    deserializer.copyInto(&paymentParticipantsCount);
+
+    for (SerializedRecordNumber idx = 0; idx < paymentParticipantsCount; idx++) {
+        PaymentNodeID paymentNodeID;
+        deserializer.copyInto(&paymentNodeID);
+
+        auto contractor = make_shared<Contractor>(
+            buffer.get() + deserializer.getCurrentOffset());
+        deserializer.skipBytes(contractor->serializedSize());
+
+        mPaymentParticipants.emplace(paymentNodeID, contractor);
     }
-    //----------------------------------------------------
-    memcpy(
-        &mMaximalClaimingBlockNumber,
-        bytesBufferOffset,
-        sizeof(BlockNumber));
-    bytesBufferOffset += sizeof(BlockNumber);
-    //----------------------------------------------------
-    memcpy(
-        &mIsReceiptContains,
-        bytesBufferOffset,
-        sizeof(byte_t));
-    //----------------------------------------------------
+
+    deserializer.copyInto(&mMaximalClaimingBlockNumber);
+    deserializer.copyInto(&mIsReceiptContains);
+
     if (mIsReceiptContains) {
-        bytesBufferOffset += sizeof(byte_t);
-        memcpy(
-            &mPublicKeyNumber,
-            bytesBufferOffset,
-            sizeof(KeyNumber));
-        bytesBufferOffset += sizeof(KeyNumber);
+        deserializer.copyInto(&mPublicKeyNumber);
 
         auto signature = make_shared<lamport::Signature>(
-                             bytesBufferOffset);
+            buffer.get() + deserializer.getCurrentOffset());
+        deserializer.skipBytes(lamport::Signature::signatureSize());
         mSignature = signature;
-        bytesBufferOffset += lamport::Signature::signatureSize();
 
         mTransactionPublicKeyHash = make_shared<lamport::KeyHash>(
-                                        bytesBufferOffset);
+            buffer.get() + deserializer.getCurrentOffset());
+        deserializer.skipBytes(lamport::KeyHash::kBytesSize);
     }
 }
 
@@ -132,79 +121,30 @@ const lamport::KeyHash::Shared FinalAmountsConfigurationMessage::transactionPubl
 
 pair<BytesShared, size_t> FinalAmountsConfigurationMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = RequestMessageWithReservations::serializeToBytes();
-    size_t bytesCount = parentBytesAndCount.second + sizeof(SerializedRecordsCount) + sizeof(BlockNumber) + sizeof(byte_t);
-    for (const auto &participant : mPaymentParticipants) {
-        bytesCount += sizeof(PaymentNodeID) + participant.second->serializedSize();
-    }
-    if (mIsReceiptContains) {
-        bytesCount += sizeof(KeyNumber) + lamport::Signature::signatureSize() + lamport::KeyHash::kBytesSize;
-    }
+    BytesSerializer serializer;
 
-    BytesShared buffer = tryMalloc(bytesCount);
+    serializer.enqueue(RequestMessageWithReservations::serializeToBytes());
+    serializer.copy(static_cast<SerializedRecordsCount>(mPaymentParticipants.size()));
 
-    auto initialOffset = buffer.get();
-    memcpy(
-        initialOffset,
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    auto bytesBufferOffset = initialOffset + parentBytesAndCount.second;
-
-    //----------------------------------------------------
-    auto paymentParticipantsCount = (SerializedRecordsCount)mPaymentParticipants.size();
-    memcpy(
-        bytesBufferOffset,
-        &paymentParticipantsCount,
-        sizeof(SerializedRecordsCount));
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
-    //----------------------------------------------------
-    for (auto const &paymentNodeIdAndContractor : mPaymentParticipants) {
-        memcpy(
-            bytesBufferOffset,
-            &paymentNodeIdAndContractor.first,
-            sizeof(PaymentNodeID));
-        bytesBufferOffset += sizeof(PaymentNodeID);
-
-        auto contractorSerializedData = paymentNodeIdAndContractor.second->serializeToBytes();
-        memcpy(
-            bytesBufferOffset,
-            contractorSerializedData.get(),
+    for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
+        serializer.copy(paymentNodeIdAndContractor.first);
+        serializer.enqueue(
+            paymentNodeIdAndContractor.second->serializeToBytes(),
             paymentNodeIdAndContractor.second->serializedSize());
-        bytesBufferOffset += paymentNodeIdAndContractor.second->serializedSize();
     }
-    //----------------------------------------------------
-    memcpy(
-        bytesBufferOffset,
-        &mMaximalClaimingBlockNumber,
-        sizeof(BlockNumber));
-    bytesBufferOffset += sizeof(BlockNumber);
-    //----------------------------------------------------
-    memcpy(
-        bytesBufferOffset,
-        &mIsReceiptContains,
-        sizeof(byte_t));
-    //----------------------------------------------------
-    if (mIsReceiptContains) {
-        bytesBufferOffset += sizeof(byte_t);
-        memcpy(
-            bytesBufferOffset,
-            &mPublicKeyNumber,
-            sizeof(KeyNumber));
-        bytesBufferOffset += sizeof(KeyNumber);
 
-        memcpy(
-            bytesBufferOffset,
+    serializer.copy(mMaximalClaimingBlockNumber);
+    serializer.copy(static_cast<byte_t>(mIsReceiptContains));
+
+    if (mIsReceiptContains) {
+        serializer.copy(mPublicKeyNumber);
+        serializer.copy(
             mSignature->data(),
             mSignature->signatureSize());
-        bytesBufferOffset += lamport::Signature::signatureSize();
-
-        memcpy(
-            bytesBufferOffset,
+        serializer.copy(
             mTransactionPublicKeyHash->data(),
             lamport::KeyHash::kBytesSize);
     }
-    //----------------------------------------------------
-    return make_pair(
-               buffer,
-               bytesCount);
+
+    return serializer.collect();
 }

@@ -1,4 +1,5 @@
 #include "PublicKeysSharingInitMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 PublicKeysSharingInitMessage::PublicKeysSharingInitMessage(
     const SerializedEquivalent equivalent,
@@ -21,11 +22,9 @@ PublicKeysSharingInitMessage::PublicKeysSharingInitMessage(
     PublicKeyMessage(buffer)
 {
     auto bytesBufferOffset = PublicKeyMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-    memcpy(
-        &mKeysCount,
-        buffer.get() + bytesBufferOffset,
-        sizeof(KeysCount));
+    deserializer.copyInto(&mKeysCount);
 }
 
 const Message::MessageType PublicKeysSharingInitMessage::typeID() const
@@ -40,26 +39,18 @@ const KeyNumber PublicKeysSharingInitMessage::keysCount() const
 
 pair<BytesShared, size_t> PublicKeysSharingInitMessage::serializeToBytes() const
 {
+    // TODO: Performance optimization - parent data is serialized twice:
+    // 1. PublicKeyMessage::serializeToBytes() creates buffer
+    // 2. serializer.enqueue() copies that buffer again
+    // Consider passing serializer down inheritance chain to avoid redundant allocation/copy
     const auto parentBytesAndCount = PublicKeyMessage::serializeToBytes();
     const auto kBufferSize =
         parentBytesAndCount.second
         + sizeof(KeysCount);
-    BytesShared buffer = tryMalloc(kBufferSize);
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mKeysCount);
 
-    size_t dataBytesOffset = 0;
-    // Parent message content
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &mKeysCount,
-        sizeof(KeysCount));
-
-    return make_pair(
-               buffer,
-               kBufferSize);
+    return serializer.collect();
 }

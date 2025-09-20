@@ -1,4 +1,5 @@
 #include "PublicKeyMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 PublicKeyMessage::PublicKeyMessage(
     const SerializedEquivalent equivalent,
@@ -22,15 +23,14 @@ PublicKeyMessage::PublicKeyMessage(
     mPublicKey()
 {
     auto bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-    memcpy(
-        &mNumber,
-        buffer.get() + bytesBufferOffset,
-        sizeof(KeyNumber));
-    bytesBufferOffset += sizeof(KeyNumber);
+    deserializer.copyInto(&mNumber);
 
-    auto publicKey = make_shared<lamport::PublicKey>(
-                         buffer.get() + bytesBufferOffset);
+    // Get current offset for crypto key creation
+    auto currentOffset = deserializer.getCurrentOffset();
+    auto publicKey = make_shared<lamport::PublicKey>(buffer.get() + currentOffset);
+    deserializer.skipBytes(publicKey->keySize());
     mPublicKey = publicKey;
 }
 
@@ -61,30 +61,13 @@ pair<BytesShared, size_t> PublicKeyMessage::serializeToBytes() const
         parentBytesAndCount.second
         + sizeof(KeyNumber)
         + mPublicKey->keySize();
-    BytesShared buffer = tryMalloc(kBufferSize);
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mNumber);
+    serializer.copy(mPublicKey->data(), mPublicKey->keySize());
 
-    size_t dataBytesOffset = 0;
-    // Parent message content
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &mNumber,
-        sizeof(KeyNumber));
-    dataBytesOffset += sizeof(KeyNumber);
-
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        mPublicKey->data(),
-        mPublicKey->keySize());
-
-    return make_pair(
-               buffer,
-               kBufferSize);
+    return serializer.collect();
 }
 
 const size_t PublicKeyMessage::kOffsetToInheritedBytes() const

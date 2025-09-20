@@ -1,6 +1,7 @@
 #include "PaymentTransactionsHandlerPostgreSQL.h"
 #include <sstream>
 #include "../../../common/time/TimeUtils.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 using namespace std;
 
@@ -61,7 +62,10 @@ void PaymentTransactionsHandlerPostgreSQL::saveRecord(
     int lengths[kParams];
     int formats[kParams]={1,1,0,0};
 
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     params[1]=reinterpret_cast<const char*>(&maximalClaimingBlockNumber); lengths[1]=sizeof(BlockNumber);
     string stateStr="0"; params[2]=stateStr.c_str(); lengths[2]=0;
     GEOEpochTimestamp ts = microsecondsSinceGEOEpoch(utc_now());
@@ -79,7 +83,10 @@ void PaymentTransactionsHandlerPostgreSQL::updateTransactionState(
     const string query="UPDATE " + mTableName + " SET observing_state=$1 WHERE uuid=$2;";
     const int kParams=2; const char *params[kParams]; int lengths[kParams]; int formats[kParams]={0,1};
     string stateStr=to_string(observingTransactionState); params[0]=stateStr.c_str(); lengths[0]=0;
-    params[1]=reinterpret_cast<const char*>(transactionUUID.data); lengths[1]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer2;
+    serializer2.copy(transactionUUID);
+    auto serializedUUID2 = serializer2.collect();
+    params[1]=reinterpret_cast<const char*>(serializedUUID2.first.get()); lengths[1]=TransactionUUID::kBytesSize;
     PGresult *res=PQexecParams(mDataBase,query.c_str(),kParams,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"updateState");
     if (PQcmdTuples(res)[0]=='0') { PQclear(res); throw ValueError("No rows affected"); }
@@ -109,7 +116,10 @@ bool PaymentTransactionsHandlerPostgreSQL::isTransactionPresent(
 {
     const string query="SELECT COUNT(*) FROM " + mTableName + " WHERE uuid=$1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer3;
+    serializer3.copy(transactionUUID);
+    auto serializedUUID3 = serializer3.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID3.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res=PQexecParams(mDataBase,query.c_str(),1,nullptr,params,lengths,formats,0);
     checkTuples(mDataBase,res,"isTransactionPresent");
     bool present = atoi(PQgetvalue(res,0,0))>0;
@@ -122,7 +132,10 @@ void PaymentTransactionsHandlerPostgreSQL::deleteRecord(
 {
     const string query="DELETE FROM " + mTableName + " WHERE uuid=$1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer4;
+    serializer4.copy(transactionUUID);
+    auto serializedUUID4 = serializer4.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID4.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res=PQexecParams(mDataBase,query.c_str(),1,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"deleteRecord");
     PQclear(res);

@@ -1,4 +1,6 @@
 #include "GatewayNotificationMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 GatewayNotificationMessage::GatewayNotificationMessage(
     ContractorID idOnReceiverSide,
@@ -17,19 +19,16 @@ GatewayNotificationMessage::GatewayNotificationMessage(
 
     TransactionMessage(buffer)
 {
-    size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    size_t currentOffset = TransactionMessage::kOffsetToInheritedBytes();
     //----------------------------------------------------
-    auto *equivalentGatewaysCount = new (buffer.get() + bytesBufferOffset) SerializedRecordsCount;
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
+    BytesDeserializer deserializer(buffer, currentOffset);
+    SerializedRecordsCount equivalentGatewaysCount;
+    deserializer.copyInto(&equivalentGatewaysCount);
     //-----------------------------------------------------
-    mGatewayEquivalents.reserve(*equivalentGatewaysCount);
-    for (SerializedRecordNumber idx = 0; idx < *equivalentGatewaysCount; idx++) {
+    mGatewayEquivalents.reserve(equivalentGatewaysCount);
+    for (SerializedRecordNumber idx = 0; idx < equivalentGatewaysCount; idx++) {
         SerializedEquivalent gatewayEquivalent;
-        memcpy(
-            &gatewayEquivalent,
-            buffer.get() + Message::kOffsetToInheritedBytes(),
-            sizeof(SerializedEquivalent));
-        bytesBufferOffset += sizeof(SerializedEquivalent);
+        deserializer.copyInto(&gatewayEquivalent);
         //---------------------------------------------------
         mGatewayEquivalents.push_back(
             gatewayEquivalent);
@@ -43,40 +42,15 @@ const vector<SerializedEquivalent> GatewayNotificationMessage::gatewayEquivalent
 
 pair<BytesShared, size_t> GatewayNotificationMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-
-    size_t bytesCount =
-        parentBytesAndCount.second
-        + sizeof(SerializedRecordsCount)
-        + mGatewayEquivalents.size() * sizeof(SerializedEquivalent);
-
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    auto equivalentGatewaysCount = (SerializedRecordsCount)mGatewayEquivalents.size();
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &equivalentGatewaysCount,
-        sizeof(SerializedRecordsCount));
-    dataBytesOffset += sizeof(SerializedRecordsCount);
+    BytesSerializer serializer;
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+    serializer.copy((SerializedRecordsCount)mGatewayEquivalents.size());
     //----------------------------------------------------
     for (auto const &gatewayEquivalent : mGatewayEquivalents) {
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            &gatewayEquivalent,
-            sizeof(SerializedEquivalent));
-        dataBytesOffset += sizeof(SerializedEquivalent);
+        serializer.copy(gatewayEquivalent);
     }
     //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    return serializer.collect();
 }
 
 const Message::MessageType GatewayNotificationMessage::typeID() const

@@ -3,6 +3,7 @@
 #include "../../../../src/core/logger/Logger.h"
 #include "../../../../src/core/transactions/transactions/base/TransactionUUID.h"
 #include "../../../../src/core/common/memory/MemoryUtils.h"
+#include "../../../../src/core/common/serialization/BytesSerializer.h"
 #include "../fixtures/DatabaseTestHelper.h"
 #include "../fixtures/PostgreSQLTestFixtures.h"
 
@@ -121,7 +122,10 @@ protected:
         const char* params[1];
         int lengths[1];
         int formats[1] = {1};
-        params[0] = reinterpret_cast<const char*>(uuid.data);
+        BytesSerializer serializer;
+        serializer.copy(uuid);
+        auto serializedUUID = serializer.collect();
+        params[0] = reinterpret_cast<const char*>(serializedUUID.first.get());
         lengths[0] = TransactionUUID::kBytesSize;
         
         PGresult* result = PQexecParams(mConnection, query.c_str(), 1, nullptr, params, lengths, formats, 0);
@@ -192,7 +196,10 @@ protected:
         int lengths[3];
         int formats[3] = {1, 1, 0};
         
-        params[0] = reinterpret_cast<const char*>(uuid.data);
+        BytesSerializer serializer;
+        serializer.copy(uuid);
+        auto serializedUUID = serializer.collect();
+        params[0] = reinterpret_cast<const char*>(serializedUUID.first.get());
         lengths[0] = TransactionUUID::kBytesSize;
         
         params[1] = reinterpret_cast<const char*>(data.get());

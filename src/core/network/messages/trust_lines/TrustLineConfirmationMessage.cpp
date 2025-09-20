@@ -1,4 +1,5 @@
 #include "TrustLineConfirmationMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 TrustLineConfirmationMessage::TrustLineConfirmationMessage(
     const SerializedEquivalent equivalent,
@@ -23,10 +24,9 @@ TrustLineConfirmationMessage::TrustLineConfirmationMessage(
     ConfirmationMessage(buffer)
 {
     size_t bytesBufferOffset = ConfirmationMessage::kOffsetToInheritedBytes();
-    memcpy(
-        &mIsContractorGateway,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte_t));
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
+
+    deserializer.copyInto(&mIsContractorGateway);
 }
 
 const Message::MessageType TrustLineConfirmationMessage::typeID() const
@@ -47,21 +47,10 @@ pair<BytesShared, size_t> TrustLineConfirmationMessage::serializeToBytes() const
         parentBytesAndCount.second
         + sizeof(byte_t);
 
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mIsContractorGateway,
-        sizeof(byte_t));
-    //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mIsContractorGateway);
+
+    return serializer.collect();
 }

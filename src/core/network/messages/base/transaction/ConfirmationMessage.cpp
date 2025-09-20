@@ -1,4 +1,6 @@
 #include "ConfirmationMessage.h"
+#include "../../../../common/serialization/BytesDeserializer.h"
+#include "../../../../common/serialization/BytesSerializer.h"
 
 ConfirmationMessage::ConfirmationMessage(
     const SerializedEquivalent equivalent,
@@ -29,10 +31,12 @@ ConfirmationMessage::ConfirmationMessage(
 
     TransactionMessage(buffer)
 {
-    size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    size_t currentOffset = TransactionMessage::kOffsetToInheritedBytes();
     //----------------------------------------------------
-    auto *state = new (buffer.get() + bytesBufferOffset) SerializedOperationState;
-    mState = (OperationState) (*state);
+    BytesDeserializer deserializer(buffer, currentOffset);
+    SerializedOperationState state;
+    deserializer.copyInto(&state);
+    mState = (OperationState) state;
 }
 
 const Message::MessageType ConfirmationMessage::typeID() const
@@ -47,36 +51,21 @@ const ConfirmationMessage::OperationState ConfirmationMessage::state() const
 
 pair<BytesShared, size_t> ConfirmationMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-
-    size_t bytesCount =
-        parentBytesAndCount.second
-        + sizeof(SerializedOperationState);
-
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mState,
-        sizeof(SerializedOperationState));
-    //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    // TODO: Serialization architecture optimization needed across entire inheritance chain:
+    // This base class pattern causes redundant parent serialization in all child classes.
+    // Each child calls parent::serializeToBytes() then copies that buffer again via enqueue().
+    // Consider: void serializeToSerializer(BytesSerializer& serializer) pattern to avoid copies.
+    BytesSerializer serializer;
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+    serializer.copy((SerializedOperationState)mState);
+    return serializer.collect();
 }
 
 const size_t ConfirmationMessage::kOffsetToInheritedBytes() const
 {
     const auto kOffset =
         TransactionMessage::kOffsetToInheritedBytes()
-        + sizeof(SerializedOperationState);
+        + BytesSerializer::kSerializedByteSize;
 
     return kOffset;
 }

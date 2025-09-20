@@ -1,5 +1,6 @@
 #include "PaymentKeysHandlerPostgreSQL.h"
 #include "../../../common/exceptions/ValueError.h"
+#include "../../../common/serialization/BytesSerializer.h"
 #include <sstream>
 
 using namespace std;
@@ -64,7 +65,10 @@ void PaymentKeysHandlerPostgreSQL::saveOwnKey(
     int lengths[kParams];
     int formats[kParams] = {1,1,1};
 
-    params[0] = reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer;
+    serializer.copy(transactionUUID);
+    auto serializedUUID = serializer.collect();
+    params[0] = reinterpret_cast<const char*>(serializedUUID.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     params[1] = reinterpret_cast<const char*>(publicKey->data()); lengths[1]=publicKey->keySize();
 
     BytesShared privBuf = tryMalloc(privateKey->keySize());
@@ -87,7 +91,10 @@ PrivateKey* PaymentKeysHandlerPostgreSQL::getOwnPrivateKey(
 {
     const string query = "SELECT private_key FROM " + mTableName + " WHERE transaction_uuid=$1 LIMIT 1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer2;
+    serializer2.copy(transactionUUID);
+    auto serializedUUID2 = serializer2.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID2.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,1);
     checkTuples(mDataBase,res,"getOwnPrivateKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Private key not found"); }
@@ -102,7 +109,10 @@ void PaymentKeysHandlerPostgreSQL::deleteKeyByTransactionUUID(
 {
     const string query = "DELETE FROM " + mTableName + " WHERE transaction_uuid=$1;";
     const char *params[1]; int lengths[1]; int formats[1]={1};
-    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    BytesSerializer serializer2;
+    serializer2.copy(transactionUUID);
+    auto serializedUUID2 = serializer2.collect();
+    params[0]=reinterpret_cast<const char*>(serializedUUID2.first.get()); lengths[0]=TransactionUUID::kBytesSize;
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"deleteKeyByUUID");
     PQclear(res);

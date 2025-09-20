@@ -1,4 +1,6 @@
 #include "CyclesFourNodesBalancesResponseMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 CyclesFourNodesBalancesResponseMessage::CyclesFourNodesBalancesResponseMessage(
     const SerializedEquivalent equivalent,
@@ -18,60 +20,39 @@ CyclesFourNodesBalancesResponseMessage::CyclesFourNodesBalancesResponseMessage(
 
     TransactionMessage(buffer)
 {
-    size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
-    SerializedRecordsCount suitableNodesCount;
-    memcpy(
-        &suitableNodesCount,
-        buffer.get() + bytesBufferOffset,
-        sizeof(SerializedRecordsCount));
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
+    auto deserializer = BytesDeserializer(
+        buffer,
+        TransactionMessage::kOffsetToInheritedBytes());
 
+    SerializedRecordsCount suitableNodesCount;
+    deserializer.copyInto(&suitableNodesCount);
+
+    size_t currentOffset = TransactionMessage::kOffsetToInheritedBytes() + BytesSerializer::kSerializedRecordsCountSize;
     for (SerializedRecordNumber idx = 0; idx < suitableNodesCount; idx++) {
         auto stepAddress = deserializeAddress(
-                               buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += stepAddress->serializedSize();
+                               buffer.get() + currentOffset);
+        currentOffset += stepAddress->serializedSize();
         mSuitableNodes.push_back(stepAddress);
     }
 }
 
 pair<BytesShared, size_t> CyclesFourNodesBalancesResponseMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
+    auto serializer = BytesSerializer();
 
+    // Serialize parent data
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+
+    // Serialize suitable nodes count
     auto contractorsCount = (SerializedRecordsCount)mSuitableNodes.size();
-    size_t bytesCount = parentBytesAndCount.second
-                        + sizeof(SerializedRecordsCount);
-    for (const auto &address : mSuitableNodes) {
-        bytesCount += address->serializedSize();
-    }
+    serializer.copy(contractorsCount);
 
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &contractorsCount,
-        sizeof(SerializedRecordsCount));
-    dataBytesOffset += sizeof(SerializedRecordsCount);
-
+    // Serialize suitable nodes
     for(auto const &address: mSuitableNodes) {
-        auto serializedAddress = address->serializeToBytes();
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            serializedAddress.get(),
-            address->serializedSize());
-        dataBytesOffset += address->serializedSize();
+        serializer.enqueue(address->serializeToBytes(), address->serializedSize());
     }
 
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    return serializer.collect();
 }
 
 vector<BaseAddress::Shared> CyclesFourNodesBalancesResponseMessage::suitableNodes() const

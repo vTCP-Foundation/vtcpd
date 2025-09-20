@@ -10,7 +10,7 @@ using namespace std;
 class BytesDeserializer
 {
 public:
-    const BytesShared buffer;
+    BytesShared buffer;
 
 public:
     BytesDeserializer(
@@ -36,7 +36,22 @@ public:
         const uint32_t* v) noexcept;
 
     void copyInto(
+        size_t* v) noexcept;
+
+    void copyIntoDespiteConst(
+        const size_t* v) noexcept;
+
+    void copyInto(
+        bool* v) noexcept;
+
+    void copyIntoDespiteConst(
+        const bool* v) noexcept;
+
+    void copyInto(
         NodeUUID* nodeUUID) noexcept;
+
+    void copyInto(
+        TrustLineAmount* amount) noexcept;
 
     void copyIntoDespiteConst(
         const NodeUUID* nodeUUID) noexcept;
@@ -44,6 +59,16 @@ public:
     void copyInto(
         void* destination,
         const size_t bytesCount) noexcept;
+
+    // Utility methods for centralized offset management
+    void skipBytes(
+        const size_t bytesCount) noexcept;
+
+    BytesShared copyIntoBuffer(
+        const size_t bytesCount) noexcept(false);
+
+    // Get current offset for external operations that need raw pointer access
+    size_t getCurrentOffset() const noexcept;
 
 protected:
     size_t mCurrentOffset;

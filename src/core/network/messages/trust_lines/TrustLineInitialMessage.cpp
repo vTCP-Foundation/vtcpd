@@ -1,4 +1,5 @@
 #include "TrustLineInitialMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 TrustLineInitialMessage::TrustLineInitialMessage(
     const SerializedEquivalent equivalent,
@@ -19,14 +20,10 @@ TrustLineInitialMessage::TrustLineInitialMessage(
     BytesShared buffer):
     TransactionMessage(buffer)
 {
-    // todo: use deserializer
-
     size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
-    //----------------------------------------------------
-    memcpy(
-        &mIsContractorGateway,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte_t));
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
+
+    deserializer.copyInto(&mIsContractorGateway);
 }
 
 
@@ -55,20 +52,10 @@ pair<BytesShared, size_t> TrustLineInitialMessage::serializeToBytes() const
                         + sizeof(byte_t);
 
     BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mIsContractorGateway,
-        sizeof(byte_t));
-    //----------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mIsContractorGateway);
+
+    return serializer.collect();
 }

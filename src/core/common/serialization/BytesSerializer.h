@@ -4,6 +4,7 @@
 #include "../NodeUUID.h"
 #include "../memory/MemoryUtils.h"
 #include "../exceptions/NotFoundError.h"
+#include "../Types.h"
 
 #include <vector>
 
@@ -126,6 +127,27 @@ protected:
     using InlineBoolRecord = OptimizedPrimitiveTypeInlineRecord<bool>;
 
 public:
+    // Wire format sizes (platform-independent constants)
+    static constexpr size_t kSerializedBoolSize = 1;
+    static constexpr size_t kSerializedByteSize = 1;
+    static constexpr size_t kSerializedUInt16Size = 2;
+    static constexpr size_t kSerializedUInt32Size = 4;
+    static constexpr size_t kSerializedUInt64Size = 8;
+    static constexpr size_t kSerializedSizeTSize = 8;  // Fixed at 8 bytes for x64
+
+    // Application-specific types
+    static constexpr size_t kSerializedContractorIDSize = 4;    // uint32_t
+    static constexpr size_t kSerializedEquivalentSize = 4;      // uint32_t
+    static constexpr size_t kSerializedBlockNumberSize = 8;     // uint64_t
+    static constexpr size_t kSerializedKeyNumberSize = 4;       // uint32_t
+    static constexpr size_t kSerializedPathIDSize = 2;          // uint16_t
+    static constexpr size_t kSerializedPaymentNodeIDSize = 2;   // uint16_t
+    static constexpr size_t kSerializedRecordsCountSize = 2;    // uint16_t
+    static constexpr size_t kSerializedUUIDSize = 16;           // All UUID types
+    static constexpr size_t kSerializedProtocolVersionSize = 1; // byte_t
+    static constexpr size_t kSerializedTrustLineAmountSize = 32; // TrustLineAmount (256-bit number)
+
+public:
     BytesSerializer();
     ~BytesSerializer();
 
@@ -160,6 +182,9 @@ public:
 
     void copy(
         const NodeUUID &nodeUUID) noexcept(false);
+
+    void copy(
+        const TrustLineAmount &amount) noexcept(false);
 
     void copy(
         const void* src,

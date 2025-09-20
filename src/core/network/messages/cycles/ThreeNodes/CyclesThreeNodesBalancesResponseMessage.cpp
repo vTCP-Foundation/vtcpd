@@ -1,4 +1,6 @@
 #include "CyclesThreeNodesBalancesResponseMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 
 CyclesThreeNodesBalancesResponseMessage::CyclesThreeNodesBalancesResponseMessage(
@@ -18,60 +20,41 @@ CyclesThreeNodesBalancesResponseMessage::CyclesThreeNodesBalancesResponseMessage
 
     TransactionMessage(buffer)
 {
-    size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    auto deserializer = BytesDeserializer(
+        buffer,
+        TransactionMessage::kOffsetToInheritedBytes());
+
     //    Get NodesCount
     SerializedRecordsCount boundaryNodesCount;
-    memcpy(
-        &boundaryNodesCount,
-        buffer.get() + bytesBufferOffset,
-        sizeof(SerializedRecordsCount));
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
+    deserializer.copyInto(&boundaryNodesCount);
+
     //    Parse boundary nodes
+    size_t currentOffset = TransactionMessage::kOffsetToInheritedBytes() + BytesSerializer::kSerializedRecordsCountSize;
     for (SerializedRecordNumber idx = 0; idx < boundaryNodesCount; idx++) {
         auto stepAddress = deserializeAddress(
-                               buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += stepAddress->serializedSize();
+                               buffer.get() + currentOffset);
+        currentOffset += stepAddress->serializedSize();
         mNeighbors.push_back(stepAddress);
     }
 }
 
 std::pair<BytesShared, size_t> CyclesThreeNodesBalancesResponseMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
+    auto serializer = BytesSerializer();
 
+    // Serialize parent data
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+
+    // Serialize neighbors count
     auto boundaryNodesCount = (SerializedRecordsCount) mNeighbors.size();
-    size_t bytesCount =
-        parentBytesAndCount.second +
-        sizeof(SerializedRecordsCount);
-    for (const auto &address : mNeighbors) {
-        bytesCount += address->serializedSize();
-    }
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    // for parent node
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //    for mNeighborsBalances
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &boundaryNodesCount,
-        sizeof(SerializedRecordsCount));
-    dataBytesOffset += sizeof(SerializedRecordsCount);
+    serializer.copy(boundaryNodesCount);
+
+    // Serialize neighbors
     for(const auto &kNodeAddress: mNeighbors) {
-        auto serializedData = kNodeAddress->serializeToBytes();
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            serializedData.get(),
-            kNodeAddress->serializedSize());
-        dataBytesOffset += kNodeAddress->serializedSize();
+        serializer.enqueue(kNodeAddress->serializeToBytes(), kNodeAddress->serializedSize());
     }
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+
+    return serializer.collect();
 }
 
 const Message::MessageType CyclesThreeNodesBalancesResponseMessage::typeID() const
