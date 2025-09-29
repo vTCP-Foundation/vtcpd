@@ -74,6 +74,6 @@ TransactionResult::SharedConst RemoveTrustLineTransaction::resultProtocolError()
 const string RemoveTrustLineTransaction::logHeader() const
 {
     stringstream s;
-    s << "[RemoveTrustLineTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[RemoveTrustLineTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

@@ -31,6 +31,6 @@ TransactionResult::SharedConst GetEquivalentListTransaction::run()
 const string GetEquivalentListTransaction::logHeader() const
 {
     stringstream s;
-    s << "[GetEquivalentListTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[GetEquivalentListTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

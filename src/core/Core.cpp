@@ -1,6 +1,9 @@
 ﻿#include "Core.h"
 #include "io/storage/sqlite/StorageHandlerSQLite.h"
 
+#include "ortools/linear_solver/linear_solver.h"
+#include "ortools/base/version.h"
+
 Core::Core(
     char* pArgv)
 noexcept:
@@ -80,6 +83,11 @@ int Core::initSubsystems()
     }
 
     initCode = initLogger();
+    if (initCode != 0) {
+        return initCode;
+    }
+
+    initCode = initORTools();
     if (initCode != 0) {
         return initCode;
     }
@@ -205,6 +213,43 @@ int Core::initLogger()
 
     } catch (...) {
         cerr << utc_now() <<" : FATAL\t[CORE]\tLogger cannot be initialized." << endl;
+        return -1;
+    }
+}
+
+int Core::initORTools()
+{
+    try {
+        // Check OR-Tools availability by creating a simple solver
+        std::unique_ptr<operations_research::MPSolver> testSolver(
+            operations_research::MPSolver::CreateSolver("GLOP"));
+        
+        if (!testSolver) {
+            error() << "OR-Tools GLOP solver is not available";
+            return -1;
+        }
+
+        // Get OR-Tools version and check minimum requirements
+        int major = operations_research::OrToolsMajorVersion();
+        int minor = operations_research::OrToolsMinorVersion();
+        
+        info() << "OR-Tools version: " << major << "." << minor;
+        
+        // Require OR-Tools version >= 9.0 as per PRD specification
+        if (major < 9) {
+            error() << "OR-Tools version " << major << "." << minor 
+                   << " is insufficient. Minimum version 9.0 required.";
+            return -1;
+        }
+        
+        info() << "OR-Tools integration verified successfully";
+        return 0;
+
+    } catch (const std::exception &e) {
+        error() << "OR-Tools initialization failed: " << e.what();
+        return -1;
+    } catch (...) {
+        error() << "OR-Tools initialization failed with unknown error";
         return -1;
     }
 }
@@ -1049,7 +1094,22 @@ void Core::updateProcessName()
 {
     const string kProcessName(string("vtcpd:") + mContractorsManager->selfContractor()->mainAddress()->fullAddress());
     prctl(PR_SET_NAME, kProcessName.c_str());
-    strcpy(mCommandDescriptionPtr, kProcessName.c_str());
+    // Avoid corrupting memory by overwriting argv[0] with a longer string.
+    // On Linux, argv/environ are stored in a contiguous buffer of fixed size
+    // determined by the original command line. Writing past that size leads
+    // to memory corruption and hard-to-diagnose crashes (e.g., invalid vtable).
+    //
+    // Safely limit the overwrite to the original argv[0] length and zero-fill
+    // the tail so that /proc/self/cmdline shows the new title without overflow.
+    if (mCommandDescriptionPtr != nullptr) {
+        size_t maxlen = ::strlen(mCommandDescriptionPtr);
+        if (maxlen > 0) {
+            // Clear existing bytes to avoid leaking previous content
+            ::memset(mCommandDescriptionPtr, 0, maxlen);
+            // Copy at most maxlen-1 to keep NUL terminator within bounds
+            ::strncpy(mCommandDescriptionPtr, kProcessName.c_str(), maxlen - 1);
+        }
+    }
 }
 
 string Core::logHeader()

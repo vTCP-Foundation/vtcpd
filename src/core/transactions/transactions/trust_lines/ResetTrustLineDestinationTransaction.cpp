@@ -85,6 +85,6 @@ TransactionResult::SharedConst ResetTrustLineDestinationTransaction::sendTrustLi
 const string ResetTrustLineDestinationTransaction::logHeader() const
 {
     stringstream s;
-    s << "[ResetTrustLineDestinationTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[ResetTrustLineDestinationTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

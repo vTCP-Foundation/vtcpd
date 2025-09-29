@@ -20,6 +20,12 @@ public:
         const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig);
 
     RequestMessageWithReservations(
+        const SerializedEquivalent equivalent,
+        ContractorID contractorID,
+        const TransactionUUID &transactionUUID,
+        const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig);
+
+    RequestMessageWithReservations(
         BytesShared buffer);
 
     const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfiguration() const;

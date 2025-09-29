@@ -12,12 +12,22 @@ add_subdirectory(trust_line_channels)
 add_subdirectory(providing)
 
 # Main messages library
-add_library(network__messages
-    Message.hpp
-    EquivalentMessage.h
-    EquivalentMessage.cpp
-    SenderMessage.cpp
-    SenderMessage.h)
+# Use SHARED lib in test builds to avoid static circular link issues
+if(BUILD_TESTING)
+    add_library(network__messages SHARED
+        Message.hpp
+        EquivalentMessage.h
+        EquivalentMessage.cpp
+        SenderMessage.cpp
+        SenderMessage.h)
+else()
+    add_library(network__messages
+        Message.hpp
+        EquivalentMessage.h
+        EquivalentMessage.cpp
+        SenderMessage.cpp
+        SenderMessage.h)
+endif()
 
 target_include_directories(network__messages
     PUBLIC
@@ -36,7 +46,8 @@ target_link_libraries(network__messages
         messages__trust_lines
         messages__payments
         messages__cycles
-        messages__max_flow_calculation
+        # Avoid circular dependency in tests: don't link messages__max_flow_calculation from here
+        $<$<NOT:$<BOOL:${BUILD_TESTING}>>:messages__max_flow_calculation>
         messages__gateway_notification_and_routing_tables
         messages__general
         messages__trust_line_channels

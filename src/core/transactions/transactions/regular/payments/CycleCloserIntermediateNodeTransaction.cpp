@@ -1106,6 +1106,6 @@ void CycleCloserIntermediateNodeTransaction::sendErrorMessageOnFinalAmountsConfi
 const string CycleCloserIntermediateNodeTransaction::logHeader() const
 {
     stringstream s;
-    s << "[CycleCloserIntermediateNodeTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[CycleCloserIntermediateNodeTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

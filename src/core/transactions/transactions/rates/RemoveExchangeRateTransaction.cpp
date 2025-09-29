@@ -35,7 +35,7 @@ TransactionResult::SharedConst RemoveExchangeRateTransaction::run()
 TransactionResult::SharedConst RemoveExchangeRateTransaction::resultOK() const
 {
     stringstream s;
-    s << currentTransactionUUID();
+    s << currentTransactionUUID().stringUUID();
     
     return transactionResultFromCommand(
         mCommand->responseOK());
@@ -44,6 +44,6 @@ TransactionResult::SharedConst RemoveExchangeRateTransaction::resultOK() const
 const string RemoveExchangeRateTransaction::logHeader() const
 {
     stringstream s;
-    s << "[RemoveExchangeRateTA: " << currentTransactionUUID() << "]";
+    s << "[RemoveExchangeRateTA: " << currentTransactionUUID().stringUUID() << "]";
     return s.str();
 }

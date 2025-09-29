@@ -1,4 +1,6 @@
 #include "ParticipantVoteMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 ParticipantVoteMessage::ParticipantVoteMessage(
     const SerializedEquivalent equivalent,
@@ -16,14 +18,15 @@ ParticipantVoteMessage::ParticipantVoteMessage(
     BytesShared buffer):
     TransactionMessage(buffer)
 {
-    auto bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    auto currentOffset = TransactionMessage::kOffsetToInheritedBytes();
 
-    auto *state = new (buffer.get() + bytesBufferOffset) SerializedOperationState;
-    mState = (OperationState) (*state);
+    BytesDeserializer deserializer(buffer, currentOffset);
+    SerializedOperationState state;
+    deserializer.copyInto(&state);
+    mState = (OperationState) state;
     if (mState == Accepted) {
-        bytesBufferOffset += sizeof(SerializedOperationState);
         auto signature = make_shared<lamport::Signature>(
-                             buffer.get() + bytesBufferOffset);
+                             buffer.get() + currentOffset + sizeof(SerializedOperationState));
         mSignature = signature;
     }
 }
@@ -45,46 +48,17 @@ const lamport::Signature::Shared ParticipantVoteMessage::signature() const
 
 pair<BytesShared, size_t> ParticipantVoteMessage::serializeToBytes() const
 {
-    const auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-
-    auto bufferSize =
-        parentBytesAndCount.second
-        + sizeof(SerializedOperationState);
-    if (mSignature != nullptr) {
-        bufferSize += lamport::Signature::signatureSize();
-    }
-
-    BytesShared buffer = tryMalloc(bufferSize);
-
-    size_t dataBytesOffset = 0;
-    // Parent message content
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
+    BytesSerializer serializer;
+    serializer.enqueue(TransactionMessage::serializeToBytes());
 
     if (mSignature != nullptr) {
-        SerializedOperationState state(ParticipantVoteMessage::Accepted);
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            &state,
-            sizeof(SerializedOperationState));
-        dataBytesOffset += sizeof(SerializedOperationState);
-
-        memcpy(
-            buffer.get() + dataBytesOffset,
+        serializer.copy((SerializedOperationState)ParticipantVoteMessage::Accepted);
+        serializer.copy(
             mSignature->data(),
             lamport::Signature::signatureSize());
     } else {
-        SerializedOperationState state(ParticipantVoteMessage::Rejected);
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            &state,
-            sizeof(SerializedOperationState));
+        serializer.copy((SerializedOperationState)ParticipantVoteMessage::Rejected);
     }
 
-    return make_pair(
-               buffer,
-               bufferSize);
+    return serializer.collect();
 }

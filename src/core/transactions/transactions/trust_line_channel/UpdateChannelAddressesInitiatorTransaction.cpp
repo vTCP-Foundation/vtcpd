@@ -29,6 +29,6 @@ TransactionResult::SharedConst UpdateChannelAddressesInitiatorTransaction::run()
 const string UpdateChannelAddressesInitiatorTransaction::logHeader() const
 {
     stringstream s;
-    s << "[UpdateChannelAddressesTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[UpdateChannelAddressesTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

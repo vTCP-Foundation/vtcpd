@@ -71,6 +71,6 @@ TransactionResult::SharedConst RemoveChannelTransaction::resultUnexpectedError()
 const string RemoveChannelTransaction::logHeader() const
 {
     stringstream s;
-    s << "[RemoveChannelTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[RemoveChannelTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

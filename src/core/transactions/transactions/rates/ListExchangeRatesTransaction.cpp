@@ -64,6 +64,6 @@ string ListExchangeRatesTransaction::serializeExchangeRate(ExchangeRate::Shared 
 const string ListExchangeRatesTransaction::logHeader() const
 {
     stringstream s;
-    s << "[ListExchangeRatesTA: " << currentTransactionUUID() << "]";
+    s << "[ListExchangeRatesTA: " << currentTransactionUUID().stringUUID() << "]";
     return s.str();
 }

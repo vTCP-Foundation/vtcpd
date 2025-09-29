@@ -107,6 +107,9 @@ void Contractor::setAddresses(
 
 BaseAddress::Shared Contractor::mainAddress() const
 {
+    if (mAddresses.empty()) {
+        return BaseAddress::Shared();
+    }
     return mAddresses.at(0);
 }
 

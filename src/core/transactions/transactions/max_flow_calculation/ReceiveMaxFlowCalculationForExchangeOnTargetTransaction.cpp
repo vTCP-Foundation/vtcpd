@@ -133,6 +133,6 @@ void ReceiveMaxFlowCalculationForExchangeOnTargetTransaction::sendCachedResultTo
 const string ReceiveMaxFlowCalculationForExchangeOnTargetTransaction::logHeader() const
 {
     stringstream s;
-    s << "[ReceiveMaxFlowCalculationForExchangeOnTargetTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[ReceiveMaxFlowCalculationForExchangeOnTargetTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

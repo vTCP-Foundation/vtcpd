@@ -1,4 +1,5 @@
 #include "MaxFlowCalculationTargetFstLevelMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 MaxFlowCalculationTargetFstLevelMessage::MaxFlowCalculationTargetFstLevelMessage(
     const SerializedEquivalent equivalent,
@@ -34,18 +35,10 @@ MaxFlowCalculationTargetFstLevelMessage::MaxFlowCalculationTargetFstLevelMessage
     BytesShared buffer) : MaxFlowCalculationMessage(buffer)
 {
     size_t bytesBufferOffset = MaxFlowCalculationMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-    memcpy(
-        &mIsTargetGateway,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte));
-
-    bytesBufferOffset += sizeof(byte);
-
-    memcpy(
-        &mHopsCnt,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte));
+    deserializer.copyInto(&mIsTargetGateway);
+    deserializer.copyInto(&mHopsCnt);
 }
 
 bool MaxFlowCalculationTargetFstLevelMessage::isTargetGateway() const
@@ -70,27 +63,13 @@ pair<BytesShared, size_t> MaxFlowCalculationTargetFstLevelMessage::serializeToBy
     size_t dataBytesOffset = 0;
 
     // Marshal parent message bytes
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mIsTargetGateway);
+    serializer.copy(mHopsCnt);
 
-    // Marshal mIsTargetGateway
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mIsTargetGateway,
-        sizeof(mIsTargetGateway));
-
-    dataBytesOffset += sizeof(mIsTargetGateway);
-
-    // Marshal mHopsCnt
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mHopsCnt,
-        sizeof(mHopsCnt));
-
-    return make_pair(dataBytesShared, bytesCount);
+    return serializer.collect();
 }
 
 const uint8_t MaxFlowCalculationTargetFstLevelMessage::getHopsCount() const

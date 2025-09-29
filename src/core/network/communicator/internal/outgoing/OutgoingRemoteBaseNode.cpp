@@ -105,7 +105,8 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
         for (; packetIndex < kTotalPacketsCount - 1; ++packetIndex) {
 
             // ToDo: remove all previously created packets from the queue to prevent memory leak.
-            auto buffer = static_cast<byte_t*>(malloc(Packet::kMaxSize));
+            // Zero-initialize to avoid leaking uninitialized bytes over the network
+            auto buffer = static_cast<byte_t*>(calloc(1, Packet::kMaxSize));
             if (buffer == nullptr) {
                 // Memory error occurred.
                 // Current packet can't be enqueued, so there is no reason to try to enqueue the rest packets.
@@ -153,6 +154,7 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
                 checksumPartial);
             messageCrc32ChecksumBytesProcessed += checksumPartial;
 
+            // Any remaining bytes (if checksum doesn't fill the entire space) stay zeroed by calloc
             const auto packetMaxSize = Packet::kMaxSize;
             mPacketsQueue.push(
                 make_pair(
@@ -170,7 +172,8 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
     // Round up to next 8-byte boundary to prevent alignment issues
     size_t alignedSize = (kLastPacketSize + 7) & ~7;
 
-    byte_t* buffer = static_cast<byte_t*>(malloc(alignedSize));
+    // Zero-initialize to avoid any tail bytes being sent uninitialized
+    byte_t* buffer = static_cast<byte_t*>(calloc(1, alignedSize));
     if (buffer == nullptr) {
         throw bad_alloc();
     }

@@ -57,6 +57,6 @@ TransactionResult::SharedConst GetTrustLineByAddressTransaction::resultTrustLine
 const string GetTrustLineByAddressTransaction::logHeader() const
 {
     stringstream s;
-    s << "[GetTrustLineByAddressTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[GetTrustLineByAddressTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

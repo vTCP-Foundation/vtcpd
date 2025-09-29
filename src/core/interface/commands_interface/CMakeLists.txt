@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.14)
 
-find_package(Boost CONFIG REQUIRED system filesystem)
+find_package(Boost MODULE REQUIRED filesystem)
 
 add_library(interface__commands
     interface/CommandsInterface.cpp

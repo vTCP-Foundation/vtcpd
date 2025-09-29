@@ -31,6 +31,11 @@ TransactionResult::SharedConst MaxFlowCalculationFullyTransaction::sendRequestFo
     }
 
     auto ownAddress = mContractorsManager->selfContractor()->mainAddress();
+    if (ownAddress == nullptr) {
+        warning() << "Own address is null. Canceled.";
+        return resultProtocolError();
+    }
+    info() << "Own address: " << ownAddress->fullAddress();
     for (const auto &contractorAddress : mCommand->contractorAddresses()) {
         if (contractorAddress == ownAddress) {
             warning() << "Attempt to initialise operation against itself was prevented. Canceled.";
@@ -277,6 +282,6 @@ TransactionResult::SharedConst MaxFlowCalculationFullyTransaction::resultProtoco
 const string MaxFlowCalculationFullyTransaction::logHeader() const
 {
     stringstream s;
-    s << "[MaxFlowCalculationFullyTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[MaxFlowCalculationFullyTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

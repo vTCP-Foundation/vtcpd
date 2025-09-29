@@ -1,4 +1,6 @@
 #include "ConflictResolverMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 ConflictResolverMessage::ConflictResolverMessage(
     const SerializedEquivalent equivalent,
@@ -21,32 +23,36 @@ ConflictResolverMessage::ConflictResolverMessage(
     BytesShared buffer) :
     TransactionMessage(buffer)
 {
-    auto bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    auto currentOffset = TransactionMessage::kOffsetToInheritedBytes();
 
     mAuditRecord = make_shared<AuditRecord>(
-                       buffer.get() + bytesBufferOffset);
-    bytesBufferOffset += AuditRecord::recordSize();
+                       buffer.get() + currentOffset);
+    currentOffset += AuditRecord::recordSize();
 
-    auto *incomingReceiptsCount = new (buffer.get() + bytesBufferOffset) SerializedRecordsCount;
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
-    mIncomingReceipts.reserve(*incomingReceiptsCount);
+    BytesDeserializer deserializer(buffer, currentOffset);
+    SerializedRecordsCount incomingReceiptsCount;
+    deserializer.copyInto(&incomingReceiptsCount);
+    currentOffset += sizeof(SerializedRecordsCount);
+    mIncomingReceipts.reserve(incomingReceiptsCount);
 
-    for (SerializedRecordNumber idx = 0; idx < *incomingReceiptsCount; idx++) {
+    for (SerializedRecordNumber idx = 0; idx < incomingReceiptsCount; idx++) {
         auto incomingReceiptRecord = make_shared<ReceiptRecord>(
-                                         buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += ReceiptRecord::recordSize();
+                                         buffer.get() + currentOffset);
+        currentOffset += ReceiptRecord::recordSize();
         mIncomingReceipts.push_back(
             incomingReceiptRecord);
     }
 
-    auto *outgoingReceiptsCount = new (buffer.get() + bytesBufferOffset) SerializedRecordsCount;
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
-    mOutgoingReceipts.reserve(*outgoingReceiptsCount);
+    SerializedRecordsCount outgoingReceiptsCount;
+    deserializer = BytesDeserializer(buffer, currentOffset);
+    deserializer.copyInto(&outgoingReceiptsCount);
+    currentOffset += sizeof(SerializedRecordsCount);
+    mOutgoingReceipts.reserve(outgoingReceiptsCount);
 
-    for (SerializedRecordNumber idx = 0; idx < *outgoingReceiptsCount; idx++) {
+    for (SerializedRecordNumber idx = 0; idx < outgoingReceiptsCount; idx++) {
         auto outgoingReceiptRecord = make_shared<ReceiptRecord>(
-                                         buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += ReceiptRecord::recordSize();
+                                         buffer.get() + currentOffset);
+        currentOffset += ReceiptRecord::recordSize();
         mOutgoingReceipts.push_back(
             outgoingReceiptRecord);
     }
@@ -85,61 +91,29 @@ const bool ConflictResolverMessage::isCheckCachedResponse() const
 
 pair<BytesShared, size_t> ConflictResolverMessage::serializeToBytes() const
 {
-    const auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-    auto kBufferSize = parentBytesAndCount.second
-                       + AuditRecord::recordSize()
-                       + sizeof(SerializedRecordsCount)
-                       + mIncomingReceipts.size() * ReceiptRecord::recordSize()
-                       + sizeof(SerializedRecordsCount)
-                       + mOutgoingReceipts.size() * ReceiptRecord::recordSize();
-    BytesShared buffer = tryMalloc(kBufferSize);
-
-    size_t dataBytesOffset = 0;
-    // Parent message content
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
+    BytesSerializer serializer;
+    serializer.enqueue(TransactionMessage::serializeToBytes());
 
     auto serializedAuditRecord = mAuditRecord->serializeToBytes();
-    memcpy(
-        buffer.get() + dataBytesOffset,
+    serializer.copy(
         serializedAuditRecord.get(),
         AuditRecord::recordSize());
-    dataBytesOffset += AuditRecord::recordSize();
 
-    auto incomingReceipts = (SerializedRecordsCount)mIncomingReceipts.size();
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &incomingReceipts,
-        sizeof(SerializedRecordsCount));
-    dataBytesOffset += sizeof(SerializedRecordsCount);
+    serializer.copy((SerializedRecordsCount)mIncomingReceipts.size());
 
     for (const auto &incomingReceiptRecord : mIncomingReceipts) {
-        memcpy(
-            buffer.get() + dataBytesOffset,
+        serializer.copy(
             incomingReceiptRecord->serializeToBytes().get(),
             ReceiptRecord::recordSize());
-        dataBytesOffset += ReceiptRecord::recordSize();
     }
 
-    auto outgoingReceipts = (SerializedRecordsCount)mOutgoingReceipts.size();
-    memcpy(
-        buffer.get() + dataBytesOffset,
-        &outgoingReceipts,
-        sizeof(SerializedRecordsCount));
-    dataBytesOffset += sizeof(SerializedRecordsCount);
+    serializer.copy((SerializedRecordsCount)mOutgoingReceipts.size());
 
     for (const auto &outgoingReceiptRecord : mOutgoingReceipts) {
-        memcpy(
-            buffer.get() + dataBytesOffset,
+        serializer.copy(
             outgoingReceiptRecord->serializeToBytes().get(),
             ReceiptRecord::recordSize());
-        dataBytesOffset += ReceiptRecord::recordSize();
     }
 
-    return make_pair(
-               buffer,
-               kBufferSize);
+    return serializer.collect();
 }

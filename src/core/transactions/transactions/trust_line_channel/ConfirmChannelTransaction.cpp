@@ -76,6 +76,6 @@ TransactionResult::SharedConst ConfirmChannelTransaction::run()
 const string ConfirmChannelTransaction::logHeader() const
 {
     stringstream s;
-    s << "[ConfirmChannelTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[ConfirmChannelTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

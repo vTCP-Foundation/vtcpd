@@ -61,6 +61,8 @@ private:
 
     int initLogger();
 
+    int initORTools();
+
     int initTailManager();
 
     int initCommunicator(

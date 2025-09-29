@@ -133,6 +133,6 @@ TransactionResult::SharedConst SetChannelContractorCryptoKeyTransaction::resultU
 const string SetChannelContractorCryptoKeyTransaction::logHeader() const
 {
     stringstream s;
-    s << "[SetChannelContractorCryptoKeyTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[SetChannelContractorCryptoKeyTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

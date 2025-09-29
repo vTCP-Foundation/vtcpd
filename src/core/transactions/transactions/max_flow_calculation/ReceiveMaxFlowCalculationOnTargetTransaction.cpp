@@ -150,6 +150,6 @@ void ReceiveMaxFlowCalculationOnTargetTransaction::sendMessagesOnFirstLevel()
 const string ReceiveMaxFlowCalculationOnTargetTransaction::logHeader() const
 {
     stringstream s;
-    s << "[ReceiveMaxFlowCalculationOnTargetTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[ReceiveMaxFlowCalculationOnTargetTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

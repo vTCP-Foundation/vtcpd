@@ -707,7 +707,7 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::resultUnexpected
 const string SetOutgoingTrustLineTransaction::logHeader() const
 {
     stringstream s;
-    s << "[SetOutgoingTrustLineTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[SetOutgoingTrustLineTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }
 

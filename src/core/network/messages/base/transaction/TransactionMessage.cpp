@@ -38,14 +38,8 @@ TransactionMessage::TransactionMessage(
 
     SenderMessage(buffer),
     mTransactionUUID([&buffer](const size_t parentOffset) -> const TransactionUUID {
-                         TransactionUUID tu;
-
-                         memcpy(
-                             tu.data,
-                             buffer.get() + parentOffset,
-                             TransactionUUID::kBytesSize);
-
-                         return tu;
+                         // Use the safe constructor from uint8_t* that we fixed in NodeUUID
+                         return TransactionUUID(buffer.get() + parentOffset);
                      }(SenderMessage::kOffsetToInheritedBytes()))
 {}
 
@@ -59,40 +53,25 @@ const TransactionUUID &TransactionMessage::transactionUUID() const
     return mTransactionUUID;
 }
 
-/*
- * ToDo: rewrite me with bytes deserializer
- */
 pair<BytesShared, size_t> TransactionMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = SenderMessage::serializeToBytes();
+    // TODO: Serialization architecture optimization needed across entire inheritance chain:
+    // This base class pattern causes redundant parent serialization in all child classes.
+    // Each child calls parent::serializeToBytes() then copies that buffer again via enqueue().
+    // Consider: void serializeToSerializer(BytesSerializer& serializer) pattern to avoid copies.
+    BytesSerializer serializer;
 
-    size_t bytesCount = parentBytesAndCount.second
-                        + TransactionUUID::kBytesSize;
+    serializer.enqueue(SenderMessage::serializeToBytes());
+    serializer.copy(mTransactionUUID);
 
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        mTransactionUUID.data,
-        TransactionUUID::kBytesSize);
-    //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    return serializer.collect();
 }
 
 const size_t TransactionMessage::kOffsetToInheritedBytes() const
 {
     const auto kOffset =
         SenderMessage::kOffsetToInheritedBytes()
-        + TransactionUUID::kBytesSize;
+        + BytesSerializer::kSerializedUUIDSize;
 
     return kOffset;
 }

@@ -7,10 +7,13 @@ BaseTransaction::BaseTransaction(
 
     mType(type),
     mTransactionUUID(),
-    mLog(log),
-    mTimeStarted(utc_now())
+    mEquivalent(0),
+    mContext(),
+    mResources(),
+    mStep(1),
+    mTimeStarted(utc_now()),
+    mLog(log)
 {
-    mStep = 1;
 }
 
 BaseTransaction::BaseTransaction(
@@ -19,22 +22,36 @@ BaseTransaction::BaseTransaction(
     Logger &log) :
 
     mType(type),
-    mLog(log),
     mTransactionUUID(transactionUUID),
-    mTimeStarted(utc_now())
+    mEquivalent(0),
+    mContext(),
+    mResources(),
+    mStep(1),
+    mTimeStarted(utc_now()),
+    mLog(log)
 {
-    mStep = 1;
 }
 
 BaseTransaction::BaseTransaction(
     BytesShared buffer,
     Logger &log) :
+    mType(BaseTransaction::NoEquivalentType),
+    mTransactionUUID(),
+    mEquivalent(0),
+    mContext(),
+    mResources(),
+    mStep(0),
+    mTimeStarted(utc_now()),
     mLog(log)
 {
     size_t bytesBufferOffset = 0;
 
-    SerializedTransactionType *transactionType = new (buffer.get()) SerializedTransactionType;
-    mType = (TransactionType) *transactionType;
+    SerializedTransactionType transactionType;
+    memcpy(
+        &transactionType,
+        buffer.get(),
+        sizeof(SerializedTransactionType));
+    mType = static_cast<TransactionType>(transactionType);
     bytesBufferOffset += sizeof(SerializedTransactionType);
     //-----------------------------------------------------
     memcpy(
@@ -43,14 +60,17 @@ BaseTransaction::BaseTransaction(
         sizeof(SerializedEquivalent));
     bytesBufferOffset += sizeof(SerializedEquivalent);
     //-----------------------------------------------------
-    memcpy(
-        mTransactionUUID.data,
-        buffer.get() + bytesBufferOffset,
-        TransactionUUID::kBytesSize);
+    // Read UUID bytes in an alignment-safe way
+    mTransactionUUID = TransactionUUID(
+        reinterpret_cast<const uint8_t *>(buffer.get() + bytesBufferOffset));
     bytesBufferOffset += TransactionUUID::kBytesSize;
     //-----------------------------------------------------
-    SerializedStep *step = new (buffer.get() + bytesBufferOffset) SerializedStep;
-    mStep = *step;
+    SerializedStep step;
+    memcpy(
+        &step,
+        buffer.get() + bytesBufferOffset,
+        sizeof(SerializedStep));
+    mStep = step;
 }
 
 BaseTransaction::BaseTransaction(
@@ -61,9 +81,14 @@ BaseTransaction::BaseTransaction(
     mType(type),
     mTransactionUUID(),
     mEquivalent(equivalent),
+    mContext(),
+    mResources(),
+    mStep(1),
+    mTimeStarted(utc_now()),
     mLog(log)
 {
-    mStep = 1;
+    mLog.debug("BaseTransaction") << "BaseTransaction. transactionUUID: " << mTransactionUUID.stringUUID() 
+                                << " equivalent: " << mEquivalent;
 }
 
 BaseTransaction::BaseTransaction(
@@ -73,11 +98,14 @@ BaseTransaction::BaseTransaction(
     Logger &log) :
 
     mType(type),
-    mLog(log),
     mTransactionUUID(transactionUUID),
-    mEquivalent(equivalent)
+    mEquivalent(equivalent),
+    mContext(),
+    mResources(),
+    mStep(1),
+    mTimeStarted(utc_now()),
+    mLog(log)
 {
-    mStep = 1;
 }
 
 void BaseTransaction::launchSubsidiaryTransaction(
@@ -252,7 +280,7 @@ pair<BytesShared, size_t> BaseTransaction::serializeToBytes() const
     //-----------------------------------------------------
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
-        mTransactionUUID.data,
+        mTransactionUUID.begin(),
         TransactionUUID::kBytesSize);
     dataBytesOffset += TransactionUUID::kBytesSize;
     //-----------------------------------------------------

@@ -1,4 +1,5 @@
 #include "UpdateChannelAddressesMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 UpdateChannelAddressesMessage::UpdateChannelAddressesMessage(
     Contractor::Shared contractor,
@@ -15,21 +16,20 @@ UpdateChannelAddressesMessage::UpdateChannelAddressesMessage(
     BytesShared buffer) : TransactionMessage(buffer)
 {
     size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
     byte_t senderAddressesCnt;
-    memcpy(
-        &senderAddressesCnt,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte_t));
-    bytesBufferOffset += sizeof(byte_t);
-    mNewSenderAddresses.reserve(
-        senderAddressesCnt);
+    deserializer.copyInto(&senderAddressesCnt);
+    mNewSenderAddresses.reserve(senderAddressesCnt);
 
     for (int idx = 0; idx < senderAddressesCnt; idx++) {
-        auto senderAddress = deserializeAddress(
-                                 buffer.get() + bytesBufferOffset);
+        // Get current position from deserializer for address parsing
+        auto currentOffset = deserializer.getCurrentOffset();
+        auto senderAddress = deserializeAddress(buffer.get() + currentOffset);
         mNewSenderAddresses.push_back(senderAddress);
-        bytesBufferOffset += senderAddress->serializedSize();
+
+        // Keep deserializer in sync by advancing past the address data
+        deserializer.skipBytes(senderAddress->serializedSize());
     }
 }
 
@@ -52,32 +52,15 @@ pair<BytesShared, size_t> UpdateChannelAddressesMessage::serializeToBytes() cons
         bytesCount += address->serializedSize();
     }
 
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------
-    auto addressesCnt = (byte_t)mNewSenderAddresses.size();
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &addressesCnt,
-        sizeof(byte_t));
-    dataBytesOffset += sizeof(byte_t);
-    //----------------------------
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy((byte_t)mNewSenderAddresses.size());
+
     for (const auto &address : mNewSenderAddresses) {
         auto serializedAddress = address->serializeToBytes();
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            serializedAddress.get(),
-            address->serializedSize());
-        dataBytesOffset += address->serializedSize();
+        serializer.copy(serializedAddress.get(), address->serializedSize());
     }
-    //----------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+
+    return serializer.collect();
 }

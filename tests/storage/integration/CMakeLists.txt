@@ -59,5 +59,21 @@ target_link_libraries(postgresql_integration_tests PRIVATE
 # Set C++ standard
 target_compile_features(postgresql_integration_tests PRIVATE cxx_std_20)
 
+# Add GCC specific sanitizer compile flags for Debug builds if ENABLE_GCC_SANITIZERS is ON
+target_compile_options(postgresql_integration_tests PRIVATE
+    $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_GCC_SANITIZERS}>,$<CXX_COMPILER_ID:GNU>>:
+        -fno-omit-frame-pointer
+        -fsanitize=address,undefined
+    >
+)
+
+# Add GCC specific sanitizer link flags for Debug builds if ENABLE_GCC_SANITIZERS is ON
+target_link_options(postgresql_integration_tests PRIVATE
+    $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_GCC_SANITIZERS}>,$<CXX_COMPILER_ID:GNU>>:
+        -fno-omit-frame-pointer
+        -fsanitize=address,undefined
+    >
+)
+
 # Discover tests
 gtest_discover_tests(postgresql_integration_tests) 

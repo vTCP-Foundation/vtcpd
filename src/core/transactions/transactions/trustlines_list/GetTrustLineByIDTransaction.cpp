@@ -44,6 +44,6 @@ TransactionResult::SharedConst GetTrustLineByIDTransaction::resultTrustLineIsAbs
 const string GetTrustLineByIDTransaction::logHeader() const
 {
     stringstream s;
-    s << "[GetTrustLineByIDTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[GetTrustLineByIDTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

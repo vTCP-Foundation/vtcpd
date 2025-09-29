@@ -1,4 +1,5 @@
 #include "PublicKeyHashConfirmation.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 PublicKeyHashConfirmation::PublicKeyHashConfirmation(
     const SerializedEquivalent equivalent,
@@ -39,14 +40,14 @@ PublicKeyHashConfirmation::PublicKeyHashConfirmation(
     auto bytesBufferOffset = ConfirmationMessage::kOffsetToInheritedBytes();
 
     if (state() == ConfirmationMessage::OK) {
-        memcpy(
-            &mNumber,
-            buffer.get() + bytesBufferOffset,
-            sizeof(KeyNumber));
-        bytesBufferOffset += sizeof(KeyNumber);
+        BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-        mHashConfirmation = make_shared<lamport::KeyHash>(
-                                buffer.get() + bytesBufferOffset);
+        deserializer.copyInto(&mNumber);
+
+        // Get current offset for crypto key creation
+        auto currentOffset = deserializer.getCurrentOffset();
+        mHashConfirmation = make_shared<lamport::KeyHash>(buffer.get() + currentOffset);
+        deserializer.skipBytes(lamport::KeyHash::kBytesSize);
     }
 }
 
@@ -67,35 +68,23 @@ const lamport::KeyHash::Shared PublicKeyHashConfirmation::hashConfirmation() con
 
 pair<BytesShared, size_t> PublicKeyHashConfirmation::serializeToBytes() const
 {
+    // TODO: Performance optimization - parent data is serialized twice:
+    // 1. ConfirmationMessage::serializeToBytes() creates buffer
+    // 2. serializer.enqueue() copies that buffer again
+    // Consider passing serializer down inheritance chain to avoid redundant allocation/copy
     const auto parentBytesAndCount = ConfirmationMessage::serializeToBytes();
     auto kBufferSize = parentBytesAndCount.second;
     if (state() == ConfirmationMessage::OK) {
         kBufferSize += sizeof(KeyNumber) + lamport::KeyHash::kBytesSize;
     }
-    BytesShared buffer = tryMalloc(kBufferSize);
-
-    size_t dataBytesOffset = 0;
-    // Parent message content
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
 
     if (state() == ConfirmationMessage::OK) {
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            &mNumber,
-            sizeof(KeyNumber));
-        dataBytesOffset += sizeof(KeyNumber);
-
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            mHashConfirmation->data(),
-            lamport::KeyHash::kBytesSize);
+        serializer.copy(mNumber);
+        serializer.copy(mHashConfirmation->data(), lamport::KeyHash::kBytesSize);
     }
 
-    return make_pair(
-               buffer,
-               kBufferSize);
+    return serializer.collect();
 }

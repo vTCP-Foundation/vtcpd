@@ -1,4 +1,6 @@
 #include "MaxFlowCalculationMessage.h"
+#include "../../../../common/serialization/BytesDeserializer.h"
+#include "../../../../common/serialization/BytesSerializer.h"
 
 MaxFlowCalculationMessage::MaxFlowCalculationMessage(
     const SerializedEquivalent equivalent,
@@ -31,37 +33,39 @@ MaxFlowCalculationMessage::MaxFlowCalculationMessage(
 MaxFlowCalculationMessage::MaxFlowCalculationMessage(
     BytesShared buffer) : SenderMessage(buffer)
 {
-    auto bytesBufferOffset = SenderMessage::kOffsetToInheritedBytes();
+    auto deserializer = BytesDeserializer(
+        buffer,
+        SenderMessage::kOffsetToInheritedBytes());
 
     byte_t senderAddressesCnt;
-    memcpy(
-        &senderAddressesCnt,
-        buffer.get() + bytesBufferOffset,
-        sizeof(byte_t));
-    bytesBufferOffset += sizeof(byte_t);
+    deserializer.copyInto(&senderAddressesCnt);
 
+    size_t currentOffset = SenderMessage::kOffsetToInheritedBytes() + BytesSerializer::kSerializedByteSize;
     for (int idx = 0; idx < senderAddressesCnt; idx++) {
         auto targetAddress = deserializeAddress(
-                                 buffer.get() + bytesBufferOffset);
+                                 buffer.get() + currentOffset);
         mTargetAddresses.push_back(targetAddress);
-        bytesBufferOffset += targetAddress->serializedSize();
+        currentOffset += targetAddress->serializedSize();
     }
 
+    // Deserialize exchange equivalents count
+    BytesDeserializer exchangeEquivalentsCntDeserializer(
+        buffer,
+        currentOffset);
     uint8_t exchangeEquivalentsCnt;
-    memcpy(
-        &exchangeEquivalentsCnt,
-        buffer.get() + bytesBufferOffset,
-        sizeof(uint8_t));
-    bytesBufferOffset += sizeof(uint8_t);
+    exchangeEquivalentsCntDeserializer.copyInto(&exchangeEquivalentsCnt);
+    currentOffset += BytesSerializer::kSerializedByteSize;
 
+    // Deserialize each exchange equivalent
+    mExchangeEquivalents.reserve(exchangeEquivalentsCnt);
     for (uint8_t idx = 0; idx < exchangeEquivalentsCnt; idx++) {
+        BytesDeserializer equivalentDeserializer(
+            buffer,
+            currentOffset);
         SerializedEquivalent equivalent;
-        memcpy(
-            &equivalent,
-            buffer.get() + bytesBufferOffset,
-            sizeof(SerializedEquivalent));
+        equivalentDeserializer.copyInto(&equivalent);
         mExchangeEquivalents.push_back(equivalent);
-        bytesBufferOffset += sizeof(SerializedEquivalent);
+        currentOffset += BytesSerializer::kSerializedEquivalentSize;
     }
 }
 
@@ -77,65 +81,42 @@ vector<SerializedEquivalent> MaxFlowCalculationMessage::exchangeEquivalents() co
 
 pair<BytesShared, size_t> MaxFlowCalculationMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = SenderMessage::serializeToBytes();
-    size_t bytesCount = parentBytesAndCount.second + sizeof(byte_t) + sizeof(uint8_t);
-    for (const auto &address : mTargetAddresses) {
-        bytesCount += address->serializedSize();
-    }
-    bytesCount += mExchangeEquivalents.size() * sizeof(SerializedEquivalent);
+    // TODO: Serialization architecture optimization needed across entire inheritance chain:
+    // This base class pattern causes redundant parent serialization in all child classes.
+    // Each child calls parent::serializeToBytes() then copies that buffer again via enqueue().
+    // Consider: void serializeToSerializer(BytesSerializer& serializer) pattern to avoid copies.
+    auto serializer = BytesSerializer();
 
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
+    // Serialize parent data
+    serializer.enqueue(SenderMessage::serializeToBytes());
 
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-
+    // Serialize target addresses count
     auto targetAddressesCnt = (byte_t)mTargetAddresses.size();
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &targetAddressesCnt,
-        sizeof(byte_t));
-    dataBytesOffset += sizeof(byte_t);
+    serializer.copy(targetAddressesCnt);
 
+    // Serialize target addresses
     for (auto &targetAddress : mTargetAddresses) {
-        auto serializedData = targetAddress->serializeToBytes();
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            serializedData.get(),
-            targetAddress->serializedSize());
-        dataBytesOffset += targetAddress->serializedSize();
+        serializer.enqueue(targetAddress->serializeToBytes(), targetAddress->serializedSize());
     }
-
+    // Serialize exchange equivalents count
     auto exchangeEquivalentsCnt = (uint8_t)mExchangeEquivalents.size();
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &exchangeEquivalentsCnt,
-        sizeof(uint8_t));
-    dataBytesOffset += sizeof(uint8_t);
+    serializer.copy(exchangeEquivalentsCnt);
 
+    // Serialize each exchange equivalent
     for (const auto &equivalent : mExchangeEquivalents) {
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            &equivalent,
-            sizeof(SerializedEquivalent));
-        dataBytesOffset += sizeof(SerializedEquivalent);
+        serializer.copy(equivalent);
     }
 
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    return serializer.collect();
 }
 
 const size_t MaxFlowCalculationMessage::kOffsetToInheritedBytes() const
 {
-    auto kOffset = SenderMessage::kOffsetToInheritedBytes() + sizeof(byte_t);
+    auto kOffset = SenderMessage::kOffsetToInheritedBytes() + BytesSerializer::kSerializedByteSize;
     for (const auto &address : mTargetAddresses) {
         kOffset += address->serializedSize();
     }
-    kOffset += sizeof(uint8_t); // count of exchange equivalents
-    kOffset += mExchangeEquivalents.size() * sizeof(SerializedEquivalent);
+    kOffset += BytesSerializer::kSerializedByteSize; // count of exchange equivalents
+    kOffset += mExchangeEquivalents.size() * BytesSerializer::kSerializedEquivalentSize;
     return kOffset;
 }

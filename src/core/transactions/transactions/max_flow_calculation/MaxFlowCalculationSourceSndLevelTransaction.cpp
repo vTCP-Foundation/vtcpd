@@ -327,6 +327,6 @@ void MaxFlowCalculationSourceSndLevelTransaction::sendExchangeRatesIfNeeded()
 const string MaxFlowCalculationSourceSndLevelTransaction::logHeader() const
 {
     stringstream s;
-    s << "[MaxFlowCalculationSourceSndLevelTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[MaxFlowCalculationSourceSndLevelTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

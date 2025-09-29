@@ -180,6 +180,6 @@ bool CollectTopologyTransaction::isNodeListedInTransactionContractors(
 const string CollectTopologyTransaction::logHeader() const
 {
     stringstream s;
-    s << "[CollectTopologyTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[CollectTopologyTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

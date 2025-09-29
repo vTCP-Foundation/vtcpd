@@ -1,4 +1,5 @@
 ﻿#include "CoordinatorReservationRequestMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 
 CoordinatorReservationRequestMessage::CoordinatorReservationRequestMessage(
@@ -21,9 +22,9 @@ CoordinatorReservationRequestMessage::CoordinatorReservationRequestMessage(
 
     RequestMessageWithReservations(buffer)
 {
-    size_t parentMessageOffset = RequestMessageWithReservations::kOffsetToInheritedBytes();
+    size_t currentOffset = RequestMessageWithReservations::kOffsetToInheritedBytes();
 
-    mNextPathNode = deserializeAddress(buffer.get() + parentMessageOffset);
+    mNextPathNode = deserializeAddress(buffer.get() + currentOffset);
 }
 
 BaseAddress::Shared CoordinatorReservationRequestMessage::nextNodeInPath() const {
@@ -36,24 +37,14 @@ const Message::MessageType CoordinatorReservationRequestMessage::typeID() const 
 
 pair<BytesShared, size_t> CoordinatorReservationRequestMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = RequestMessageWithReservations::serializeToBytes();
-    size_t totalBytesCount =
-        + parentBytesAndCount.second
-        + mNextPathNode->serializedSize();
+    BytesSerializer serializer;
 
-    BytesShared buffer = tryMalloc(totalBytesCount);
-    memcpy(
-        buffer.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
+    serializer.enqueue(RequestMessageWithReservations::serializeToBytes());
 
     auto serializedAddress = mNextPathNode->serializeToBytes();
-    memcpy(
-        buffer.get() + parentBytesAndCount.second,
-        serializedAddress.get(),
+    serializer.enqueue(
+        serializedAddress,
         mNextPathNode->serializedSize());
 
-    return make_pair(
-               buffer,
-               totalBytesCount);
+    return serializer.collect();
 }

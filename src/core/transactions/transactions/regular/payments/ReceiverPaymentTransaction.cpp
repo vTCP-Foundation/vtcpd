@@ -215,7 +215,7 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runAmountReservationS
 
     const auto kMessage = popNextMessage<IntermediateNodeReservationRequestMessage>();
 
-    const auto kNeighbor = kMessage->senderAddresses.at(0);
+    const auto kNeighbor = mContractorsManager->contractorAddresses(kMessage->idOnReceiverSide).at(0);
     if (kMessage->finalAmountsConfiguration().empty()) {
         warning() << "Reservation vector is empty";
         return sendErrorMessageOnPreviousNodeRequest(
@@ -921,6 +921,6 @@ BaseAddress::Shared ReceiverPaymentTransaction::coordinatorAddress() const
 const string ReceiverPaymentTransaction::logHeader() const
 {
     stringstream s;
-    s << "[ReceiverPaymentTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[ReceiverPaymentTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

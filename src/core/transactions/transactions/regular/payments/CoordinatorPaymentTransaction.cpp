@@ -669,7 +669,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::askNeighborToReser
     sendMessage<IntermediateNodeReservationRequestMessage>(
         neighborID,
         mEquivalent,
-        mContractorsManager->ownAddresses(),
+        mContractorsManager->idOnContractorSide(neighborID),
         mTransactionUUID,
         reservations);
 
@@ -1693,7 +1693,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::resultUnexpectedEr
 const string CoordinatorPaymentTransaction::logHeader() const
 {
     stringstream s;
-    s << "[CoordinatorPaymentTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[CoordinatorPaymentTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }
 

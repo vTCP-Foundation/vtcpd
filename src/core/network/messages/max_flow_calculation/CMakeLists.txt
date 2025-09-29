@@ -32,4 +32,5 @@ target_compile_features(messages__max_flow_calculation
 
 target_link_libraries(messages__max_flow_calculation
     PUBLIC
-        messages__base__max_flow_calculation)
+        messages__base__max_flow_calculation
+        $<$<BOOL:${BUILD_TESTING}>:network__messages>)

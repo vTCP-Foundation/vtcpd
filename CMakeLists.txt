@@ -12,6 +12,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Use modern behavior for find_package ROOT variables to silence dev warnings
+if(POLICY CMP0144)
+    cmake_policy(SET CMP0144 NEW)
+endif()
+
 # Set custom build types
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo;MinSizeRel" CACHE STRING "" FORCE)
 
@@ -29,6 +34,23 @@ target_compile_definitions(project_options INTERFACE
     TRANSACTIONS_LOG
     BOOST_BIND_GLOBAL_PLACEHOLDERS
 )
+target_link_libraries(project_options INTERFACE Threads::Threads)
+
+# Ensure local third_party headers (e.g., absl overrides) are found first
+target_include_directories(project_options INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+
+# Make Boost headers available project-wide
+if(TARGET Boost::headers)
+    target_link_libraries(project_options INTERFACE Boost::headers)
+endif()
+
+# Provide a fallback header-only Boost.System target for Boost >= 1.89
+if(NOT TARGET Boost::system)
+    add_library(Boost::system INTERFACE IMPORTED)
+    target_compile_definitions(Boost::system INTERFACE BOOST_ERROR_CODE_HEADER_ONLY=1)
+endif()
 
 # Dependencies management
 include(FetchContent)
@@ -52,15 +74,40 @@ if(BUILD_TESTING)
 endif()
 
 # Find required packages
-find_package(Boost CONFIG REQUIRED
-    COMPONENTS 
-        system 
-        filesystem 
-        thread 
-        date_time
+# Prefer Boost CMake config (CONFIG) when available (e.g., Boost 1.87). Fallback to FindBoost (MODULE).
+set(_boost_components
+    filesystem
+    thread
+    date_time
 )
-find_package(SQLite3 REQUIRED)
+find_package(Boost CONFIG QUIET COMPONENTS ${_boost_components})
+if(NOT Boost_FOUND)
+    set(Boost_NO_BOOST_CMAKE ON)
+    find_package(Boost MODULE REQUIRED COMPONENTS ${_boost_components})
+endif()
+find_package(Threads REQUIRED)
+find_package(ortools REQUIRED)
 message(STATUS "Boost version: ${Boost_VERSION_STRING}")
+message(STATUS "OR-Tools is required and will be linked")
+# Database backend selection
+# Usage: cmake -S . -B build -DDB_TYPE=sqlite|postgresql
+set(DB_TYPE "sqlite" CACHE STRING "Database backend: sqlite|postgresql")
+set_property(CACHE DB_TYPE PROPERTY STRINGS "sqlite" "postgresql")
+
+if(DB_TYPE STREQUAL "sqlite")
+    find_package(SQLite3 REQUIRED)
+    set(DB_LIB_TARGET SQLite::SQLite3)
+    message(STATUS "Database backend: SQLite3")
+    target_compile_definitions(project_options INTERFACE DB_SQLITE)
+elseif(DB_TYPE STREQUAL "postgresql")
+    find_package(PostgreSQL REQUIRED)
+    set(DB_LIB_TARGET PostgreSQL::PostgreSQL)
+    message(STATUS "Database backend: PostgreSQL")
+    target_compile_definitions(project_options INTERFACE DB_POSTGRESQL)
+else()
+    message(FATAL_ERROR "Unknown DB_TYPE='${DB_TYPE}'. Use 'sqlite' or 'postgresql'.")
+endif()
+
 
 
 # Debug compile definitions
@@ -121,6 +168,7 @@ option(ENABLE_GCC_SANITIZERS "Enable GCC runtime memory sanitizers (ASan, UBSan)
 add_library(core_libs INTERFACE)
 target_link_libraries(core_libs INTERFACE
     project_options
+    Threads::Threads
     Boost::system
     Boost::filesystem
     Boost::thread
@@ -185,7 +233,7 @@ target_link_libraries(vtcpd PRIVATE
     delayed_tasks
     transactions
     resources_manager
-    cycles
+    cycles          
     subsystems_controller
     equivalents
     crypto
@@ -196,13 +244,19 @@ target_link_libraries(vtcpd PRIVATE
     rates
 
     # Libs
-    SQLite::SQLite3
     sodium
 )
+
+# Link chosen DB backend (shared/dynamic linking via imported target)
+target_link_libraries(vtcpd PRIVATE ${DB_LIB_TARGET})
+
+# Link OR-Tools (hard dependency)
+target_link_libraries(vtcpd PRIVATE ortools::ortools)
 
 # Add GCC specific sanitizer link flags for Debug builds for the main executable if ENABLE_GCC_SANITIZERS is ON
 target_link_options(vtcpd PRIVATE
     $<$<AND:$<CONFIG:Debug>,$<BOOL:${ENABLE_GCC_SANITIZERS}>,$<CXX_COMPILER_ID:GNU>>:
+        -fno-omit-frame-pointer
         -fsanitize=address,undefined
     >
 )

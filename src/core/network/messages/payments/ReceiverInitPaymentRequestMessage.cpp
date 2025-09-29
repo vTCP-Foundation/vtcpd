@@ -1,4 +1,6 @@
 ﻿#include "ReceiverInitPaymentRequestMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
+#include "../../../common/serialization/BytesSerializer.h"
 
 ReceiverInitPaymentRequestMessage::ReceiverInitPaymentRequestMessage(
     const SerializedEquivalent equivalent,
@@ -20,13 +22,14 @@ ReceiverInitPaymentRequestMessage::ReceiverInitPaymentRequestMessage(
     RequestMessage(
         buffer)
 {
-    auto bytesBufferOffset = RequestMessage::kOffsetToInheritedBytes();
-    auto *payloadLength = new (buffer.get() + bytesBufferOffset) PayloadLength;
-    if (*payloadLength > 0) {
-        bytesBufferOffset += sizeof(PayloadLength);
+    auto currentOffset = RequestMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, currentOffset);
+    PayloadLength payloadLength;
+    deserializer.copyInto(&payloadLength);
+    if (payloadLength > 0) {
         mPayload = string(
-                       buffer.get() + bytesBufferOffset,
-                       buffer.get() + bytesBufferOffset + *payloadLength);
+                       buffer.get() + currentOffset + sizeof(PayloadLength),
+                       buffer.get() + currentOffset + sizeof(PayloadLength) + payloadLength);
     } else {
         mPayload = "";
     }
@@ -44,35 +47,15 @@ const string ReceiverInitPaymentRequestMessage::payload() const
 
 pair<BytesShared, size_t> ReceiverInitPaymentRequestMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = RequestMessage::serializeToBytes();
-    size_t bytesCount =
-        + parentBytesAndCount.second
-        + sizeof(PayloadLength)
-        + mPayload.length();
+    BytesSerializer serializer;
+    serializer.enqueue(RequestMessage::serializeToBytes());
+    serializer.copy((PayloadLength)mPayload.length());
 
-    BytesShared buffer = tryMalloc(bytesCount);
-    size_t bytesBufferOffset = 0;
-    memcpy(
-        buffer.get() + bytesBufferOffset,
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    bytesBufferOffset += parentBytesAndCount.second;
-
-    auto payloadLength = (PayloadLength)mPayload.length();
-    memcpy(
-        buffer.get() + bytesBufferOffset,
-        &payloadLength,
-        sizeof(PayloadLength));
-
-    if (payloadLength > 0) {
-        bytesBufferOffset += sizeof(PayloadLength);
-        memcpy(
-            buffer.get() + bytesBufferOffset,
+    if (mPayload.length() > 0) {
+        serializer.copy(
             mPayload.c_str(),
-            payloadLength);
+            mPayload.length());
     }
 
-    return make_pair(
-               buffer,
-               bytesCount);
+    return serializer.collect();
 }

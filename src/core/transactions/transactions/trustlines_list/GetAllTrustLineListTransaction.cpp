@@ -72,7 +72,7 @@ TransactionResult::SharedConst GetAllTrustLineListTransaction::run() {
 const string GetAllTrustLineListTransaction::logHeader() const
 {
     stringstream s;
-    s << "[GetAllTrustLineListTA: " << currentTransactionUUID() << "] ";
+    s << "[GetAllTrustLineListTA: " << currentTransactionUUID().stringUUID() << "] ";
     return s.str();
 }
 

@@ -73,6 +73,6 @@ TransactionResult::SharedConst SetChannelContractorAddressesTransaction::resultU
 const string SetChannelContractorAddressesTransaction::logHeader() const
 {
     stringstream s;
-    s << "[SetChannelContractorAddressesTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[SetChannelContractorAddressesTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

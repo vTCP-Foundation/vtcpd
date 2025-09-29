@@ -1,4 +1,5 @@
 ﻿#include "RequestMessage.h"
+#include "../../../../common/serialization/BytesDeserializer.h"
 
 RequestMessage::RequestMessage(
     const SerializedEquivalent equivalent,
@@ -21,17 +22,14 @@ RequestMessage::RequestMessage(
 
     TransactionMessage(buffer)
 {
-    auto parentMessageOffset = TransactionMessage::kOffsetToInheritedBytes();
-    auto bytesBufferOffset = buffer.get() + parentMessageOffset;
-    PathID *pathID = new (bytesBufferOffset) PathID;
-    mPathID = *pathID;
-    bytesBufferOffset += sizeof(PathID);
-    auto amountEndOffset = bytesBufferOffset + kTrustLineBalanceBytesCount; // TODO: deserialize only non-zero
-    vector<byte_t> amountBytes(
-        bytesBufferOffset,
-        amountEndOffset);
+    auto currentOffset = TransactionMessage::kOffsetToInheritedBytes();
+    BytesDeserializer deserializer(buffer, currentOffset);
 
-    mAmount = bytesToTrustLineAmount(amountBytes);
+    deserializer.copyInto(&mPathID);
+    currentOffset += BytesSerializer::kSerializedPathIDSize;
+
+    deserializer = BytesDeserializer(buffer, currentOffset);
+    deserializer.copyInto(&mAmount);
 }
 
 const TrustLineAmount &RequestMessage::amount() const
@@ -46,40 +44,25 @@ const PathID &RequestMessage::pathID() const
 
 pair<BytesShared, size_t> RequestMessage::serializeToBytes() const
 {
-    auto serializedAmount = trustLineAmountToBytes(mAmount); // TODO: serialize only non-zero
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-    size_t bytesCount =
-        +parentBytesAndCount.second + sizeof(PathID) + kTrustLineAmountBytesCount;
+    // TODO: Serialization architecture optimization needed across entire inheritance chain:
+    // This base class pattern causes redundant parent serialization in all child classes.
+    // Each child calls parent::serializeToBytes() then copies that buffer again via enqueue().
+    // Consider: void serializeToSerializer(BytesSerializer& serializer) pattern to avoid copies.
+    BytesSerializer serializer;
 
-    BytesShared buffer = tryMalloc(bytesCount);
-    auto initialOffset = buffer.get();
-    memcpy(
-        initialOffset,
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+    serializer.copy(mPathID);
+    serializer.copy(mAmount);
 
-    auto bytesBufferOffset = initialOffset + parentBytesAndCount.second;
-
-    memcpy(
-        bytesBufferOffset,
-        &mPathID,
-        sizeof(PathID));
-    bytesBufferOffset += sizeof(PathID);
-
-    memcpy(
-        bytesBufferOffset,
-        serializedAmount.data(),
-        kTrustLineAmountBytesCount);
-
-    return make_pair(
-               buffer,
-               bytesCount);
+    return serializer.collect();
 }
 
 const size_t RequestMessage::kOffsetToInheritedBytes() const
 {
     const size_t offset =
-        TransactionMessage::kOffsetToInheritedBytes() + sizeof(PathID) + kTrustLineAmountBytesCount;
+        TransactionMessage::kOffsetToInheritedBytes() +
+        BytesSerializer::kSerializedPathIDSize +
+        BytesSerializer::kSerializedTrustLineAmountSize;
 
     return offset;
 }

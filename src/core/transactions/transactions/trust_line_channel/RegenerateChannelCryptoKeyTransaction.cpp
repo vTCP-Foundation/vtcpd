@@ -75,6 +75,6 @@ TransactionResult::SharedConst RegenerateChannelCryptoKeyTransaction::resultUnex
 const string RegenerateChannelCryptoKeyTransaction::logHeader() const
 {
     stringstream s;
-    s << "[RegenerateChannelCryptoKeyTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[RegenerateChannelCryptoKeyTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

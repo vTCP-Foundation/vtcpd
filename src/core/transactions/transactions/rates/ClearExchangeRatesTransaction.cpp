@@ -32,7 +32,7 @@ TransactionResult::SharedConst ClearExchangeRatesTransaction::run()
 TransactionResult::SharedConst ClearExchangeRatesTransaction::resultOK() const
 {
     stringstream s;
-    s << currentTransactionUUID();
+    s << currentTransactionUUID().stringUUID();
     
     return transactionResultFromCommand(
         mCommand->responseOK());
@@ -41,6 +41,6 @@ TransactionResult::SharedConst ClearExchangeRatesTransaction::resultOK() const
 const string ClearExchangeRatesTransaction::logHeader() const
 {
     stringstream s;
-    s << "[ClearExchangeRatesTA: " << currentTransactionUUID() << "]";
+    s << "[ClearExchangeRatesTA: " << currentTransactionUUID().stringUUID() << "]";
     return s.str();
 }

@@ -211,6 +211,6 @@ pair<BytesShared, size_t> ConflictResolverInitiatorTransaction::serializeToBytes
 const string ConflictResolverInitiatorTransaction::logHeader() const
 {
     stringstream s;
-    s << "[ConflictResolverInitiatorTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[ConflictResolverInitiatorTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

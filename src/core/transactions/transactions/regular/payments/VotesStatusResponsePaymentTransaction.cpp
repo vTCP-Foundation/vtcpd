@@ -74,6 +74,6 @@ TransactionResult::SharedConst VotesStatusResponsePaymentTransaction::run()
 const string VotesStatusResponsePaymentTransaction::logHeader() const
 {
     stringstream s;
-    s << "[VotesStatusResponsePaymentTA: " << currentTransactionUUID() << "] ";
+    s << "[VotesStatusResponsePaymentTA: " << currentTransactionUUID().stringUUID() << "] ";
     return s.str();
 }

@@ -321,7 +321,7 @@ TransactionResult::SharedConst OpenTrustLineTransaction::resultUnexpectedError()
 const string OpenTrustLineTransaction::logHeader() const
 {
     stringstream s;
-    s << "[OpenTrustLineTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[OpenTrustLineTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }
 

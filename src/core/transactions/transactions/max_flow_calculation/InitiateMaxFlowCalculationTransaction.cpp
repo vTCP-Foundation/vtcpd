@@ -404,6 +404,6 @@ TransactionResult::SharedConst InitiateMaxFlowCalculationTransaction::resultProt
 const string InitiateMaxFlowCalculationTransaction::logHeader() const
 {
     stringstream s;
-    s << "[InitiateMaxFlowCalculationTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[InitiateMaxFlowCalculationTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

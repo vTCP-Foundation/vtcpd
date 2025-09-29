@@ -1,4 +1,5 @@
 #include "CoordinatorCycleReservationRequestMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 CoordinatorCycleReservationRequestMessage::CoordinatorCycleReservationRequestMessage(
     const SerializedEquivalent equivalent,
@@ -37,26 +38,14 @@ const Message::MessageType CoordinatorCycleReservationRequestMessage::typeID() c
 
 pair<BytesShared, size_t> CoordinatorCycleReservationRequestMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = RequestCycleMessage::serializeToBytes();
-    size_t totalBytesCount =
-        + parentBytesAndCount.second
-        + mNextPathNodeAddress->serializedSize();
+    BytesSerializer serializer;
 
-    BytesShared buffer = tryMalloc(totalBytesCount);
-    auto bytesBufferOffset = buffer.get();
-    memcpy(
-        bytesBufferOffset,
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    bytesBufferOffset += parentBytesAndCount.second;
+    serializer.enqueue(RequestCycleMessage::serializeToBytes());
 
     auto serializedAddress = mNextPathNodeAddress->serializeToBytes();
-    memcpy(
-        bytesBufferOffset,
-        serializedAddress.get(),
+    serializer.enqueue(
+        serializedAddress,
         mNextPathNodeAddress->serializedSize());
 
-    return make_pair(
-               buffer,
-               totalBytesCount);
+    return serializer.collect();
 }

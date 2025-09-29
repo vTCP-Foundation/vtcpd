@@ -46,6 +46,6 @@ TransactionResult::SharedConst GetChannelInfoByAddressesTransaction::resultChann
 const string GetChannelInfoByAddressesTransaction::logHeader() const
 {
     stringstream s;
-    s << "[GetChannelInfoByAddressesTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[GetChannelInfoByAddressesTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

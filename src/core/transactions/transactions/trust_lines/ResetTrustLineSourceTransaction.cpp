@@ -170,7 +170,7 @@ TransactionResult::SharedConst ResetTrustLineSourceTransaction::resultUnexpected
 const string ResetTrustLineSourceTransaction::logHeader() const
 {
     stringstream s;
-    s << "[ResetTrustLineSourceTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[ResetTrustLineSourceTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }
 

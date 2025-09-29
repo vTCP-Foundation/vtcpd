@@ -144,7 +144,7 @@ TransactionResult::SharedConst MaxFlowCalculationTargetFstLevelTransaction::run(
 const string MaxFlowCalculationTargetFstLevelTransaction::logHeader() const
 {
     stringstream s;
-    s << "[MaxFlowCalculationTargetFstLevelTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[MaxFlowCalculationTargetFstLevelTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }
 
@@ -316,7 +316,7 @@ void MaxFlowCalculationTargetFstLevelTransaction::sendExchangeRatesIfNeeded()
     
     for (const auto& exchangeEquiv : mMessage->exchangeEquivalents()) {
         try {
-            auto rate = mExchangeRatesManager->get(mEquivalent, exchangeEquiv);
+            auto rate = mExchangeRatesManager->get(exchangeEquiv, mEquivalent);
             if (rate != nullptr) {
                 ratesToSend.push_back(rate);
             }
@@ -325,6 +325,7 @@ void MaxFlowCalculationTargetFstLevelTransaction::sendExchangeRatesIfNeeded()
     }
     
     if (!ratesToSend.empty()) {
+        info() << "sendExchangeRatesIfNeeded: " << ratesToSend.size();
         auto targetAddress = mMessage->targetAddresses().at(0);
         sendMessage<ExchangeRatesMessage>(
             targetAddress,

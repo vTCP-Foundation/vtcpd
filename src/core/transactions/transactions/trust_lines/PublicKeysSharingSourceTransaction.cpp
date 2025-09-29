@@ -381,6 +381,6 @@ TransactionResult::SharedConst PublicKeysSharingSourceTransaction::resultUnexpec
 const string PublicKeysSharingSourceTransaction::logHeader() const
 {
     stringstream s;
-    s << "[PublicKeysSharingSourceTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[PublicKeysSharingSourceTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

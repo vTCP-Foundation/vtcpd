@@ -121,7 +121,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::run()
 TransactionResult::SharedConst IntermediateNodePaymentTransaction::runPreviousNeighborRequestProcessingStage()
 {
     debug() << "runPreviousNeighborRequestProcessingStage";
-    const auto kNeighbor = mMessage->senderAddresses.at(0);
+    const auto kNeighbor = mContractorsManager->contractorAddresses(mMessage->idOnReceiverSide).at(0);
     debug() << "Init. intermediate payment operation from node (" << kNeighbor->fullAddress() << ")";
 
     if (mMessage->finalAmountsConfiguration().empty()) {
@@ -367,9 +367,9 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
     debug() << "Prepared for sending reservations size: " << reservations.size();
 
     sendMessage<IntermediateNodeReservationRequestMessage>(
-        kNextNode,
+        nextNodeID,
         mEquivalent,
-        mContractorsManager->ownAddresses(),
+        mContractorsManager->idOnContractorSide(nextNodeID),
         currentTransactionUUID(),
         reservations);
 
@@ -1304,6 +1304,6 @@ void IntermediateNodePaymentTransaction::sendErrorMessageOnFinalAmountsConfigura
 const string IntermediateNodePaymentTransaction::logHeader() const
 {
     stringstream s;
-    s << "[IntermediateNodePaymentTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[IntermediateNodePaymentTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

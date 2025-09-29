@@ -27,9 +27,19 @@ add_executable(unit_tests
     equivalents/EquivalentsSubsystemsRouterTest.cpp
     network/TailManagerTest.cpp
     network/IncomingRemoteNodeTest.cpp
-    commands/InitiateMaxFlowExchangeCalculationCommandTest.cpp
     commissions/CommissionsManagerTest.cpp
     commissions/TopologyTrustLinesManagerCommissionsTest.cpp
+    commands/InitiateMaxFlowExchangeCalculationCommandTest.cpp
+    transactions/InitiateMaxFlowExchangeCalculationTransactionORToolsTest.cpp
+    transactions/InitiateMaxFlowExchangeCalculationApplyLogicTest.cpp
+    transactions/InitiateMaxFlowExchangeCalculationLargeTopologyTest.cpp
+    transactions/InitiateMaxFlowExchangeCalculationHugeTopologyTest.cpp
+    transactions/InitiateMaxFlowExchangeCalculationMegaTopologyTest.cpp
+    transactions/InitiateMaxFlowExchangeCalculationCommissionTest.cpp
+    transactions/InitiateMaxFlowExchangeCalculationExchangeCommissionTest.cpp
+    transactions/InitiateMaxFlowExchangeCalculationUniqueCommissionTest.cpp
+    transactions/InitiateMaxFlowExchangeCalculationMixedCommissionTest.cpp
+    core/CoreORToolsStartupTest.cpp
 )
 
 # Include directories for tests
@@ -61,7 +71,13 @@ target_link_libraries(unit_tests PRIVATE
     interface__commands
     interface__results
     settings
+    messages__base__transaction
+    messages__base__max_flow_calculation
+    messages__max_flow_calculation
+    transactions__base
+    network__messages
     network__communicator
+    transactions
 )
 
 # Set C++ standard

@@ -57,6 +57,6 @@ TransactionResult::SharedConst GetTrustLinesListTransaction::run()
 const string GetTrustLinesListTransaction::logHeader() const
 {
     stringstream s;
-    s << "[GetTrustLinesListTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[GetTrustLinesListTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

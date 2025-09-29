@@ -23,4 +23,5 @@ target_link_libraries(transactions__base
     PUBLIC
         common
         exceptions
-        network__messages)
+        network__messages
+        transactions__result)

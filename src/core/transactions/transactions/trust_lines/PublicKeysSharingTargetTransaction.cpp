@@ -231,6 +231,6 @@ TransactionResult::SharedConst PublicKeysSharingTargetTransaction::sendKeyErrorC
 const string PublicKeysSharingTargetTransaction::logHeader() const
 {
     stringstream s;
-    s << "[PublicKeySharingTargetTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[PublicKeySharingTargetTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

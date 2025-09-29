@@ -1308,6 +1308,6 @@ const SerializedPathLengthSize CycleCloserInitiatorTransaction::cycleLength() co
 const string CycleCloserInitiatorTransaction::logHeader() const
 {
     stringstream s;
-    s << "[CycleCloserInitiatorTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[CycleCloserInitiatorTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

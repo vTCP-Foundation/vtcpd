@@ -39,6 +39,6 @@ TransactionResult::SharedConst PaymentTransactionByCommandUUIDTransaction::resul
 const string PaymentTransactionByCommandUUIDTransaction::logHeader() const
 {
     stringstream s;
-    s << "[PaymentTransactionByCommandUUIDTA: " << currentTransactionUUID() << "]";
+    s << "[PaymentTransactionByCommandUUIDTA: " << currentTransactionUUID().stringUUID() << "]";
     return s.str();
 }

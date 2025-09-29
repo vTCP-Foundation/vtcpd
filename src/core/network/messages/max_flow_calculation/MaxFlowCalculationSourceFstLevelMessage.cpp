@@ -1,4 +1,5 @@
 #include "MaxFlowCalculationSourceFstLevelMessage.h"
+#include "../../../common/serialization/BytesDeserializer.h"
 
 
 MaxFlowCalculationSourceFstLevelMessage::MaxFlowCalculationSourceFstLevelMessage(
@@ -8,7 +9,8 @@ MaxFlowCalculationSourceFstLevelMessage::MaxFlowCalculationSourceFstLevelMessage
 	SenderMessage(
         equivalent,
         idOnReceiverSide),
-	mHopsCnt(hopsCount)
+	mHopsCnt(hopsCount),
+	mExchangeEquivalents()
 {}
 
 MaxFlowCalculationSourceFstLevelMessage::MaxFlowCalculationSourceFstLevelMessage(
@@ -43,29 +45,20 @@ MaxFlowCalculationSourceFstLevelMessage::MaxFlowCalculationSourceFstLevelMessage
 	BytesShared buffer) : SenderMessage(buffer) {
 	
 	size_t bytesBufferOffset = SenderMessage::kOffsetToInheritedBytes();
-	    
-	memcpy(
-        &mHopsCnt,
-        buffer.get() + bytesBufferOffset,
-        sizeof(HopsCount_t));
-    bytesBufferOffset += sizeof(HopsCount_t);
+	BytesDeserializer deserializer(buffer, bytesBufferOffset);
 
-    uint8_t exchangeEquivalentsCnt;
-    memcpy(
-        &exchangeEquivalentsCnt,
-        buffer.get() + bytesBufferOffset,
-        sizeof(uint8_t));
-    bytesBufferOffset += sizeof(uint8_t);
+	deserializer.copyInto(&mHopsCnt);
 
-    for (uint8_t idx = 0; idx < exchangeEquivalentsCnt; idx++) {
-        SerializedEquivalent equivalent;
-        memcpy(
-            &equivalent,
-            buffer.get() + bytesBufferOffset,
-            sizeof(SerializedEquivalent));
-        mExchangeEquivalents.push_back(equivalent);
-        bytesBufferOffset += sizeof(SerializedEquivalent);
-    }
+	// Deserialize exchange equivalents count and values sequentially with the same deserializer
+	uint8_t exchangeEquivalentsCnt = 0;
+	deserializer.copyInto(&exchangeEquivalentsCnt);
+	mExchangeEquivalents.clear();
+	mExchangeEquivalents.reserve(exchangeEquivalentsCnt);
+	for (uint8_t idx = 0; idx < exchangeEquivalentsCnt; idx++) {
+		SerializedEquivalent equivalent;
+		deserializer.copyInto(&equivalent);
+		mExchangeEquivalents.push_back(equivalent);
+	}
 }
 
 pair<BytesShared, size_t>
@@ -74,41 +67,20 @@ MaxFlowCalculationSourceFstLevelMessage::serializeToBytes() const {
 	auto parentBytesAndCount = SenderMessage::serializeToBytes();
     size_t bytesCount =
             parentBytesAndCount.second +
-            sizeof(HopsCount_t) +
-            sizeof(uint8_t) + // count of exchange equivalents
-            mExchangeEquivalents.size() * sizeof(SerializedEquivalent);
+            sizeof(HopsCount_t);
 
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
+    // Use BytesSerializer for consistent serialization
+    BytesSerializer serializer;
+    serializer.enqueue(parentBytesAndCount);
+    serializer.copy(mHopsCnt);
 
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
 
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &mHopsCnt,
-        sizeof(HopsCount_t));
-    dataBytesOffset += sizeof(HopsCount_t);
+	// Serialize exchange equivalents count and values via BytesSerializer
+	auto exchangeEquivalentsCnt = (uint8_t)mExchangeEquivalents.size();
+	serializer.copy(exchangeEquivalentsCnt);
+	for (const auto &equivalent : mExchangeEquivalents) {
+		serializer.copy(equivalent);
+	}
 
-    auto exchangeEquivalentsCnt = (uint8_t)mExchangeEquivalents.size();
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &exchangeEquivalentsCnt,
-        sizeof(uint8_t));
-    dataBytesOffset += sizeof(uint8_t);
-
-    for (const auto &equivalent : mExchangeEquivalents) {
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            &equivalent,
-            sizeof(SerializedEquivalent));
-        dataBytesOffset += sizeof(SerializedEquivalent);
-    }
-
-    return make_pair(
-        dataBytesShared,
-        bytesCount);
+    return serializer.collect();
 }

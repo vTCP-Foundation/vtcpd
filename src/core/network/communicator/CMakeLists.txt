@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 
-find_package(Boost REQUIRED COMPONENTS system)
+find_package(Boost MODULE REQUIRED)
 
 add_library(network__communicator
     Communicator.cpp

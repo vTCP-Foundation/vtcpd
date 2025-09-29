@@ -43,6 +43,6 @@ TransactionResult::SharedConst GetChannelInfoTransaction::resultContractorIsAbse
 const string GetChannelInfoTransaction::logHeader() const
 {
     stringstream s;
-    s << "[GetChannelInfoTA: " << currentTransactionUUID() << " " << mEquivalent << "] ";
+    s << "[GetChannelInfoTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "] ";
     return s.str();
 }

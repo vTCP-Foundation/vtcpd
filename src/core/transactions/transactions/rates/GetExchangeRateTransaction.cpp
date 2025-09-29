@@ -72,6 +72,6 @@ string GetExchangeRateTransaction::serializeExchangeRate(ExchangeRate::Shared ex
 const string GetExchangeRateTransaction::logHeader() const
 {
     stringstream s;
-    s << "[GetExchangeRateTA: " << currentTransactionUUID() << "]";
+    s << "[GetExchangeRateTA: " << currentTransactionUUID().stringUUID() << "]";
     return s.str();
 }

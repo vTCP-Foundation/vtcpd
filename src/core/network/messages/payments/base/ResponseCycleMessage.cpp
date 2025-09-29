@@ -1,4 +1,6 @@
 #include "ResponseCycleMessage.h"
+#include "../../../../common/serialization/BytesDeserializer.h"
+#include "../../../../common/serialization/BytesSerializer.h"
 
 ResponseCycleMessage::ResponseCycleMessage(
     const SerializedEquivalent equivalent,
@@ -18,10 +20,12 @@ ResponseCycleMessage::ResponseCycleMessage(
 
     TransactionMessage(buffer)
 {
-    size_t bytesBufferOffset = TransactionMessage::kOffsetToInheritedBytes();
+    size_t currentOffset = TransactionMessage::kOffsetToInheritedBytes();
     //----------------------------------------------------
-    SerializedOperationState *state = new (buffer.get() + bytesBufferOffset) SerializedOperationState;
-    mState = (OperationState) (*state);
+    BytesDeserializer deserializer(buffer, currentOffset);
+    SerializedOperationState state;
+    deserializer.copyInto(&state);
+    mState = (OperationState) state;
 }
 
 const ResponseCycleMessage::OperationState ResponseCycleMessage::state() const
@@ -32,33 +36,17 @@ const ResponseCycleMessage::OperationState ResponseCycleMessage::state() const
 const size_t ResponseCycleMessage::kOffsetToInheritedBytes() const
 {
     return TransactionMessage::kOffsetToInheritedBytes()
-           + sizeof(SerializedOperationState);
+           + BytesSerializer::kSerializedByteSize;
 }
 
 pair<BytesShared, size_t> ResponseCycleMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-
-    size_t bytesCount =
-        parentBytesAndCount.second
-        + sizeof(SerializedOperationState);
-
-    BytesShared dataBytesShared = tryMalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    //----------------------------------------------------
-    SerializedOperationState state(mState);
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &state,
-        sizeof(SerializedOperationState));
-    //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+    // TODO: Serialization architecture optimization needed across entire inheritance chain:
+    // This base class pattern causes redundant parent serialization in all child classes.
+    // Each child calls parent::serializeToBytes() then copies that buffer again via enqueue().
+    // Consider: void serializeToSerializer(BytesSerializer& serializer) pattern to avoid copies.
+    BytesSerializer serializer;
+    serializer.enqueue(TransactionMessage::serializeToBytes());
+    serializer.copy((SerializedOperationState)mState);
+    return serializer.collect();
 }

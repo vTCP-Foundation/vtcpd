@@ -397,6 +397,6 @@ void AuditTargetTransaction::populateHistory(
 const string AuditTargetTransaction::logHeader() const
 {
     stringstream s;
-    s << "[AuditTargetTA: " << currentTransactionUUID() << " " << mEquivalent << "]";
+    s << "[AuditTargetTA: " << currentTransactionUUID().stringUUID() << " " << mEquivalent << "]";
     return s.str();
 }

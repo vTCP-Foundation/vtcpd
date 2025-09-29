@@ -40,3 +40,8 @@ target_link_libraries(transactions__max_flow_calculation
         transactions__base
         topology
         messages__max_flow_calculation)
+
+# Add OR-Tools linking when available
+if(ortools_FOUND)
+   target_link_libraries(transactions__max_flow_calculation PUBLIC ortools::ortools)
+endif()

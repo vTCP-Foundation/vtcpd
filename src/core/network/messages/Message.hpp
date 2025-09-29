@@ -4,6 +4,7 @@
 #include "../../common/memory/MemoryUtils.h"
 #include "../../contractors/Contractor.h"
 #include "../communicator/internal/common/Packet.hpp"
+#include "../../common/serialization/BytesSerializer.h"
 
 #include <limits>
 
@@ -203,32 +204,14 @@ public:
         SerializedProtocolVersion kProtocolVersion = ProtocolVersion::Latest;
         const SerializedType kMessageType = typeID();
         bool isMessageEncrypted = isEncrypted();
-        size_t dataBytesOffset = 0;
-        const auto kBufferSize = sizeof(SerializedProtocolVersion) + sizeof(ContractorID) + sizeof(kMessageType);
-        auto buffer = tryMalloc(
-                          kBufferSize);
 
-        memcpy(
-            buffer.get(),
-            &kProtocolVersion,
-            sizeof(SerializedProtocolVersion));
-        dataBytesOffset += sizeof(SerializedProtocolVersion);
+        // Use BytesSerializer for consistent serialization
+        BytesSerializer serializer;
+        serializer.copy(kProtocolVersion);
+        serializer.copy(this->ownIdOnContractorSide());
+        serializer.copy(kMessageType);
 
-        ContractorID ownIdOnContractorSide = this->ownIdOnContractorSide();
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            &ownIdOnContractorSide,
-            sizeof(ContractorID));
-        dataBytesOffset += sizeof(ContractorID);
-
-        memcpy(
-            buffer.get() + dataBytesOffset,
-            &kMessageType,
-            sizeof(kMessageType));
-
-        return make_pair(
-                   buffer,
-                   kBufferSize);
+        return serializer.collect();
     }
 
     void setSenderIncomingIP(
@@ -267,7 +250,9 @@ public:
 protected:
     virtual const size_t kOffsetToInheritedBytes() const
     {
-        return sizeof(SerializedProtocolVersion) + sizeof(ContractorID) + sizeof(SerializedType);
+        return BytesSerializer::kSerializedProtocolVersionSize +
+               BytesSerializer::kSerializedContractorIDSize +
+               BytesSerializer::kSerializedUInt16Size; // SerializedType is uint16_t
     }
 
 private:

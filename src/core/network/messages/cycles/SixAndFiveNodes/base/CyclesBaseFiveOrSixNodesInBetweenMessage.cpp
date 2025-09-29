@@ -1,4 +1,6 @@
 #include "CyclesBaseFiveOrSixNodesInBetweenMessage.h"
+#include "../../../../common/serialization/BytesDeserializer.h"
+#include "../../../../common/serialization/BytesSerializer.h"
 
 CycleBaseFiveOrSixNodesInBetweenMessage::CycleBaseFiveOrSixNodesInBetweenMessage(
     const SerializedEquivalent equivalent,
@@ -14,68 +16,47 @@ CycleBaseFiveOrSixNodesInBetweenMessage::CycleBaseFiveOrSixNodesInBetweenMessage
     BytesShared buffer):
     SenderMessage(buffer)
 {
-    size_t bytesBufferOffset = SenderMessage::kOffsetToInheritedBytes();
+    auto deserializer = BytesDeserializer(
+        buffer,
+        SenderMessage::kOffsetToInheritedBytes());
 
     // path
     SerializedPositionInPath nodesInPath;
-    memcpy(
-        &nodesInPath,
-        buffer.get() + bytesBufferOffset,
-        sizeof(SerializedPathLengthSize));
-    bytesBufferOffset += sizeof(SerializedPathLengthSize);
+    deserializer.copyInto(&nodesInPath);
 
+    size_t currentOffset = SenderMessage::kOffsetToInheritedBytes() + BytesSerializer::kSerializedByteSize;
     for (SerializedPositionInPath idx = 0; idx < nodesInPath; idx++) {
         auto stepAddress = deserializeAddress(
-                               buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += stepAddress->serializedSize();
+                               buffer.get() + currentOffset);
+        currentOffset += stepAddress->serializedSize();
         mPath.push_back(stepAddress);
     }
 }
 
 pair<BytesShared, size_t> CycleBaseFiveOrSixNodesInBetweenMessage::serializeToBytes() const
 {
-    auto parentBytesAndCount = SenderMessage::serializeToBytes();
-    auto kNodesInPath = (SerializedPathLengthSize)mPath.size();
-    size_t bytesCount = parentBytesAndCount.second
-                        + sizeof(SerializedPathLengthSize);
-    for (const auto &address : mPath) {
-        bytesCount += address->serializedSize();
-    }
-    BytesShared dataBytesShared = tryCalloc(bytesCount);
-    size_t dataBytesOffset = 0;
-    //----------------------------------------------------
-    memcpy(
-        dataBytesShared.get(),
-        parentBytesAndCount.first.get(),
-        parentBytesAndCount.second);
-    dataBytesOffset += parentBytesAndCount.second;
-    // For path
-    // Write vector size first
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &kNodesInPath,
-        sizeof(SerializedPathLengthSize));
-    dataBytesOffset += sizeof(kNodesInPath);
+    auto serializer = BytesSerializer();
 
+    // Serialize parent data
+    serializer.enqueue(SenderMessage::serializeToBytes());
+
+    // Serialize path length
+    auto kNodesInPath = (SerializedPathLengthSize)mPath.size();
+    serializer.copy(kNodesInPath);
+
+    // Serialize path addresses
     for(auto const &address: mPath) {
-        auto serializedAddress = address->serializeToBytes();
-        memcpy(
-            dataBytesShared.get() + dataBytesOffset,
-            serializedAddress.get(),
-            address->serializedSize());
-        dataBytesOffset += address->serializedSize();
+        serializer.enqueue(address->serializeToBytes(), address->serializedSize());
     }
-    //----------------------------------------------------
-    return make_pair(
-               dataBytesShared,
-               bytesCount);
+
+    return serializer.collect();
 }
 
 const size_t CycleBaseFiveOrSixNodesInBetweenMessage::kOffsetToInheritedBytes() const
 {
     auto kNodesInPath = (SerializedPathLengthSize)mPath.size();
     size_t offset = SenderMessage::kOffsetToInheritedBytes()
-                    + sizeof(SerializedPathLengthSize);
+                    + BytesSerializer::kSerializedByteSize;
     for (const auto &address : mPath) {
         offset += address->serializedSize();
     }

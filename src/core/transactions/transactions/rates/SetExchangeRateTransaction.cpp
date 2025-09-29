@@ -41,7 +41,7 @@ TransactionResult::SharedConst SetExchangeRateTransaction::run()
 TransactionResult::SharedConst SetExchangeRateTransaction::resultOK() const
 {
     stringstream s;
-    s << currentTransactionUUID();
+    s << currentTransactionUUID().stringUUID();
     
     return transactionResultFromCommand(
         mCommand->responseOK());
@@ -50,6 +50,6 @@ TransactionResult::SharedConst SetExchangeRateTransaction::resultOK() const
 const string SetExchangeRateTransaction::logHeader() const
 {
     stringstream s;
-    s << "[SetExchangeRateTA: " << currentTransactionUUID() << "]";
+    s << "[SetExchangeRateTA: " << currentTransactionUUID().stringUUID() << "]";
     return s.str();
 }

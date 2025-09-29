@@ -172,6 +172,7 @@ void TransactionsScheduler::launchTransaction(
             info() << "Payment or cycle closing TA launched:"
                    << " TransactionUUID: " << transaction->currentTransactionUUID()
                    << " Type: " << transaction->transactionType()
+                   << " Equivalent: " << transaction->equivalent()
                    << " Step: " << transaction->currentStep();
         }
 

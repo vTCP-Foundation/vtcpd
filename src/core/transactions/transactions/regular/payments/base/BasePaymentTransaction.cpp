@@ -211,7 +211,12 @@ BasePaymentTransaction::BasePaymentTransaction(
     bytesBufferOffset += sizeof(SerializedRecordsCount);
 
     for (SerializedRecordNumber idx = 0; idx < kTotalParticipantsCount; idx++) {
-        auto *paymentNodeID = new (buffer.get() + bytesBufferOffset) PaymentNodeID;
+        // Read PaymentNodeID in an alignment-safe way
+        PaymentNodeID paymentNodeID;
+        memcpy(
+            &paymentNodeID,
+            buffer.get() + bytesBufferOffset,
+            sizeof(PaymentNodeID));
         bytesBufferOffset += sizeof(PaymentNodeID);
         //---------------------------------------------------
         auto participantContractor = make_shared<Contractor>(buffer.get() + bytesBufferOffset);
@@ -219,7 +224,7 @@ BasePaymentTransaction::BasePaymentTransaction(
 
         mPaymentParticipants.insert(
             make_pair(
-                *paymentNodeID,
+                paymentNodeID,
                 participantContractor));
 
         auto publicKey = make_shared<lamport::PublicKey>(
@@ -228,7 +233,7 @@ BasePaymentTransaction::BasePaymentTransaction(
 
         mParticipantsPublicKeys.insert(
             make_pair(
-                *paymentNodeID,
+                paymentNodeID,
                 publicKey));
     }
 
@@ -238,14 +243,21 @@ BasePaymentTransaction::BasePaymentTransaction(
         sizeof(BlockNumber));
     bytesBufferOffset += sizeof(BlockNumber);
 
-    byte_t* payloadLength = new (buffer.get() + bytesBufferOffset) byte_t;
-    if (*payloadLength > 0) {
-        bytesBufferOffset += sizeof(byte_t);
+    // Read payload length safely and always advance offset
+    byte_t payloadLength = 0;
+    memcpy(
+        &payloadLength,
+        buffer.get() + bytesBufferOffset,
+        sizeof(byte_t));
+    bytesBufferOffset += sizeof(byte_t);
+
+    if (payloadLength > 0) {
         mPayload = string(
                        buffer.get() + bytesBufferOffset,
-                       buffer.get() + bytesBufferOffset + *payloadLength);
+                       buffer.get() + bytesBufferOffset + payloadLength);
+        // bytesBufferOffset += payloadLength; // not used further, so not strictly required
     } else {
-        mPayload = "";
+        mPayload.clear();
     }
 
     if (mStep != Stages::Common_Observing) {
