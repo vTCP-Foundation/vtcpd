@@ -2,7 +2,7 @@
 #define VTCPD_PARTICIPANTVOTEMESSAGE_H
 
 #include "../base/transaction/TransactionMessage.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincsscheme.h"
 
 using namespace crypto;
 
@@ -23,7 +23,7 @@ public:
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> &senderAddresses,
         const TransactionUUID &transactionUUID,
-        lamport::Signature::Shared signature = nullptr);
+        sphincs::Signature::Shared signature = nullptr);
 
     ParticipantVoteMessage(
         BytesShared buffer);
@@ -32,7 +32,7 @@ public:
 
     const OperationState state() const;
 
-    const lamport::Signature::Shared signature() const;
+    const sphincs::Signature::Shared signature() const;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
@@ -41,7 +41,7 @@ private:
 
 private:
     OperationState mState;
-    lamport::Signature::Shared mSignature;
+    sphincs::Signature::Shared mSignature;
 };
 
 #endif // VTCPD_PARTICIPANTVOTEMESSAGE_H

@@ -13,13 +13,11 @@
 #include "../../../src/core/common/exceptions/IOError.h"
 #include "../../../src/core/common/exceptions/NotFoundError.h"
 #include "../../../src/core/common/exceptions/ValueError.h"
-#include "../../../src/core/crypto/lamportkeys.h"
 #include "../../../src/core/logger/Logger.h"
 #include "../../../src/core/common/Types.h"
 
 using namespace std;
 using namespace testing;
-using namespace crypto::lamport;
 
 class IncomingPaymentReceiptHandlerSQLiteTest : public Test {
 protected:
@@ -64,8 +62,8 @@ protected:
     }
     
     Signature::Shared generateTestSignature() {
-        byte_t signatureData[Signature::kSize];
-        fill(signatureData, signatureData + Signature::kSize, 0xCD);
+        byte_t signatureData[Signature::signatureSize()];
+        fill(signatureData, signatureData + Signature::signatureSize(), 0xCD);
         return make_shared<Signature>(signatureData);
     }
     

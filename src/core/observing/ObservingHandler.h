@@ -33,8 +33,7 @@ public:
     typedef signals::signal<void(
         const TransactionUUID &,
         BlockNumber,
-        map<PaymentNodeID, lamport::Signature::Shared>)>
-    ParticipantsVotesSignal;
+        map<PaymentNodeID, sphincs::Signature::Shared>)> ParticipantsVotesSignal;
     typedef signals::signal<void(const TransactionUUID &, BlockNumber)> RejectTransactionSignal;
     typedef signals::signal<void(const TransactionUUID &, BlockNumber)> UncertainTransactionSignal;
     typedef signals::signal<void(const TransactionUUID &, BlockNumber)> CancelTransactionSignal;

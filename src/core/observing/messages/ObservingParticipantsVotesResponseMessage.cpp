@@ -34,9 +34,9 @@ ObservingParticipantsVotesResponseMessage::ObservingParticipantsVotesResponseMes
         auto *paymentNodeID = new (buffer.get() + bytesBufferOffset) PaymentNodeID;
         bytesBufferOffset += sizeof(PaymentNodeID);
 
-        auto signature = make_shared<lamport::Signature>(
+        auto signature = make_shared<sphincs::Signature>(
                              buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += lamport::Signature::signatureSize();
+        bytesBufferOffset += sphincs::Signature::signatureSize();
 
         mParticipantsSignatures.insert(
             make_pair(
@@ -60,7 +60,7 @@ const BlockNumber ObservingParticipantsVotesResponseMessage::maximalClaimingBloc
     return mMaximalClaimingBlockNumber;
 }
 
-const map<PaymentNodeID, lamport::Signature::Shared> &ObservingParticipantsVotesResponseMessage::participantsSignatures() const
+const map<PaymentNodeID, sphincs::Signature::Shared> &ObservingParticipantsVotesResponseMessage::participantsSignatures() const
 {
     return mParticipantsSignatures;
 }

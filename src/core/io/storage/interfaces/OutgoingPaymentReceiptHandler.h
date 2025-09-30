@@ -7,10 +7,10 @@
 #include "../../../common/exceptions/ValueError.h"
 #include "../../../transactions/transactions/base/TransactionUUID.h"
 #include "../../../common/multiprecision/MultiprecisionUtils.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincsscheme.h"
 #include "../record/audit/ReceiptRecord.h"
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class OutgoingPaymentReceiptHandler
 {

@@ -6,7 +6,7 @@
 #include "../../../../trust_lines/manager/TrustLinesManager.h"
 #include "../../../../features/FeaturesManager.h"
 #include "../../../../crypto/keychain.h"
-#include "../../../../crypto/lamportkeys.h"
+#include "../../../../crypto/sphincskeys.h"
 
 #include "../../../../subsystems_controller/TrustLinesInfluenceController.h"
 
@@ -63,13 +63,9 @@ protected:
     TransactionResult::SharedConst sendAuditErrorConfirmation(
         ConfirmationMessage::OperationState errorState);
 
-    pair<BytesShared, size_t> getOwnSerializedAuditData(
-        lamport::KeyHash::Shared ownPublicKeysHash,
-        lamport::KeyHash::Shared contractorPublicKeysHash);
+    pair<BytesShared, size_t> getOwnSerializedAuditData();
 
-    pair<BytesShared, size_t> getContractorSerializedAuditData(
-        lamport::KeyHash::Shared ownPublicKeysHash,
-        lamport::KeyHash::Shared contractorPublicKeysHash);
+    pair<BytesShared, size_t> getContractorSerializedAuditData();
 
 protected:
     static const uint32_t kWaitMillisecondsForResponse = 20000;
@@ -86,7 +82,7 @@ protected:
 
     ContractorID mContractorID;
     AuditNumber mAuditNumber;
-    pair<lamport::Signature::Shared, KeyNumber> mOwnSignatureAndKeyNumber;
+    crypto::sphincs::Signature::Shared mOwnSignature;
 
     TrustLinesInfluenceController *mTrustLinesInfluenceController;
 };

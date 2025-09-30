@@ -2,7 +2,7 @@
 #define VTCPD_PUBLICKEYHASHCONFIRMATION_H
 
 #include "../base/transaction/ConfirmationMessage.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincsscheme.h"
 
 using namespace crypto;
 
@@ -17,8 +17,7 @@ public:
         const SerializedEquivalent equivalent,
         Contractor::Shared contractor,
         const TransactionUUID &transactionUUID,
-        KeyNumber number,
-        lamport::KeyHash::Shared hashConfirmation);
+        sphincs::KeyHash::Shared hashConfirmation);
 
     PublicKeyHashConfirmation(
         const SerializedEquivalent equivalent,
@@ -29,17 +28,14 @@ public:
     PublicKeyHashConfirmation(
         BytesShared buffer);
 
-    const KeyNumber number() const;
-
-    const lamport::KeyHash::Shared hashConfirmation() const;
+    const sphincs::KeyHash::Shared hashConfirmation() const;
 
     const MessageType typeID() const override;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
 private:
-    KeyNumber mNumber;
-    lamport::KeyHash::Shared mHashConfirmation;
+    sphincs::KeyHash::Shared mHashConfirmation;
 };
 
 

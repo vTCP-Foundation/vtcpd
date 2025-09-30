@@ -3,7 +3,7 @@
 
 
 #include "../base/transaction/TransactionMessage.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincsscheme.h"
 
 #include <map>
 
@@ -28,18 +28,18 @@ public:
         // todo : use &
         vector<BaseAddress::Shared> senderAddresses,
         const TransactionUUID &transactionUUID,
-        map<PaymentNodeID, lamport::Signature::Shared> &participantsSignatures);
+        map<PaymentNodeID, sphincs::Signature::Shared> &participantsSignatures);
 
     ParticipantsVotesMessage(
         BytesShared buffer);
 
     const MessageType typeID() const override;
 
-    const map<PaymentNodeID, lamport::Signature::Shared>& participantsSignatures() const;
+    const map<PaymentNodeID, sphincs::Signature::Shared>& participantsSignatures() const;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
 private:
-    map<PaymentNodeID, lamport::Signature::Shared> mParticipantsSignatures;
+    map<PaymentNodeID, sphincs::Signature::Shared> mParticipantsSignatures;
 };
 #endif //VTCPD_PARTICIPANTSAPPROVINGMESSAGE_H

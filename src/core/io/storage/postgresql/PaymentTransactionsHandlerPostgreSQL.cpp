@@ -36,7 +36,9 @@ PaymentTransactionsHandlerPostgreSQL::PaymentTransactionsHandlerPostgreSQL(
                    " (uuid BYTEA NOT NULL, "
                    "maximal_claiming_block_number BYTEA NOT NULL, "
                    "observing_state INTEGER NOT NULL, "
-                   "recording_time BIGINT NOT NULL);";
+                   "recording_time BIGINT NOT NULL, "
+                   "payment_key_id BIGINT NOT NULL, "
+                   "FOREIGN KEY(payment_key_id) REFERENCES payment_keys(id));";
     PGresult *res = PQexec(mDataBase, query.c_str());
     checkCmd(mDataBase,res,"PaymentTx::create table");
     PQclear(res);
@@ -44,6 +46,11 @@ PaymentTransactionsHandlerPostgreSQL::PaymentTransactionsHandlerPostgreSQL(
     query = "CREATE INDEX IF NOT EXISTS " + mTableName + "_uuid_idx ON " + mTableName + "(uuid);";
     res = PQexec(mDataBase, query.c_str());
     checkCmd(mDataBase,res,"PaymentTx::uuid idx");
+    PQclear(res);
+
+    query = "CREATE INDEX IF NOT EXISTS " + mTableName + "_payment_key_id_idx ON " + mTableName + "(payment_key_id);";
+    res = PQexec(mDataBase, query.c_str());
+    checkCmd(mDataBase,res,"PaymentTx::payment_key_id idx");
     PQclear(res);
 #ifdef STORAGE_HANDLER_DEBUG_LOG
     info() << "PaymentTransactionsHandlerPostgreSQL init table=" << mTableName;
@@ -55,7 +62,7 @@ void PaymentTransactionsHandlerPostgreSQL::saveRecord(
     BlockNumber maximalClaimingBlockNumber)
 {
     const string query = "INSERT INTO " + mTableName +
-                         " (uuid, maximal_claiming_block_number, observing_state, recording_time) VALUES ($1,$2,$3,$4);";
+                         " (uuid, maximal_claiming_block_number, observing_state, recording_time, payment_key_id) VALUES ($1,$2,$3,$4,(SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1));";
     const int kParams=4;
     const char *params[kParams];
     int lengths[kParams];

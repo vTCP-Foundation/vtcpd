@@ -3,7 +3,7 @@
 
 #include "base/ObservingMessage.hpp"
 #include "../../transactions/transactions/base/TransactionUUID.h"
-#include "../../crypto/lamportscheme.h"
+#include "../../crypto/sphincsscheme.h"
 
 #include <map>
 
@@ -19,7 +19,7 @@ public:
     ObservingParticipantsVotesAppendRequestMessage(
         const TransactionUUID& transactionUUID,
         BlockNumber maximalClaimingBlockNumber,
-        map<PaymentNodeID, lamport::Signature::Shared> participantsSignatures);
+        map<PaymentNodeID, sphincs::Signature::Shared> participantsSignatures);
 
     const MessageType typeID() const override;
 
@@ -30,7 +30,7 @@ public:
 private:
     TransactionUUID mTransactionUUID;
     BlockNumber mMaximalClaimingBlockNumber;
-    map<PaymentNodeID, lamport::Signature::Shared> mParticipantsSignatures;
+    map<PaymentNodeID, sphincs::Signature::Shared> mParticipantsSignatures;
 };
 
 

@@ -2,7 +2,7 @@
 #define VTCPD_FINALAMOUNTSCONFIGURATIONRESPONSEMESSAGE_H
 
 #include "../base/transaction/TransactionMessage.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincsscheme.h"
 
 using namespace crypto;
 
@@ -31,7 +31,7 @@ public:
         vector<BaseAddress::Shared> &senderAddresses,
         const TransactionUUID &transactionUUID,
         const OperationState state,
-        const lamport::PublicKey::Shared publicKey);
+        const sphincs::PublicKey::Shared publicKey);
 
     FinalAmountsConfigurationResponseMessage(
         BytesShared buffer);
@@ -40,7 +40,7 @@ public:
 
     const OperationState state() const;
 
-    const lamport::PublicKey::Shared publicKey() const;
+    const sphincs::PublicKey::Shared publicKey() const;
 
 protected:
     typedef byte_t SerializedOperationState;
@@ -49,7 +49,7 @@ protected:
 
 private:
     OperationState mState;
-    lamport::PublicKey::Shared mPublicKey;
+    sphincs::PublicKey::Shared mPublicKey;
 };
 
 #endif // VTCPD_FINALAMOUNTSCONFIGURATIONRESPONSEMESSAGE_H

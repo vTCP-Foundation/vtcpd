@@ -3,7 +3,7 @@
 
 #include "base/RequestCycleMessage.h"
 #include "../../../contractors/Contractor.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincsscheme.h"
 #include <map>
 
 using namespace crypto;
@@ -31,9 +31,8 @@ public:
         const TrustLineAmount &amount,
         const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
         const BlockNumber maximalClaimingBlockNumber,
-        const KeyNumber publicKeyNumber,
-        const lamport::Signature::Shared signature,
-        const lamport::KeyHash::Shared transactionPublicKeyHash);
+        const sphincs::Signature::Shared signature,
+        const sphincs::KeyHash::Shared transactionPublicKeyHash);
 
     FinalPathCycleConfigurationMessage(
         BytesShared buffer);
@@ -46,11 +45,9 @@ public:
 
     bool isReceiptContains() const;
 
-    const KeyNumber publicKeyNumber() const;
+    const sphincs::Signature::Shared signature() const;
 
-    const lamport::Signature::Shared signature() const;
-
-    const lamport::KeyHash::Shared transactionPublicKeyHash() const;
+    const sphincs::KeyHash::Shared transactionPublicKeyHash() const;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
@@ -58,9 +55,8 @@ private:
     map<PaymentNodeID, Contractor::Shared> mPaymentParticipants;
     BlockNumber mMaximalClaimingBlockNumber;
     bool mIsReceiptContains;
-    KeyNumber mPublicKeyNumber;
-    lamport::Signature::Shared mSignature;
-    lamport::KeyHash::Shared mTransactionPublicKeyHash;
+    sphincs::Signature::Shared mSignature;
+    sphincs::KeyHash::Shared mTransactionPublicKeyHash;
 };
 
 

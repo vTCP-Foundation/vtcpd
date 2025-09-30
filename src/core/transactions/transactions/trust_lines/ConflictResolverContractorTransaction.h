@@ -5,7 +5,6 @@
 #include "../../../contractors/ContractorsManager.h"
 #include "../../../trust_lines/manager/TrustLinesManager.h"
 #include "../../../crypto/keychain.h"
-#include "../../../crypto/lamportkeys.h"
 
 #include "../../../subsystems_controller/TrustLinesInfluenceController.h"
 

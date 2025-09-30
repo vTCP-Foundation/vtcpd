@@ -22,7 +22,7 @@ TransactionResult::SharedConst VotesStatusResponsePaymentTransaction::run()
 {
     auto senderAddress = mRequest->senderAddresses.at(0);
     info() << "Requested node " << senderAddress->fullAddress();
-    map<PaymentNodeID, lamport::Signature::Shared> emptySignatureMap;
+    map<PaymentNodeID, sphincs::Signature::Shared> emptySignatureMap;
     if (mIsRequestedTransactionCurrentlyInProcessing) {
         // modified flow
         // if requested transaction didn't finish yet,

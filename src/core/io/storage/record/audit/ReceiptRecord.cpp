@@ -4,8 +4,8 @@ ReceiptRecord::ReceiptRecord(
     const AuditNumber auditNumber,
     const TransactionUUID &transactionUUID,
     const TrustLineAmount &amount,
-    const lamport::KeyHash::Shared keyHash,
-    const lamport::Signature::Shared signature) : mAuditNumber(auditNumber),
+    const sphincs::KeyHash::Shared keyHash,
+    const sphincs::Signature::Shared signature) : mAuditNumber(auditNumber),
     mTransactionUUID(transactionUUID),
     mAmount(amount),
     mKeyHash(keyHash),
@@ -35,11 +35,11 @@ ReceiptRecord::ReceiptRecord(
     mAmount = bytesToTrustLineAmount(amountBytes);
     bytesBufferOffset += kTrustLineAmountBytesCount;
 
-    mKeyHash = make_shared<lamport::KeyHash>(
+    mKeyHash = make_shared<sphincs::KeyHash>(
                    buffer + bytesBufferOffset);
-    bytesBufferOffset += lamport::KeyHash::kBytesSize;
+    bytesBufferOffset += sphincs::KeyHash::kBytesSize;
 
-    mSignature = make_shared<lamport::Signature>(
+    mSignature = make_shared<sphincs::Signature>(
                      buffer + bytesBufferOffset);
 }
 
@@ -58,12 +58,12 @@ const TrustLineAmount &ReceiptRecord::amount() const
     return mAmount;
 }
 
-const lamport::KeyHash::Shared ReceiptRecord::keyHash() const
+const sphincs::KeyHash::Shared ReceiptRecord::keyHash() const
 {
     return mKeyHash;
 }
 
-const lamport::Signature::Shared ReceiptRecord::signature() const
+const sphincs::Signature::Shared ReceiptRecord::signature() const
 {
     return mSignature;
 }
@@ -96,20 +96,20 @@ BytesShared ReceiptRecord::serializeToBytes()
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         mKeyHash->data(),
-        lamport::KeyHash::kBytesSize);
-    dataBytesOffset += lamport::KeyHash::kBytesSize;
+        sphincs::KeyHash::kBytesSize);
+    dataBytesOffset += sphincs::KeyHash::kBytesSize;
 
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
         mSignature->data(),
-        lamport::Signature::signatureSize());
+        sphincs::Signature::signatureSize());
 
     return dataBytesShared;
 }
 
 const size_t ReceiptRecord::recordSize()
 {
-    return sizeof(AuditNumber) + TransactionUUID::kBytesSize + kTrustLineAmountBytesCount + lamport::KeyHash::kBytesSize + lamport::Signature::signatureSize();
+    return sizeof(AuditNumber) + TransactionUUID::kBytesSize + kTrustLineAmountBytesCount + sphincs::KeyHash::kBytesSize + sphincs::Signature::signatureSize();
 }
 
 bool operator==(

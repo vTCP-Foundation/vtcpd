@@ -3,7 +3,7 @@
 ObservingParticipantsVotesAppendRequestMessage::ObservingParticipantsVotesAppendRequestMessage(
     const TransactionUUID &transactionUUID,
     BlockNumber maximalClaimingBlockNumber,
-    map<PaymentNodeID, lamport::Signature::Shared> participantsSignatures) :
+    map<PaymentNodeID, sphincs::Signature::Shared> participantsSignatures) :
     mTransactionUUID(transactionUUID),
     mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
     mParticipantsSignatures(participantsSignatures)
@@ -59,8 +59,8 @@ BytesShared ObservingParticipantsVotesAppendRequestMessage::serializeToBytes() c
         memcpy(
             buffer.get() + dataBytesOffset,
             nodeIDAndSignature.second->data(),
-            lamport::Signature::signatureSize());
-        dataBytesOffset += lamport::Signature::signatureSize();
+            sphincs::Signature::signatureSize());
+        dataBytesOffset += sphincs::Signature::signatureSize();
     }
 
     // todo : add hash of all data
@@ -75,6 +75,6 @@ size_t ObservingParticipantsVotesAppendRequestMessage::serializedSize() const
            + TransactionUUID::kBytesSize
            + sizeof(SerializedRecordsCount)
            + mParticipantsSignatures.size()
-           * (sizeof(PaymentNodeID) + lamport::Signature::signatureSize());
+           * (sizeof(PaymentNodeID) + sphincs::Signature::signatureSize());
     // todo : add hash size
 }

@@ -2,7 +2,7 @@
 #define VTCPD_TRANSACTIONPUBLICKEYHASHMESSAGE_H
 
 #include "../base/transaction/TransactionMessage.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincsscheme.h"
 
 using namespace crypto;
 
@@ -18,16 +18,15 @@ public:
         vector<BaseAddress::Shared> &senderAddresses,
         const TransactionUUID &transactionUUID,
         const PaymentNodeID paymentNodeID,
-        const lamport::KeyHash::Shared transactionPublicKeyHash);
+        const sphincs::KeyHash::Shared transactionPublicKeyHash);
 
     TransactionPublicKeyHashMessage(
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> &senderAddresses,
         const TransactionUUID &transactionUUID,
         const PaymentNodeID paymentNodeID,
-        const lamport::KeyHash::Shared transactionPublicKeyHash,
-        const KeyNumber publicKeyNumber,
-        const lamport::Signature::Shared signature);
+        const sphincs::KeyHash::Shared transactionPublicKeyHash,
+        const sphincs::Signature::Shared signature);
 
     TransactionPublicKeyHashMessage(
         BytesShared buffer);
@@ -36,22 +35,19 @@ public:
 
     const PaymentNodeID paymentNodeID() const;
 
-    const lamport::KeyHash::Shared transactionPublicKeyHash() const;
+    const sphincs::KeyHash::Shared transactionPublicKeyHash() const;
 
     bool isReceiptContains() const;
 
-    const KeyNumber publicKeyNumber() const;
-
-    const lamport::Signature::Shared signature() const;
+    const sphincs::Signature::Shared signature() const;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
 private:
     PaymentNodeID mPaymentNodeID;
-    lamport::KeyHash::Shared mTransactionPublicKeyHash;
+    sphincs::KeyHash::Shared mTransactionPublicKeyHash;
     bool mIsReceiptContains;
-    KeyNumber mPublicKeyNumber;
-    lamport::Signature::Shared mSignature;
+    sphincs::Signature::Shared mSignature;
 };
 
 

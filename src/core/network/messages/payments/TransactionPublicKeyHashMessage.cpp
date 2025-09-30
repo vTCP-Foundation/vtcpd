@@ -5,7 +5,7 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID &transactionUUID,
     const PaymentNodeID paymentNodeID,
-    const lamport::KeyHash::Shared transactionPublicKeyHash) :
+    const sphincs::KeyHash::Shared transactionPublicKeyHash) :
 
     TransactionMessage(
         equivalent,
@@ -22,9 +22,8 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID &transactionUUID,
     const PaymentNodeID paymentNodeID,
-    const lamport::KeyHash::Shared transactionPublicKeyHash,
-    const KeyNumber publicKeyNumber,
-    const lamport::Signature::Shared signature) :
+    const sphincs::KeyHash::Shared transactionPublicKeyHash,
+    const sphincs::Signature::Shared signature) :
 
     TransactionMessage(
         equivalent,
@@ -33,7 +32,6 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     mPaymentNodeID(paymentNodeID),
     mTransactionPublicKeyHash(transactionPublicKeyHash),
     mIsReceiptContains(true),
-    mPublicKeyNumber(publicKeyNumber),
     mSignature(signature)
 {
 }
@@ -49,9 +47,9 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
         sizeof(PaymentNodeID));
     bytesBufferOffset += sizeof(PaymentNodeID);
 
-    mTransactionPublicKeyHash = make_shared<lamport::KeyHash>(
-                                    buffer.get() + bytesBufferOffset);
-    bytesBufferOffset += lamport::KeyHash::kBytesSize;
+    mTransactionPublicKeyHash = make_shared<sphincs::KeyHash>(
+        buffer.get() + bytesBufferOffset);
+    bytesBufferOffset += sphincs::KeyHash::kBytesSize;
 
     memcpy(
         &mIsReceiptContains,
@@ -60,13 +58,7 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
 
     if (mIsReceiptContains) {
         bytesBufferOffset += sizeof(byte_t);
-        memcpy(
-            &mPublicKeyNumber,
-            buffer.get() + bytesBufferOffset,
-            sizeof(KeyNumber));
-        bytesBufferOffset += sizeof(KeyNumber);
-
-        auto signature = make_shared<lamport::Signature>(
+        auto signature = make_shared<sphincs::Signature>(
                              buffer.get() + bytesBufferOffset);
         mSignature = signature;
     }
@@ -82,7 +74,7 @@ const PaymentNodeID TransactionPublicKeyHashMessage::paymentNodeID() const
     return mPaymentNodeID;
 }
 
-const lamport::KeyHash::Shared TransactionPublicKeyHashMessage::transactionPublicKeyHash() const
+const sphincs::KeyHash::Shared TransactionPublicKeyHashMessage::transactionPublicKeyHash() const
 {
     return mTransactionPublicKeyHash;
 }
@@ -92,12 +84,7 @@ bool TransactionPublicKeyHashMessage::isReceiptContains() const
     return mIsReceiptContains;
 }
 
-const KeyNumber TransactionPublicKeyHashMessage::publicKeyNumber() const
-{
-    return mPublicKeyNumber;
-}
-
-const lamport::Signature::Shared TransactionPublicKeyHashMessage::signature() const
+const sphincs::Signature::Shared TransactionPublicKeyHashMessage::signature() const
 {
     return mSignature;
 }
@@ -107,9 +94,9 @@ pair<BytesShared, size_t> TransactionPublicKeyHashMessage::serializeToBytes() co
     const auto parentBytesAndCount = TransactionMessage::serializeToBytes();
 
     auto kBufferSize =
-        parentBytesAndCount.second + sizeof(PaymentNodeID) + lamport::KeyHash::kBytesSize + sizeof(byte_t);
+        parentBytesAndCount.second + sizeof(PaymentNodeID) + sphincs::KeyHash::kBytesSize + sizeof(byte_t);
     if (mIsReceiptContains) {
-        kBufferSize += (sizeof(KeyNumber) + lamport::Signature::signatureSize());
+        kBufferSize += sphincs::Signature::signatureSize();
     }
 
     BytesShared buffer = tryMalloc(kBufferSize);
@@ -130,8 +117,8 @@ pair<BytesShared, size_t> TransactionPublicKeyHashMessage::serializeToBytes() co
     memcpy(
         buffer.get() + dataBytesOffset,
         mTransactionPublicKeyHash->data(),
-        lamport::KeyHash::kBytesSize);
-    dataBytesOffset += lamport::KeyHash::kBytesSize;
+        sphincs::KeyHash::kBytesSize);
+    dataBytesOffset += sphincs::KeyHash::kBytesSize;
 
     memcpy(
         buffer.get() + dataBytesOffset,
@@ -142,14 +129,8 @@ pair<BytesShared, size_t> TransactionPublicKeyHashMessage::serializeToBytes() co
         dataBytesOffset += sizeof(byte_t);
         memcpy(
             buffer.get() + dataBytesOffset,
-            &mPublicKeyNumber,
-            sizeof(KeyNumber));
-        dataBytesOffset += sizeof(KeyNumber);
-
-        memcpy(
-            buffer.get() + dataBytesOffset,
             mSignature->data(),
-            mSignature->signatureSize());
+            sphincs::Signature::signatureSize());
     }
 
     return make_pair(

@@ -284,6 +284,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runAmountReservati
         // Note:
         // next section must be executed immediately.
         // (no "break" is needed).
+        [[fallthrough]];
     }
 
     case 1: {
@@ -1464,9 +1465,9 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
 
     mParticipantsPublicKeys.clear();
     auto ioTransaction = mStorageHandler->beginTransaction();
-    mPublicKey = mKeysStore->generateAndSaveKeyPairForPaymentTransaction(
-                     ioTransaction,
-                     currentTransactionUUID());
+    // Ensure reusable payment key exists and load it
+    mKeysStore->ensurePaymentKeyExists(ioTransaction);
+    mPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
     mParticipantsPublicKeys.insert(
         make_pair(
             kCoordinatorPaymentNodeID,
@@ -1492,7 +1493,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
                     participantID,
                     outgoingReservedAmount,
                     true);
-            auto signatureAndKeyNumber = keyChain.sign(
+            auto signature = keyChain.sign(
                                              ioTransaction,
                                              serializedOutgoingReceiptData.first,
                                              serializedOutgoingReceiptData.second);
@@ -1500,13 +1501,12 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
                         ioTransaction,
                         mTrustLinesManager->auditNumber(participantID),
                         mTransactionUUID,
-                        signatureAndKeyNumber.second,
                         outgoingReservedAmount,
-                        signatureAndKeyNumber.first)) {
+                        signature)) {
                 return reject("Can't save outgoing receipt. Rejected.");
             }
             info() << "send final amount configuration to " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress()
-                   << " with receipt " << outgoingReservedAmount << " signed by key number " << signatureAndKeyNumber.second;
+                   << " with receipt " << outgoingReservedAmount;
             sendMessage<FinalAmountsConfigurationMessage>(
                 paymentNodeIdAndContractor.second->mainAddress(),
                 mEquivalent,
@@ -1515,9 +1515,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
                 mNodesFinalAmountsConfiguration[paymentNodeIdAndContractor.second->mainAddress()->fullAddress()],
                 mPaymentParticipants,
                 mMaximalClaimingBlockNumber,
-                signatureAndKeyNumber.second,
-                signatureAndKeyNumber.first,
-                mPublicKey->hash());
+                signature);
         } else {
             info() << "send final amount configuration to " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress();
             sendMessage<FinalAmountsConfigurationMessage>(
@@ -1944,10 +1942,10 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runVotesConsistenc
             sender);
     // todo if we store participants public keys on database, then we should use KeyChain,
     // or we can check sign directly from mParticipantsPublicKeys
-    if (!participantSignature->check(
+    if (!participantSignature->verify(
+                *participantPublicKey,
                 participantSerializedVotesData.first.get(),
-                participantSerializedVotesData.second,
-                participantPublicKey)) {
+                participantSerializedVotesData.second)) {
         removeAllDataFromStorageConcerningTransaction();
         return reject("Participant signature is incorrect. Rolling back");
     }
@@ -1966,7 +1964,6 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runVotesConsistenc
             auto ioTransaction = mStorageHandler->beginTransaction();
             auto signature = mKeysStore->signPaymentTransaction(
                                  ioTransaction,
-                                 currentTransactionUUID(),
                                  serializedOwnVotesData.first,
                                  serializedOwnVotesData.second);
 

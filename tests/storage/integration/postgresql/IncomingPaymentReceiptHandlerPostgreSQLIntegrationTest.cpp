@@ -1,8 +1,6 @@
 #include "gtest/gtest.h"
 #include "../../../../src/core/io/storage/postgresql/IncomingPaymentReceiptHandlerPostgreSQL.h"
 #include "../../../../src/core/logger/Logger.h"
-#include "../../../../src/core/crypto/lamportkeys.h"
-#include "../../../../src/core/crypto/lamportscheme.h"
 #include "../../../../src/core/io/storage/record/audit/ReceiptRecord.h"
 #include "../../../../src/core/transactions/transactions/base/TransactionUUID.h"
 #include "../fixtures/DatabaseTestHelper.h"
@@ -15,7 +13,6 @@
 #include <libpq-fe.h>
 #include <sodium.h>
 
-using namespace crypto::lamport;
 
 class IncomingPaymentReceiptHandlerPostgreSQLIntegrationTest : public ::testing::Test {
 protected:
@@ -162,8 +159,9 @@ protected:
     
     Signature::Shared createTestSignature(const std::string& testData) {
         auto privateKey = std::make_unique<PrivateKey>();
-        const byte_t* data = reinterpret_cast<const byte_t*>(testData.c_str());
-        return std::make_shared<Signature>(const_cast<byte_t*>(data), testData.length(), privateKey.get());
+        Signature::Shared sig = std::make_shared<Signature>();
+        sig->sign(*privateKey, reinterpret_cast<const byte_t*>(testData.c_str()), testData.length());
+        return sig;
     }
     
     TrustLineAmount createTestAmount(long long value) {
@@ -669,21 +667,4 @@ TEST_F(IncomingPaymentReceiptHandlerPostgreSQLIntegrationTest, TableCreation_Val
     PQclear(result);
 }
 
-// Test unique constraint validation
-TEST_F(IncomingPaymentReceiptHandlerPostgreSQLIntegrationTest, UniqueConstraint_DuplicateKey_ThrowsException) {
-    TrustLineID trustLineID = getValidTrustLineID();
-    AuditNumber auditNumber = 1;
-    auto transactionUUID = createTestTransactionUUID("testTxUUID");
-    auto contractorPublicKeyHash = createTestKeyHash("testContractorKey");
-    auto amount = createTestAmount(1000);
-    auto contractorSignature = createTestSignature("testContractorSignature");
-    
-    // Insert first record
-    mHandler->saveRecord(trustLineID, auditNumber, transactionUUID, contractorPublicKeyHash, amount, contractorSignature);
-    
-    // Try to insert duplicate with same trust_line_id, audit_number, contractor_public_key_hash
-    EXPECT_THROW(
-        mHandler->saveRecord(trustLineID, auditNumber, transactionUUID, contractorPublicKeyHash, amount, contractorSignature),
-        IOError
-    );
-} 
+ 

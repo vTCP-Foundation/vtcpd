@@ -4,10 +4,15 @@
 #include "../../../src/core/common/exceptions/IOError.h"
 #include "../../../src/core/common/exceptions/ValueError.h"
 #include "../../../src/core/common/exceptions/NotFoundError.h"
-#include "../fixtures/TestDataFactory.h"
+#include <random>
 #include <filesystem>
 #include <memory>
 #include <sqlite3.h>
+#include <chrono>
+#include <cstring>
+#include <vector>
+#include "../../../src/core/common/Types.h"
+#include "../../../src/core/common/memory/MemoryUtils.h"
 
 using namespace std;
 using ::testing::_;
@@ -18,6 +23,59 @@ using ::testing::Throw;
  * Test fixture for TransactionsHandlerSQLite unit tests.
  * Provides common setup and teardown for transactions handler testing.
  */
+// Local helpers to avoid linking on external test factories
+static TransactionUUID generateRandomTransactionUUID() {
+    TransactionUUID uuid;
+    std::mt19937 rng(static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count()));
+    std::uniform_int_distribution<int> dist(0, 255);
+    for (size_t i = 0; i < TransactionUUID::kBytesSize; ++i) {
+        uuid.data[i] = static_cast<byte_t>(dist(rng));
+    }
+    return uuid;
+}
+
+static unique_ptr<Logger> createTestLogger(const std::filesystem::path &/*dir*/) {
+    return std::make_unique<Logger>();
+}
+
+namespace TestFixturesLocal {
+struct TransactionTestData {
+    TransactionUUID transactionUUID;
+    BytesShared transactionBody;
+    size_t transactionBytesCount;
+};
+
+static TransactionTestData createValid() {
+    TransactionTestData d;
+    d.transactionUUID = generateRandomTransactionUUID();
+    d.transactionBytesCount = 256;
+    d.transactionBody = tryMalloc(d.transactionBytesCount);
+    for (size_t i = 0; i < d.transactionBytesCount; ++i) {
+        d.transactionBody.get()[i] = static_cast<byte_t>(i % 256);
+    }
+    return d;
+}
+
+static TransactionTestData createEmpty() {
+    TransactionTestData d;
+    d.transactionUUID = generateRandomTransactionUUID();
+    d.transactionBytesCount = 0;
+    d.transactionBody.reset();
+    return d;
+}
+
+static TransactionTestData createLarge() {
+    TransactionTestData d;
+    d.transactionUUID = generateRandomTransactionUUID();
+    d.transactionBytesCount = 4096;
+    d.transactionBody = tryMalloc(d.transactionBytesCount);
+    for (size_t i = 0; i < d.transactionBytesCount; ++i) {
+        d.transactionBody.get()[i] = static_cast<byte_t>((i * 31) % 256);
+    }
+    return d;
+}
+}
+
 class TransactionsHandlerSQLiteTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -33,12 +91,12 @@ protected:
         ASSERT_EQ(rc, SQLITE_OK) << "Failed to open test database";
         
         // Create mock logger
-        logger = TestDataFactory::createMockLogger();
+        logger = createTestLogger(tempDir);
         
         // Setup test data
-        validTransactionData = TestFixtures::TransactionTestData::createValid();
-        emptyTransactionData = TestFixtures::TransactionTestData::createEmpty();
-        largeTransactionData = TestFixtures::TransactionTestData::createLarge();
+        validTransactionData = TestFixturesLocal::createValid();
+        emptyTransactionData = TestFixturesLocal::createEmpty();
+        largeTransactionData = TestFixturesLocal::createLarge();
     }
     
     void TearDown() override {
@@ -57,9 +115,9 @@ protected:
     unique_ptr<Logger> logger;
     
     // Test data
-    TestFixtures::TransactionTestData validTransactionData;
-    TestFixtures::TransactionTestData emptyTransactionData;
-    TestFixtures::TransactionTestData largeTransactionData;
+    TestFixturesLocal::TransactionTestData validTransactionData;
+    TestFixturesLocal::TransactionTestData emptyTransactionData;
+    TestFixturesLocal::TransactionTestData largeTransactionData;
 };
 
 /**
@@ -149,7 +207,7 @@ TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_ValidTransaction_SavesSuccessfu
 /**
  * Test saving transaction with null body.
  */
-TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_NullTransactionBody_ThrowsIOError) {
+TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_NullTransactionBody_ThrowsValueError) {
     // Arrange
     TransactionsHandlerSQLite handler(db, tableName, *logger);
     
@@ -160,24 +218,24 @@ TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_NullTransactionBody_ThrowsIOErr
             nullptr,
             100
         );
-    }, IOError);
+    }, ValueError);
 }
 
 /**
  * Test saving transaction with zero byte count.
  */
-TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_ZeroByteCount_SavesSuccessfully) {
+TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_ZeroByteCount_ThrowsValueError) {
     // Arrange
     TransactionsHandlerSQLite handler(db, tableName, *logger);
     
-    // Act & Assert - Zero byte count should be allowed
-    EXPECT_NO_THROW({
+    // Act & Assert - Zero byte count should be rejected
+    EXPECT_THROW({
         handler.saveRecord(
             validTransactionData.transactionUUID,
             validTransactionData.transactionBody,
             0
         );
-    });
+    }, ValueError);
 }
 
 /**
@@ -227,7 +285,7 @@ TEST_F(TransactionsHandlerSQLiteTest, GetTransaction_ExistingTransaction_Returns
 TEST_F(TransactionsHandlerSQLiteTest, GetTransaction_NonExistingTransaction_ThrowsNotFoundError) {
     // Arrange
     TransactionsHandlerSQLite handler(db, tableName, *logger);
-    TransactionUUID nonExistingUUID = TestDataFactory::createValidTransactionUUID();
+    TransactionUUID nonExistingUUID = generateRandomTransactionUUID();
     
     // Act & Assert
     EXPECT_THROW({
@@ -250,7 +308,7 @@ TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_UpdateExisting_ReplacesSuccessf
     );
     
     // Create updated transaction data
-    auto updatedData = TestFixtures::TransactionTestData::createValid();
+    auto updatedData = TestFixturesLocal::createValid();
     updatedData.transactionUUID = validTransactionData.transactionUUID; // Same UUID
     
     // Act - Save with same UUID (should replace)
@@ -275,10 +333,10 @@ TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_UpdateExisting_ReplacesSuccessf
 TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_MultipleTransactions_SavesAllSuccessfully) {
     // Arrange
     TransactionsHandlerSQLite handler(db, tableName, *logger);
-    vector<TestFixtures::TransactionTestData> transactions;
+    vector<TestFixturesLocal::TransactionTestData> transactions;
     
     for (int i = 0; i < 5; ++i) {
-        transactions.push_back(TestFixtures::TransactionTestData::createValid());
+        transactions.push_back(TestFixturesLocal::createValid());
     }
     
     // Act - Save all transactions
@@ -311,8 +369,8 @@ TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_DuplicateUUID_ReplacesExisting)
     // Arrange
     TransactionsHandlerSQLite handler(db, tableName, *logger);
     
-    auto firstData = TestFixtures::TransactionTestData::createValid();
-    auto secondData = TestFixtures::TransactionTestData::createValid();
+    auto firstData = TestFixturesLocal::createValid();
+    auto secondData = TestFixturesLocal::createValid();
     secondData.transactionUUID = firstData.transactionUUID; // Same UUID
     
     // Act
@@ -390,9 +448,9 @@ TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_DataIntegrity_PreservesDataCorr
     
     // Create transaction with specific pattern
     size_t dataSize = 1000;
-    auto patternData = mallocAndAdoptShared<byte>(dataSize);
+    auto patternData = tryMalloc(dataSize);
     for (size_t i = 0; i < dataSize; ++i) {
-        patternData.get()[i] = static_cast<byte>(i % 256);
+        patternData.get()[i] = static_cast<byte_t>(i % 256);
     }
     
     // Act
@@ -406,7 +464,7 @@ TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_DataIntegrity_PreservesDataCorr
     
     // Assert - Verify data pattern is preserved
     for (size_t i = 0; i < dataSize; ++i) {
-        EXPECT_EQ(retrievedTransaction.get()[i], static_cast<byte>(i % 256))
+        EXPECT_EQ(retrievedTransaction.get()[i], static_cast<byte_t>(i % 256))
             << "Data mismatch at byte " << i;
     }
 }
@@ -426,7 +484,7 @@ TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_ByteCountAccuracy_StoresCorrect
     );
     
     // Act - Query the database directly to check stored byte count
-    const char* query = "SELECT transaction_bytes_count FROM " + tableName + " WHERE transaction_uuid = ?";
+    std::string query = "SELECT transaction_bytes_count FROM " + tableName + " WHERE transaction_uuid = ?";
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr);
     ASSERT_EQ(rc, SQLITE_OK);
@@ -450,11 +508,11 @@ TEST_F(TransactionsHandlerSQLiteTest, SaveRecord_ByteCountAccuracy_StoresCorrect
 TEST_F(TransactionsHandlerSQLiteTest, ConcurrentAccess_MultipleOperations_HandlesCorrectly) {
     // Arrange
     TransactionsHandlerSQLite handler(db, tableName, *logger);
-    vector<TestFixtures::TransactionTestData> transactions;
+    vector<TestFixturesLocal::TransactionTestData> transactions;
     
     // Create multiple unique transactions
     for (int i = 0; i < 10; ++i) {
-        transactions.push_back(TestFixtures::TransactionTestData::createValid());
+        transactions.push_back(TestFixturesLocal::createValid());
     }
     
     // Act - Perform multiple operations concurrently
@@ -480,11 +538,11 @@ TEST_F(TransactionsHandlerSQLiteTest, MemoryManagement_LargeTransactions_Handles
     // Arrange
     TransactionsHandlerSQLite handler(db, tableName, *logger);
     size_t largeSize = 1024 * 1024; // 1MB
-    auto largeData = mallocAndAdoptShared<byte>(largeSize);
+    auto largeData = tryMalloc(largeSize);
     
     // Fill with test pattern
     for (size_t i = 0; i < largeSize; ++i) {
-        largeData.get()[i] = static_cast<byte>(i % 256);
+        largeData.get()[i] = static_cast<byte_t>(i % 256);
     }
     
     // Act
@@ -501,7 +559,7 @@ TEST_F(TransactionsHandlerSQLiteTest, MemoryManagement_LargeTransactions_Handles
     
     // Check first and last bytes to verify integrity
     EXPECT_EQ(retrievedTransaction.get()[0], 0);
-    EXPECT_EQ(retrievedTransaction.get()[largeSize - 1], static_cast<byte>((largeSize - 1) % 256));
+    EXPECT_EQ(retrievedTransaction.get()[largeSize - 1], static_cast<byte_t>((largeSize - 1) % 256));
 }
 
 /**
@@ -513,9 +571,9 @@ TEST_F(TransactionsHandlerSQLiteTest, Performance_TransactionOperations_Complete
     auto start = chrono::high_resolution_clock::now();
     
     // Act - Perform many operations
-    vector<TestFixtures::TransactionTestData> transactions;
+    vector<TestFixturesLocal::TransactionTestData> transactions;
     for (int i = 0; i < 100; ++i) {
-        auto txData = TestFixtures::TransactionTestData::createValid();
+        auto txData = TestFixturesLocal::createValid();
         transactions.push_back(txData);
         
         handler.saveRecord(

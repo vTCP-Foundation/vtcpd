@@ -6,8 +6,8 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/exceptions/ValueError.h"
-#include "../../../crypto/lamportkeys.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincskeys.h"
+#include "../../../crypto/sphincsscheme.h"
 #include "../../../common/memory/MemoryUtils.h"
 
 #include <libpq-fe.h>
@@ -15,7 +15,7 @@
 #include <vector>
 #include <map>
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class OwnKeysHandlerPostgreSQL : public OwnKeysHandler
 {
@@ -29,18 +29,16 @@ public:
         const TrustLineID trustLineID,
         const KeyNumber keysSetSequenceNumber,
         const PublicKey::Shared publicKey,
-        const PrivateKey *privateKey,
-        const KeyNumber number) override;
+        const PrivateKey *privateKey) override;
 
     const KeyNumber maxKeySetSequenceNumber(
         const TrustLineID trustLineID) override;
 
-    std::pair<std::unique_ptr<PrivateKey>, KeyNumber> nextAvailableKey(
+    std::unique_ptr<PrivateKey> getPrivateKey(
         const TrustLineID trustLineID) override;
 
-    void invalidKey(
+    void invalidateKey(
         const TrustLineID trustLineID,
-        const KeyNumber number,
         const Signature::Shared signature) override;
 
     void invalidateKeyByHash(
@@ -49,24 +47,16 @@ public:
         const Signature::Shared signature) override;
 
     const PublicKey::Shared getPublicKey(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber) override;
+        const TrustLineID trustLineID) override;
 
     const PublicKey::Shared getPublicKeyByHash(
         const TrustLineID trustLineID,
         const KeyHash::Shared keyHash) override;
 
     const KeyHash::Shared getPublicKeyHash(
-        const TrustLineID trustLineID,
-        const KeyNumber keyNumber) override;
-
-    const KeyNumber getKeyNumberByHash(
-        const KeyHash::Shared keyHash) override;
-
-    KeysCount availableKeysCnt(
         const TrustLineID trustLineID) override;
 
-    void removeUnusedKeys(
+    bool hasKey(
         const TrustLineID trustLineID) override;
 
     std::vector<PublicKey::Shared> publicKeysBySetNumber(

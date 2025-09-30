@@ -11,18 +11,27 @@
 #include "../../../src/core/common/exceptions/IOError.h"
 #include "../../../src/core/common/exceptions/NotFoundError.h"
 #include "../../../src/core/common/exceptions/ValueError.h"
-#include "../../../src/core/crypto/lamportkeys.h"
-#include "../../../src/core/crypto/lamportscheme.h"
 #include "../../../src/core/logger/Logger.h"
-#include "../fixtures/TestDataFactory.h"
+#include <cstdint>
 
 using namespace std;
 using namespace testing;
-using namespace crypto::lamport;
+
+// Minimal stub factory to generate TrustLineID values
+class DummyFactory {
+public:
+    TrustLineID generateTrustLineID() {
+        static TrustLineID sID = 1;
+        return sID++;
+    }
+};
 
 class OwnKeysHandlerSQLiteTest : public Test {
 protected:
     void SetUp() override {
+        // Initialize libsodium once to enable SecureSegment allocations
+        ASSERT_GE(sodium_init(), 0);
+
         // Create temporary directory for test database
         tempDir = filesystem::temp_directory_path() / "own_keys_test";
         filesystem::create_directories(tempDir);
@@ -33,10 +42,10 @@ protected:
         ASSERT_EQ(rc, SQLITE_OK);
         
         // Create Logger
-        logger = make_unique<Logger>(Logger::LogLevel::DEBUG);
+        logger = make_unique<Logger>();
         
         // Create test data factory
-        testDataFactory = make_unique<TestDataFactory>();
+        testDataFactory = make_unique<DummyFactory>();
         
         // Create handler
         handler = make_unique<OwnKeysHandlerSQLite>(
@@ -59,31 +68,24 @@ protected:
     }
     
     // Helper methods
-    PublicKey::Shared generateTestPublicKey() {
-        // Generate a simple test public key
-        byte keyData[kPublicKeySize];
-        fill(keyData, keyData + kPublicKeySize, 0xAB);
-        return make_shared<PublicKey>(keyData);
+    PublicKey::Shared derivePublicKeyFrom(const PrivateKey &privateKey) {
+        return privateKey.derivePublicKey();
     }
     
     PrivateKey* generateTestPrivateKey() {
-        // Generate a simple test private key
-        byte keyData[kPrivateKeySize];
-        fill(keyData, keyData + kPrivateKeySize, 0xCD);
-        return new PrivateKey(keyData);
+        return new PrivateKey();
     }
     
     KeyHash::Shared generateTestKeyHash() {
-        // Generate a simple test key hash
-        byte hashData[kKeyHashSize];
-        fill(hashData, hashData + kKeyHashSize, 0xEF);
+        byte_t hashData[KeyHash::kBytesSize];
+        fill(hashData, hashData + KeyHash::kBytesSize, 0xEF);
         return make_shared<KeyHash>(hashData);
     }
     
     Signature::Shared generateTestSignature() {
-        // Generate a simple test signature
-        byte signatureData[kSignatureSize];
-        fill(signatureData, signatureData + kSignatureSize, 0x12);
+        constexpr size_t kSize = Signature::signatureSize();
+        byte_t signatureData[kSize];
+        fill(signatureData, signatureData + kSize, 0x12);
         return make_shared<Signature>(signatureData);
     }
     
@@ -91,7 +93,7 @@ protected:
     filesystem::path testDbPath;
     sqlite3* db = nullptr;
     unique_ptr<Logger> logger;
-    unique_ptr<TestDataFactory> testDataFactory;
+    unique_ptr<DummyFactory> testDataFactory;
     unique_ptr<OwnKeysHandlerSQLite> handler;
 };
 
@@ -143,17 +145,18 @@ TEST_F(OwnKeysHandlerSQLiteTest, Constructor_EmptyTableName_ThrowsException) {
 TEST_F(OwnKeysHandlerSQLiteTest, SaveKey_ValidParameters_SavesSuccessfully) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     KeyNumber sequenceNumber = 1;
-    PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
-    KeyNumber keyNumber = 1;
-    
+    PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
     EXPECT_NO_THROW(
-        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber)
+        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey)
     );
     
     // Verify key was saved
-    KeysCount count = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(count, 1);
+    EXPECT_TRUE(handler->hasKey(trustLineID));
+    auto keys = handler->publicKeysBySetNumber(trustLineID, sequenceNumber);
+    EXPECT_EQ(keys.size(), 1u);
+    auto priv = handler->getPrivateKey(trustLineID);
+    EXPECT_NE(priv, nullptr);
     
     delete privateKey;
 }
@@ -161,27 +164,26 @@ TEST_F(OwnKeysHandlerSQLiteTest, SaveKey_ValidParameters_SavesSuccessfully) {
 TEST_F(OwnKeysHandlerSQLiteTest, SaveKey_NullPublicKey_ThrowsException) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     KeyNumber sequenceNumber = 1;
-    PrivateKey* privateKey = generateTestPrivateKey();
-    KeyNumber keyNumber = 1;
-    
+    PrivateKey* tmp = generateTestPrivateKey();
+    PublicKey::Shared publicKey = derivePublicKeyFrom(*tmp);
     EXPECT_THROW(
-        handler->saveKey(trustLineID, sequenceNumber, nullptr, privateKey, keyNumber),
+        handler->saveKey(trustLineID, sequenceNumber, nullptr, nullptr),
         ValueError
     );
     
-    delete privateKey;
+    delete tmp;
 }
 
 TEST_F(OwnKeysHandlerSQLiteTest, SaveKey_NullPrivateKey_ThrowsException) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     KeyNumber sequenceNumber = 1;
-    PublicKey::Shared publicKey = generateTestPublicKey();
-    KeyNumber keyNumber = 1;
-    
+    PrivateKey* tmp = generateTestPrivateKey();
+    PublicKey::Shared publicKey = derivePublicKeyFrom(*tmp);
     EXPECT_THROW(
-        handler->saveKey(trustLineID, sequenceNumber, publicKey, nullptr, keyNumber),
+        handler->saveKey(trustLineID, sequenceNumber, publicKey, nullptr),
         ValueError
     );
+    delete tmp;
 }
 
 TEST_F(OwnKeysHandlerSQLiteTest, SaveKey_MultipleKeys_SavesSuccessfully) {
@@ -190,20 +192,18 @@ TEST_F(OwnKeysHandlerSQLiteTest, SaveKey_MultipleKeys_SavesSuccessfully) {
     const int numKeys = 5;
     
     for (int i = 0; i < numKeys; ++i) {
-        PublicKey::Shared publicKey = generateTestPublicKey();
         PrivateKey* privateKey = generateTestPrivateKey();
-        KeyNumber keyNumber = i + 1;
-        
+        PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
         EXPECT_NO_THROW(
-            handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber)
+            handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey)
         );
         
         delete privateKey;
     }
     
     // Verify all keys were saved
-    KeysCount count = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(count, numKeys);
+    auto keys = handler->publicKeysBySetNumber(trustLineID, sequenceNumber);
+    EXPECT_EQ(keys.size(), static_cast<size_t>(numKeys));
 }
 
 // maxKeySetSequenceNumber Tests
@@ -213,10 +213,10 @@ TEST_F(OwnKeysHandlerSQLiteTest, MaxKeySetSequenceNumber_WithKeys_ReturnsCorrect
     // Save keys with different sequence numbers
     vector<KeyNumber> sequenceNumbers = {1, 3, 5, 7, 9};
     for (KeyNumber seqNum : sequenceNumbers) {
-        PublicKey::Shared publicKey = generateTestPublicKey();
         PrivateKey* privateKey = generateTestPrivateKey();
+        PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
         
-        handler->saveKey(trustLineID, seqNum, publicKey, privateKey, 1);
+        handler->saveKey(trustLineID, seqNum, publicKey, privateKey);
         delete privateKey;
     }
     
@@ -233,30 +233,28 @@ TEST_F(OwnKeysHandlerSQLiteTest, MaxKeySetSequenceNumber_NoKeys_ThrowsNotFoundEr
     );
 }
 
-// nextAvailableKey Tests
-TEST_F(OwnKeysHandlerSQLiteTest, NextAvailableKey_WithAvailableKeys_ReturnsKey) {
+// getPrivateKey Tests
+TEST_F(OwnKeysHandlerSQLiteTest, GetPrivateKey_ExistingKey_ReturnsKey) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     KeyNumber sequenceNumber = 1;
-    PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
-    KeyNumber keyNumber = 1;
+    PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
     
     // Save a key
-    handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber);
+    handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey);
     
-    // Get next available key
-    auto result = handler->nextAvailableKey(trustLineID);
-    EXPECT_NE(result.first, nullptr);
-    EXPECT_EQ(result.second, keyNumber);
+    // Get private key
+    auto result = handler->getPrivateKey(trustLineID);
+    EXPECT_NE(result, nullptr);
     
     delete privateKey;
 }
 
-TEST_F(OwnKeysHandlerSQLiteTest, NextAvailableKey_NoAvailableKeys_ThrowsNotFoundError) {
+TEST_F(OwnKeysHandlerSQLiteTest, GetPrivateKey_NoAvailableKeys_ThrowsNotFoundError) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     
     EXPECT_THROW(
-        handler->nextAvailableKey(trustLineID),
+        handler->getPrivateKey(trustLineID),
         NotFoundError
     );
 }
@@ -265,36 +263,38 @@ TEST_F(OwnKeysHandlerSQLiteTest, NextAvailableKey_NoAvailableKeys_ThrowsNotFound
 TEST_F(OwnKeysHandlerSQLiteTest, InvalidKey_ValidParameters_InvalidatesSuccessfully) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     KeyNumber sequenceNumber = 1;
-    PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
-    KeyNumber keyNumber = 1;
+    PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
     
     // Save a key
-    handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber);
+    handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey);
     
-    // Verify key is available
-    KeysCount countBefore = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(countBefore, 1);
+    // Verify private key is available
+    EXPECT_NE(handler->getPrivateKey(trustLineID), nullptr);
     
     // Invalidate the key
     Signature::Shared signature = generateTestSignature();
     EXPECT_NO_THROW(
-        handler->invalidKey(trustLineID, keyNumber, signature)
+        handler->invalidateKey(trustLineID, signature)
     );
     
-    // Verify key is no longer available
-    KeysCount countAfter = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(countAfter, 0);
+    // Public key still exists, but private key should no longer correspond to it
+    auto afterPriv = handler->getPrivateKey(trustLineID);
+    ASSERT_NE(afterPriv, nullptr);
+    auto pub = handler->getPublicKey(trustLineID);
+    ASSERT_NE(pub, nullptr);
+    Signature badSig;
+    ASSERT_TRUE(badSig.sign(*afterPriv, "data"));
+    EXPECT_FALSE(badSig.verify(*pub, reinterpret_cast<const byte_t*>("data"), 4));
     
     delete privateKey;
 }
 
 TEST_F(OwnKeysHandlerSQLiteTest, InvalidKey_NullSignature_ThrowsException) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
-    KeyNumber keyNumber = 1;
     
     EXPECT_THROW(
-        handler->invalidKey(trustLineID, keyNumber, nullptr),
+        handler->invalidateKey(trustLineID, nullptr),
         ValueError
     );
 }
@@ -303,15 +303,14 @@ TEST_F(OwnKeysHandlerSQLiteTest, InvalidKey_NullSignature_ThrowsException) {
 TEST_F(OwnKeysHandlerSQLiteTest, GetPublicKey_ExistingKey_ReturnsKey) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     KeyNumber sequenceNumber = 1;
-    PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
-    KeyNumber keyNumber = 1;
+    PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
     
     // Save a key
-    handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber);
+    handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey);
     
     // Retrieve the key
-    PublicKey::Shared retrievedKey = handler->getPublicKey(trustLineID, keyNumber);
+    PublicKey::Shared retrievedKey = handler->getPublicKey(trustLineID);
     EXPECT_NE(retrievedKey, nullptr);
     
     delete privateKey;
@@ -319,39 +318,39 @@ TEST_F(OwnKeysHandlerSQLiteTest, GetPublicKey_ExistingKey_ReturnsKey) {
 
 TEST_F(OwnKeysHandlerSQLiteTest, GetPublicKey_NonExistentKey_ThrowsNotFoundError) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
-    KeyNumber keyNumber = 999;
     
     EXPECT_THROW(
-        handler->getPublicKey(trustLineID, keyNumber),
+        handler->getPublicKey(trustLineID),
         NotFoundError
     );
 }
 
-// availableKeysCnt Tests
-TEST_F(OwnKeysHandlerSQLiteTest, AvailableKeysCnt_WithKeys_ReturnsCorrectCount) {
+// publicKeysBySetNumber Tests
+TEST_F(OwnKeysHandlerSQLiteTest, PublicKeysBySetNumber_WithKeys_ReturnsCorrectCount) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     KeyNumber sequenceNumber = 1;
     const int numKeys = 10;
     
     // Save multiple keys
     for (int i = 0; i < numKeys; ++i) {
-        PublicKey::Shared publicKey = generateTestPublicKey();
         PrivateKey* privateKey = generateTestPrivateKey();
-        KeyNumber keyNumber = i + 1;
+        PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
         
-        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber);
+        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey);
         delete privateKey;
     }
     
-    KeysCount count = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(count, numKeys);
+    EXPECT_TRUE(handler->hasKey(trustLineID));
+    auto keys = handler->publicKeysBySetNumber(trustLineID, sequenceNumber);
+    EXPECT_EQ(keys.size(), static_cast<size_t>(numKeys));
 }
 
-TEST_F(OwnKeysHandlerSQLiteTest, AvailableKeysCnt_NoKeys_ReturnsZero) {
+TEST_F(OwnKeysHandlerSQLiteTest, HasKey_NoKeys_ReturnsFalse) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     
-    KeysCount count = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(count, 0);
+    EXPECT_FALSE(handler->hasKey(trustLineID));
+    auto keys = handler->publicKeysBySetNumber(trustLineID, 1);
+    EXPECT_TRUE(keys.empty());
 }
 
 // removeUnusedKeys Tests
@@ -362,33 +361,32 @@ TEST_F(OwnKeysHandlerSQLiteTest, RemoveUnusedKeys_WithKeys_RemovesSuccessfully) 
     
     // Save multiple keys
     for (int i = 0; i < numKeys; ++i) {
-        PublicKey::Shared publicKey = generateTestPublicKey();
         PrivateKey* privateKey = generateTestPrivateKey();
-        KeyNumber keyNumber = i + 1;
+        PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
         
-        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber);
+        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey);
         delete privateKey;
     }
     
     // Verify keys exist
-    KeysCount countBefore = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(countBefore, numKeys);
+    auto keysBefore = handler->publicKeysBySetNumber(trustLineID, sequenceNumber);
+    EXPECT_EQ(keysBefore.size(), static_cast<size_t>(numKeys));
     
-    // Remove unused keys
+    // Remove keys
     EXPECT_NO_THROW(
-        handler->removeUnusedKeys(trustLineID)
+        handler->deleteKeysByTrustLineID(trustLineID)
     );
     
     // Verify keys are removed
-    KeysCount countAfter = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(countAfter, 0);
+    auto keysAfter = handler->publicKeysBySetNumber(trustLineID, sequenceNumber);
+    EXPECT_TRUE(keysAfter.empty());
 }
 
 TEST_F(OwnKeysHandlerSQLiteTest, RemoveUnusedKeys_NoKeys_DoesNotThrow) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     
     EXPECT_NO_THROW(
-        handler->removeUnusedKeys(trustLineID)
+        handler->deleteKeysByTrustLineID(trustLineID)
     );
 }
 
@@ -400,17 +398,16 @@ TEST_F(OwnKeysHandlerSQLiteTest, DeleteKeysByTrustLineID_WithKeys_DeletesSuccess
     
     // Save multiple keys
     for (int i = 0; i < numKeys; ++i) {
-        PublicKey::Shared publicKey = generateTestPublicKey();
         PrivateKey* privateKey = generateTestPrivateKey();
-        KeyNumber keyNumber = i + 1;
+        PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
         
-        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber);
+        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey);
         delete privateKey;
     }
     
     // Verify keys exist
-    KeysCount countBefore = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(countBefore, numKeys);
+    auto keysBefore = handler->publicKeysBySetNumber(trustLineID, sequenceNumber);
+    EXPECT_EQ(keysBefore.size(), static_cast<size_t>(numKeys));
     
     // Delete all keys
     EXPECT_NO_THROW(
@@ -418,8 +415,8 @@ TEST_F(OwnKeysHandlerSQLiteTest, DeleteKeysByTrustLineID_WithKeys_DeletesSuccess
     );
     
     // Verify keys are deleted
-    KeysCount countAfter = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(countAfter, 0);
+    auto keysAfter = handler->publicKeysBySetNumber(trustLineID, sequenceNumber);
+    EXPECT_TRUE(keysAfter.empty());
 }
 
 TEST_F(OwnKeysHandlerSQLiteTest, DeleteKeysByTrustLineID_NoKeys_DoesNotThrow) {
@@ -434,28 +431,33 @@ TEST_F(OwnKeysHandlerSQLiteTest, DeleteKeysByTrustLineID_NoKeys_DoesNotThrow) {
 TEST_F(OwnKeysHandlerSQLiteTest, Integration_SaveInvalidateDelete_WorksCorrectly) {
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     KeyNumber sequenceNumber = 1;
-    PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
-    KeyNumber keyNumber = 1;
+    PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
     
     // Save key
     EXPECT_NO_THROW(
-        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber)
+        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey)
     );
     
     // Verify key is available
-    KeysCount count = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(count, 1);
+    EXPECT_TRUE(handler->hasKey(trustLineID));
     
     // Invalidate key
     Signature::Shared signature = generateTestSignature();
     EXPECT_NO_THROW(
-        handler->invalidKey(trustLineID, keyNumber, signature)
+        handler->invalidateKey(trustLineID, signature)
     );
     
-    // Verify key is no longer available
-    count = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(count, 0);
+    // Private key retrieved after invalidation should not match saved public key
+    {
+        auto afterPriv = handler->getPrivateKey(trustLineID);
+        ASSERT_NE(afterPriv, nullptr);
+        auto pub = handler->getPublicKey(trustLineID);
+        ASSERT_NE(pub, nullptr);
+        Signature badSig;
+        ASSERT_TRUE(badSig.sign(*afterPriv, "data"));
+        EXPECT_FALSE(badSig.verify(*pub, reinterpret_cast<const byte_t*>("data"), 4));
+    }
     
     // Delete all keys
     EXPECT_NO_THROW(
@@ -475,17 +477,16 @@ TEST_F(OwnKeysHandlerSQLiteTest, Performance_BulkOperations_CompletesInReasonabl
     
     // Bulk save
     for (int i = 0; i < numKeys; ++i) {
-        PublicKey::Shared publicKey = generateTestPublicKey();
         PrivateKey* privateKey = generateTestPrivateKey();
-        KeyNumber keyNumber = i + 1;
+        PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
         
-        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber);
+        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey);
         delete privateKey;
     }
     
     // Bulk count
-    KeysCount count = handler->availableKeysCnt(trustLineID);
-    EXPECT_EQ(count, numKeys);
+    auto keys = handler->publicKeysBySetNumber(trustLineID, sequenceNumber);
+    EXPECT_EQ(keys.size(), static_cast<size_t>(numKeys));
     
     // Bulk delete
     handler->deleteKeysByTrustLineID(trustLineID);
@@ -493,8 +494,8 @@ TEST_F(OwnKeysHandlerSQLiteTest, Performance_BulkOperations_CompletesInReasonabl
     auto end = chrono::high_resolution_clock::now();
     auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
     
-    // Should complete within reasonable time (5 seconds for 100 operations)
-    EXPECT_LT(duration.count(), 5000);
+    // Should complete within reasonable time (15 seconds for 100 operations on PQ crypto)
+    EXPECT_LT(duration.count(), 15000);
 }
 
 // Error Handling Tests
@@ -505,18 +506,17 @@ TEST_F(OwnKeysHandlerSQLiteTest, ErrorHandling_CorruptedDatabase_ThrowsIOError) 
     
     TrustLineID trustLineID = testDataFactory->generateTrustLineID();
     KeyNumber sequenceNumber = 1;
-    PublicKey::Shared publicKey = generateTestPublicKey();
     PrivateKey* privateKey = generateTestPrivateKey();
-    KeyNumber keyNumber = 1;
+    PublicKey::Shared publicKey = derivePublicKeyFrom(*privateKey);
     
     // Operations should throw IOError
     EXPECT_THROW(
-        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey, keyNumber),
+        handler->saveKey(trustLineID, sequenceNumber, publicKey, privateKey),
         IOError
     );
     
     EXPECT_THROW(
-        handler->availableKeysCnt(trustLineID),
+        handler->hasKey(trustLineID),
         IOError
     );
     

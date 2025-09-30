@@ -6,12 +6,12 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/memory/MemoryUtils.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincskeys.h"
 #include <libpq-fe.h>
 #include <string>
 #include <vector>
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class PaymentKeysHandlerPostgreSQL : public PaymentKeysHandler
 {
@@ -22,17 +22,19 @@ public:
         Logger &logger);
 
     void saveOwnKey(
-        const TransactionUUID &transactionUUID,
         const PublicKey::Shared publicKey,
         const PrivateKey *privateKey) override;
 
-    PrivateKey* getOwnPrivateKey(
-        const TransactionUUID &transactionUUID) override;
+    PrivateKey* getOwnPrivateKey() override;
 
-    void deleteKeyByTransactionUUID(
-        const TransactionUUID &transactionUUID) override;
+    PublicKey::Shared getOwnPublicKey() override;
 
-    std::vector<TransactionUUID> allTransactionUUIDs() override;
+    void deleteKeyByID(
+        const uint64_t id) override;
+
+    bool hasAnyKeys() override;
+
+    uint64_t latestKeyID() override;
 
 private:
     LoggerStream info() const;

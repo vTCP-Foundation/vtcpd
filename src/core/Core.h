@@ -147,7 +147,7 @@ private:
     void onObservingParticipantsVotesSlot(
         const TransactionUUID& transactionUUID,
         BlockNumber maximalClaimingBlockNumber,
-        map<PaymentNodeID, lamport::Signature::Shared> participantsSignatures);
+        map<PaymentNodeID, sphincs::Signature::Shared> participantsSignatures);
 
     void onObservingTransactionRejectSlot(
         const TransactionUUID& transactionUUID,

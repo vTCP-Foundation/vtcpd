@@ -4,7 +4,7 @@ ParticipantsVotesMessage::ParticipantsVotesMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> senderAddresses,
     const TransactionUUID& transactionUUID,
-    map<PaymentNodeID, lamport::Signature::Shared> &participantsSignatures) :
+    map<PaymentNodeID, sphincs::Signature::Shared> &participantsSignatures) :
 
     TransactionMessage(
         equivalent,
@@ -30,9 +30,9 @@ ParticipantsVotesMessage::ParticipantsVotesMessage(
         auto *paymentNodeID = new (buffer.get() + bytesBufferOffset) PaymentNodeID;
         bytesBufferOffset += sizeof(PaymentNodeID);
 
-        auto signature = make_shared<lamport::Signature>(
+        auto signature = make_shared<sphincs::Signature>(
                              buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += lamport::Signature::signatureSize();
+        bytesBufferOffset += sphincs::Signature::signatureSize();
 
         mParticipantsSignatures.insert(
             make_pair(
@@ -75,7 +75,7 @@ pair<BytesShared, size_t> ParticipantsVotesMessage::serializeToBytes() const
         parentBytesAndCount.second
         + sizeof(SerializedRecordsCount)
         + kTotalParticipantsCount
-        * (sizeof(PaymentNodeID) + lamport::Signature::signatureSize());
+        * (sizeof(PaymentNodeID) + sphincs::Signature::signatureSize());
 
     BytesShared buffer = tryMalloc(kBufferSize);
 
@@ -107,8 +107,8 @@ pair<BytesShared, size_t> ParticipantsVotesMessage::serializeToBytes() const
         memcpy(
             buffer.get() + dataBytesOffset,
             paymentNodeIDAndVote.second->data(),
-            lamport::Signature::signatureSize());
-        dataBytesOffset += lamport::Signature::signatureSize();
+            sphincs::Signature::signatureSize());
+        dataBytesOffset += sphincs::Signature::signatureSize();
     }
 
     return make_pair(
@@ -116,7 +116,7 @@ pair<BytesShared, size_t> ParticipantsVotesMessage::serializeToBytes() const
                kBufferSize);
 }
 
-const map<PaymentNodeID, lamport::Signature::Shared>& ParticipantsVotesMessage::participantsSignatures() const
+const map<PaymentNodeID, sphincs::Signature::Shared>& ParticipantsVotesMessage::participantsSignatures() const
 {
     return mParticipantsSignatures;
 }

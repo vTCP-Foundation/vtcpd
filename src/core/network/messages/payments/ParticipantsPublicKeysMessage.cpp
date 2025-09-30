@@ -4,7 +4,7 @@ ParticipantsPublicKeysMessage::ParticipantsPublicKeysMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID &transactionUUID,
-    const map<PaymentNodeID, lamport::PublicKey::Shared> &publicKeys):
+    const map<PaymentNodeID, sphincs::PublicKey::Shared> &publicKeys):
     TransactionMessage(
         equivalent,
         senderAddresses,
@@ -33,9 +33,9 @@ ParticipantsPublicKeysMessage::ParticipantsPublicKeysMessage(
             sizeof(PaymentNodeID));
         bytesBufferOffset += sizeof(PaymentNodeID);
 
-        auto publicKey = make_shared<lamport::PublicKey>(
+        auto publicKey = make_shared<sphincs::PublicKey>(
                              buffer.get() + bytesBufferOffset);
-        bytesBufferOffset += lamport::PublicKey::keySize();
+        bytesBufferOffset += sphincs::PublicKey::keySize();
 
         mPublicKeys.insert(
             make_pair(
@@ -49,7 +49,7 @@ const Message::MessageType ParticipantsPublicKeysMessage::typeID() const
     return Message::Payments_ParticipantsPublicKeys;
 }
 
-const map<PaymentNodeID, lamport::PublicKey::Shared>& ParticipantsPublicKeysMessage::publicKeys() const
+const map<PaymentNodeID, sphincs::PublicKey::Shared>& ParticipantsPublicKeysMessage::publicKeys() const
 {
     return mPublicKeys;
 }
@@ -62,7 +62,7 @@ pair<BytesShared, size_t> ParticipantsPublicKeysMessage::serializeToBytes() cons
         parentBytesAndCount.second
         + sizeof(SerializedRecordsCount)
         + mPublicKeys.size()
-        * (sizeof(PaymentNodeID) + lamport::PublicKey::keySize());
+        * (sizeof(PaymentNodeID) + sphincs::PublicKey::keySize());
 
     BytesShared buffer = tryMalloc(kBufferSize);
 
@@ -93,8 +93,8 @@ pair<BytesShared, size_t> ParticipantsPublicKeysMessage::serializeToBytes() cons
         memcpy(
             buffer.get() + dataBytesOffset,
             nodeIDAndPublicKey.second->data(),
-            lamport::PublicKey::keySize());
-        dataBytesOffset += lamport::PublicKey::keySize();
+            sphincs::PublicKey::keySize());
+        dataBytesOffset += sphincs::PublicKey::keySize();
     }
 
     return make_pair(

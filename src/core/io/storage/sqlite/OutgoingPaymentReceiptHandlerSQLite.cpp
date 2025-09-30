@@ -35,16 +35,6 @@ OutgoingPaymentReceiptHandlerSQLite::OutgoingPaymentReceiptHandlerSQLite(
                       "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
-    // Create unique index on trust_line_id, audit_number, and own_public_key_hash
-    query = "CREATE UNIQUE INDEX IF NOT EXISTS " + mTableName + "_trust_line_id_audit_number_key_hash_idx on " +
-            mTableName + "(trust_line_id, audit_number, own_public_key_hash);";
-    SQLiteStatementRAII uniqueIndexStmt(mDataBase, query.c_str());
-    rc = sqlite3_step(uniqueIndexStmt.get());
-    if (rc != SQLITE_DONE) {
-        throw IOError("OutgoingPaymentReceiptHandlerSQLite::constructor: Failed to create unique index on table '" + mTableName + "'. "
-                      "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
     // Create index on transaction_uuid for faster lookups
     query = "CREATE INDEX IF NOT EXISTS " + mTableName + "_transaction_uuid_idx on " + mTableName + "(transaction_uuid);";
     SQLiteStatementRAII transactionIndexStmt(mDataBase, query.c_str());
@@ -205,7 +195,7 @@ vector<ReceiptRecord::Shared> OutgoingPaymentReceiptHandlerSQLite::receiptsByAud
 
         TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 1));
 
-        auto ownKeyHash = make_shared<lamport::KeyHash>(
+        auto ownKeyHash = make_shared<KeyHash>(
                               (byte_t*)sqlite3_column_blob(stmt.get(), 2));
 
         result.push_back(make_shared<ReceiptRecord>(
@@ -257,7 +247,7 @@ vector<ReceiptRecord::Shared> OutgoingPaymentReceiptHandlerSQLite::receiptsLessE
 
         TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 1));
 
-        auto ownKeyHash = make_shared<lamport::KeyHash>(
+        auto ownKeyHash = make_shared<KeyHash>(
                               (byte_t*)sqlite3_column_blob(stmt.get(), 2));
 
         auto currentAuditNumber = (AuditNumber)sqlite3_column_int(stmt.get(), 3);

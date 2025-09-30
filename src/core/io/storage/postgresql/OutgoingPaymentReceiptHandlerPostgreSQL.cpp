@@ -48,11 +48,6 @@ OutgoingPaymentReceiptHandlerPostgreSQL::OutgoingPaymentReceiptHandlerPostgreSQL
     checkCmd(mDataBase, res, "OutgoingPaymentReceiptHandlerPostgreSQL::create table");
     PQclear(res);
 
-    query = "CREATE UNIQUE INDEX IF NOT EXISTS " + mTableName + "_tl_audit_key_idx ON " + mTableName + "(trust_line_id, audit_number, own_public_key_hash);";
-    res = PQexec(mDataBase, query.c_str());
-    checkCmd(mDataBase, res, "OutgoingPaymentReceiptHandlerPostgreSQL::unique idx");
-    PQclear(res);
-
     query = "CREATE INDEX IF NOT EXISTS " + mTableName + "_transaction_uuid_idx ON " + mTableName + "(transaction_uuid);";
     res = PQexec(mDataBase, query.c_str());
     checkCmd(mDataBase, res, "OutgoingPaymentReceiptHandlerPostgreSQL::uuid idx");

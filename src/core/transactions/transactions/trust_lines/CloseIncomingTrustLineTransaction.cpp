@@ -117,12 +117,8 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runInitializat
     try {
         // note: io transaction would commit automatically on destructor call.
         // there is no need to call commit manually.
-        auto ownPublicKeysHash = keyChain.ownPublicKeysHash(ioTransaction);
-        auto contractorPublicKeysHash = keyChain.contractorPublicKeysHash(ioTransaction);
-        auto serializedAuditData = getOwnSerializedAuditData(
-                                       ownPublicKeysHash,
-                                       contractorPublicKeysHash);
-        mOwnSignatureAndKeyNumber = keyChain.sign(
+        auto serializedAuditData = getOwnSerializedAuditData();
+        mOwnSignature = keyChain.sign(
                                         ioTransaction,
                                         serializedAuditData.first,
                                         serializedAuditData.second);
@@ -130,10 +126,7 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runInitializat
         keyChain.saveOwnAuditPart(
             ioTransaction,
             mAuditNumber,
-            mOwnSignatureAndKeyNumber.second,
-            mOwnSignatureAndKeyNumber.first,
-            ownPublicKeysHash,
-            contractorPublicKeysHash,
+            mOwnSignature,
             mTrustLines->incomingTrustAmount(
                 mContractorID),
             mTrustLines->outgoingTrustAmount(
@@ -179,9 +172,8 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runInitializat
         mAuditNumber,
         mTrustLines->incomingTrustAmount(mContractorID),
         mTrustLines->outgoingTrustAmount(mContractorID),
-        mOwnSignatureAndKeyNumber.second,
-        mOwnSignatureAndKeyNumber.first);
-    info() << "Send audit message signed by key " << mOwnSignatureAndKeyNumber.second;
+        mOwnSignature);
+    info() << "Send audit message";
     mCountSendingAttempts++;
 
     mStep = ResponseProcessing;
@@ -284,8 +276,7 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runResponsePro
                 mAuditNumber,
                 mTrustLines->incomingTrustAmount(mContractorID),
                 mTrustLines->outgoingTrustAmount(mContractorID),
-                mOwnSignatureAndKeyNumber.second,
-                mOwnSignatureAndKeyNumber.first);
+                mOwnSignature);
             mCountSendingAttempts++;
             info() << "Send message " << mCountSendingAttempts << " times";
             return resultWaitForMessageTypes(
@@ -343,16 +334,13 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runResponsePro
             BaseTransaction::CloseIncomingTrustLineTransactionType);
 #endif
 
-        auto contractorSerializedAuditData = getContractorSerializedAuditData(
-                keyChain.ownPublicKeysHash(ioTransaction),
-                keyChain.contractorPublicKeysHash(ioTransaction));
+        auto contractorSerializedAuditData = getContractorSerializedAuditData();
         if (!keyChain.checkSign(
                     ioTransaction,
                     contractorSerializedAuditData.first,
                     contractorSerializedAuditData.second,
-                    message->signature(),
-                    message->keyNumber())) {
-            warning() << "Contractor didn't sign message correct by key number " << message->keyNumber();
+                    message->signature())) {
+            warning() << "Contractor didn't sign message correctly";
             mTrustLines->setTrustLineState(
                 mContractorID,
                 TrustLine::ConflictResolving,
@@ -364,7 +352,6 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runResponsePro
         keyChain.saveContractorAuditPart(
             ioTransaction,
             mAuditNumber,
-            message->keyNumber(),
             message->signature());
 
         mTrustLines->resetTrustLineTotalReceiptsAmounts(
@@ -374,10 +361,6 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runResponsePro
                 mContractorID,
                 TrustLine::Archived,
                 ioTransaction);
-            keyChain.removeUnusedOwnKeys(ioTransaction);
-            mTrustLines->setIsOwnKeysPresent(mContractorID, false);
-            keyChain.removeUnusedContractorKeys(ioTransaction);
-            mTrustLines->setIsContractorKeysPresent(mContractorID, false);
             info() << "Trust Line become empty";
             try {
                 mEventsInterfaceManager->writeEvent(
@@ -454,8 +437,7 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runContractorP
         mAuditNumber,
         mTrustLines->incomingTrustAmount(mContractorID),
         mTrustLines->outgoingTrustAmount(mContractorID),
-        mOwnSignatureAndKeyNumber.second,
-        mOwnSignatureAndKeyNumber.first);
+        mOwnSignature);
     info() << "Send message " << mCountSendingAttempts << " times";
     mStep = ResponseProcessing;
     return resultWaitForMessageTypes(
@@ -499,12 +481,8 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::initializeAudi
     try {
         // note: io transaction would commit automatically on destructor call.
         // there is no need to call commit manually.
-        auto ownPublicKeysHash = keyChain.ownPublicKeysHash(ioTransaction);
-        auto contractorPublicKeysHash = keyChain.contractorPublicKeysHash(ioTransaction);
-        auto serializedAuditData = getOwnSerializedAuditData(
-                                       ownPublicKeysHash,
-                                       contractorPublicKeysHash);
-        mOwnSignatureAndKeyNumber = keyChain.sign(
+        auto serializedAuditData = getOwnSerializedAuditData();
+        mOwnSignature = keyChain.sign(
                                         ioTransaction,
                                         serializedAuditData.first,
                                         serializedAuditData.second);
@@ -512,10 +490,7 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::initializeAudi
         keyChain.saveOwnAuditPart(
             ioTransaction,
             mAuditNumber,
-            mOwnSignatureAndKeyNumber.second,
-            mOwnSignatureAndKeyNumber.first,
-            ownPublicKeysHash,
-            contractorPublicKeysHash,
+            mOwnSignature,
             mTrustLines->incomingTrustAmount(
                 mContractorID),
             mTrustLines->outgoingTrustAmount(
@@ -573,9 +548,8 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::initializeAudi
         mAuditNumber,
         mTrustLines->incomingTrustAmount(mContractorID),
         mTrustLines->outgoingTrustAmount(mContractorID),
-        mOwnSignatureAndKeyNumber.second,
-        mOwnSignatureAndKeyNumber.first);
-    info() << "Send audit message signed by key " << mOwnSignatureAndKeyNumber.second;
+        mOwnSignature);
+    info() << "Send audit message";
     mCountSendingAttempts++;
 
     mStep = ResponseProcessing;

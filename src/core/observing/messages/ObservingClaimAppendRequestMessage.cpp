@@ -3,7 +3,7 @@
 ObservingClaimAppendRequestMessage::ObservingClaimAppendRequestMessage(
     const TransactionUUID &transactionUUID,
     BlockNumber maximalClaimingBlockNumber,
-    const map<PaymentNodeID, lamport::PublicKey::Shared> &participantsPublicKeys):
+    const map<PaymentNodeID, sphincs::PublicKey::Shared> &participantsPublicKeys):
     mTransactionUUID(transactionUUID),
     mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
     mParticipantsPublicKeys(participantsPublicKeys)
@@ -69,8 +69,8 @@ BytesShared ObservingClaimAppendRequestMessage::serializeToBytes() const
         memcpy(
             buffer.get() + dataBytesOffset,
             nodeIDAndPublicKey.second->data(),
-            lamport::PublicKey::keySize());
-        dataBytesOffset += lamport::PublicKey::keySize();
+            sphincs::PublicKey::keySize());
+        dataBytesOffset += sphincs::PublicKey::keySize();
     }
 
     // todo : add hash of all data
@@ -85,6 +85,6 @@ size_t ObservingClaimAppendRequestMessage::serializedSize() const
            + TransactionUUID::kBytesSize
            + sizeof(SerializedRecordsCount)
            + mParticipantsPublicKeys.size()
-           * (sizeof(PaymentNodeID) + lamport::PublicKey::keySize());
+           * (sizeof(PaymentNodeID) + sphincs::PublicKey::keySize());
     // todo : add hash size
 }

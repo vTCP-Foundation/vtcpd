@@ -11,13 +11,11 @@
 #include "../../../src/core/common/exceptions/IOError.h"
 #include "../../../src/core/common/exceptions/NotFoundError.h"
 #include "../../../src/core/common/exceptions/ValueError.h"
-#include "../../../src/core/crypto/lamportkeys.h"
 #include "../../../src/core/logger/Logger.h"
 #include "../../../src/core/common/Types.h"
 
 using namespace std;
 using namespace testing;
-using namespace crypto::lamport;
 
 // ------------------------------------------------------------------------------------------------
 // Minimal stub factory to eliminate dependency on the obsolete TestDataFactory.
@@ -84,9 +82,9 @@ protected:
     }
     
     Signature::Shared generateTestSignature() {
-        byte_t signatureData[Signature::kSize];
-        std::fill(signatureData, signatureData + Signature::kSize, 0xCD);
-        return make_shared<Signature>(signatureData);
+        byte_t sigBuf[Signature::signatureSize()];
+        std::fill(sigBuf, sigBuf + Signature::signatureSize(), 0xCD);
+        return make_shared<Signature>(sigBuf);
     }
     
     TrustLineAmount generateTestAmount() {
@@ -144,21 +142,16 @@ TEST_F(AuditHandlerSQLiteTest, Constructor_EmptyTableName_ThrowsException) {
 TEST_F(AuditHandlerSQLiteTest, SaveFullAudit_ValidParameters_SavesSuccessfully) {
     AuditNumber number = 1;
     TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared contractorKeyHash = generateTestKeyHash();
     Signature::Shared contractorSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
     
     EXPECT_NO_THROW(
         handler->saveFullAudit(
-            number, trustLineID, ownKeyHash, ownSignature,
-            contractorKeyHash, contractorSignature,
-            ownKeysSetHash, contractorKeysSetHash,
+            number, trustLineID, ownSignature,
+            contractorSignature,
             incomingAmount, outgoingAmount, balance
         )
     );
@@ -168,26 +161,21 @@ TEST_F(AuditHandlerSQLiteTest, SaveFullAudit_ValidParameters_SavesSuccessfully) 
     EXPECT_EQ(actualNumber, number);
 }
 
-TEST_F(AuditHandlerSQLiteTest, SaveFullAudit_NullOwnKeyHash_ThrowsException) {
+TEST_F(AuditHandlerSQLiteTest, SaveFullAudit_NullOwnSignature_ThrowsException) {
     AuditNumber number = 1;
     TrustLineID trustLineID = generateTestTrustLineID();
-    Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared contractorKeyHash = generateTestKeyHash();
     Signature::Shared contractorSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
     
     EXPECT_THROW(
         handler->saveFullAudit(
-            number, trustLineID, nullptr, ownSignature,
-            contractorKeyHash, contractorSignature,
-            ownKeysSetHash, contractorKeysSetHash,
+            number, trustLineID, nullptr,
+            contractorSignature,
             incomingAmount, outgoingAmount, balance
         ),
-        ValueError
+        IOError
     );
 }
 
@@ -195,18 +183,14 @@ TEST_F(AuditHandlerSQLiteTest, SaveFullAudit_NullOwnKeyHash_ThrowsException) {
 TEST_F(AuditHandlerSQLiteTest, SaveOwnAuditPart_ValidParameters_SavesSuccessfully) {
     AuditNumber number = 1;
     TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
     
     EXPECT_NO_THROW(
         handler->saveOwnAuditPart(
-            number, trustLineID, ownKeyHash, ownSignature,
-            ownKeysSetHash, contractorKeysSetHash,
+            number, trustLineID, ownSignature,
             incomingAmount, outgoingAmount, balance
         )
     );
@@ -222,26 +206,21 @@ TEST_F(AuditHandlerSQLiteTest, SaveContractorAuditPart_ValidParameters_SavesSucc
     TrustLineID trustLineID = generateTestTrustLineID();
     
     // First save own audit part
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
     
     handler->saveOwnAuditPart(
-        number, trustLineID, ownKeyHash, ownSignature,
-        ownKeysSetHash, contractorKeysSetHash,
+        number, trustLineID, ownSignature,
         incomingAmount, outgoingAmount, balance
     );
     
     // Then save contractor part
-    KeyHash::Shared contractorKeyHash = generateTestKeyHash();
     Signature::Shared contractorSignature = generateTestSignature();
     
     EXPECT_NO_THROW(
-        handler->saveContractorAuditPart(number, trustLineID, contractorKeyHash, contractorSignature)
+        handler->saveContractorAuditPart(number, trustLineID, contractorSignature)
     );
     
     // Verify full audit exists
@@ -253,18 +232,14 @@ TEST_F(AuditHandlerSQLiteTest, SaveContractorAuditPart_ValidParameters_SavesSucc
 TEST_F(AuditHandlerSQLiteTest, GetActualAudit_ExistingAudit_ReturnsAudit) {
     AuditNumber number = 1;
     TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
     
     // Save audit
     handler->saveOwnAuditPart(
-        number, trustLineID, ownKeyHash, ownSignature,
-        ownKeysSetHash, contractorKeysSetHash,
+        number, trustLineID, ownSignature,
         incomingAmount, outgoingAmount, balance
     );
     
@@ -286,21 +261,16 @@ TEST_F(AuditHandlerSQLiteTest, GetActualAudit_NonExistentAudit_ThrowsNotFoundErr
 TEST_F(AuditHandlerSQLiteTest, GetActualAuditFull_ExistingFullAudit_ReturnsAudit) {
     AuditNumber number = 1;
     TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared contractorKeyHash = generateTestKeyHash();
     Signature::Shared contractorSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
     
     // Save full audit
     handler->saveFullAudit(
-        number, trustLineID, ownKeyHash, ownSignature,
-        contractorKeyHash, contractorSignature,
-        ownKeysSetHash, contractorKeysSetHash,
+        number, trustLineID, ownSignature,
+        contractorSignature,
         incomingAmount, outgoingAmount, balance
     );
     
@@ -322,18 +292,14 @@ TEST_F(AuditHandlerSQLiteTest, GetActualAuditFull_NonExistentAudit_ThrowsNotFoun
 TEST_F(AuditHandlerSQLiteTest, GetActualAuditNumber_ExistingAudit_ReturnsCorrectNumber) {
     AuditNumber number = 5;
     TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
     
     // Save audit
     handler->saveOwnAuditPart(
-        number, trustLineID, ownKeyHash, ownSignature,
-        ownKeysSetHash, contractorKeysSetHash,
+        number, trustLineID, ownSignature,
         incomingAmount, outgoingAmount, balance
     );
     
@@ -355,18 +321,14 @@ TEST_F(AuditHandlerSQLiteTest, GetActualAuditNumber_NonExistentAudit_ThrowsNotFo
 TEST_F(AuditHandlerSQLiteTest, DeleteRecords_ExistingAudits_DeletesSuccessfully) {
     AuditNumber number = 1;
     TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
     
     // Save audit
     handler->saveOwnAuditPart(
-        number, trustLineID, ownKeyHash, ownSignature,
-        ownKeysSetHash, contractorKeysSetHash,
+        number, trustLineID, ownSignature,
         incomingAmount, outgoingAmount, balance
     );
     
@@ -397,18 +359,14 @@ TEST_F(AuditHandlerSQLiteTest, DeleteRecords_NonExistentTrustLine_DoesNotThrow) 
 TEST_F(AuditHandlerSQLiteTest, DeleteAuditByNumber_ExistingAudit_DeletesSuccessfully) {
     AuditNumber number = 1;
     TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
     
     // Save audit
     handler->saveOwnAuditPart(
-        number, trustLineID, ownKeyHash, ownSignature,
-        ownKeysSetHash, contractorKeysSetHash,
+        number, trustLineID, ownSignature,
         incomingAmount, outgoingAmount, balance
     );
     
@@ -424,47 +382,15 @@ TEST_F(AuditHandlerSQLiteTest, DeleteAuditByNumber_ExistingAudit_DeletesSuccessf
     );
 }
 
-// isContainsKeyHash Tests
-TEST_F(AuditHandlerSQLiteTest, IsContainsKeyHash_ExistingKeyHash_ReturnsTrue) {
-    AuditNumber number = 1;
-    TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
-    Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
-    TrustLineAmount incomingAmount = generateTestAmount();
-    TrustLineAmount outgoingAmount = generateTestAmount();
-    TrustLineBalance balance = generateTestBalance();
-    
-    // Save audit
-    handler->saveOwnAuditPart(
-        number, trustLineID, ownKeyHash, ownSignature,
-        ownKeysSetHash, contractorKeysSetHash,
-        incomingAmount, outgoingAmount, balance
-    );
-    
-    // Check if key hash exists
-    bool contains = handler->isContainsKeyHash(ownKeyHash);
-    EXPECT_TRUE(contains);
-}
-
-TEST_F(AuditHandlerSQLiteTest, IsContainsKeyHash_NonExistentKeyHash_ReturnsFalse) {
-    KeyHash::Shared keyHash = generateTestKeyHash();
-    
-    bool contains = handler->isContainsKeyHash(keyHash);
-    EXPECT_FALSE(contains);
-}
+// Note: isContainsKeyHash method was removed as part of audit model simplification
+// These tests are no longer applicable since key hashes were removed from the audit model
 
 // Integration Tests
 TEST_F(AuditHandlerSQLiteTest, Integration_FullAuditLifecycle_WorksCorrectly) {
     AuditNumber number = 1;
     TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared contractorKeyHash = generateTestKeyHash();
     Signature::Shared contractorSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = TrustLineAmount(100);
     TrustLineAmount outgoingAmount = TrustLineAmount(50);
     TrustLineBalance balance = TrustLineBalance(25);
@@ -472,9 +398,8 @@ TEST_F(AuditHandlerSQLiteTest, Integration_FullAuditLifecycle_WorksCorrectly) {
     // Save full audit
     EXPECT_NO_THROW(
         handler->saveFullAudit(
-            number, trustLineID, ownKeyHash, ownSignature,
-            contractorKeyHash, contractorSignature,
-            ownKeysSetHash, contractorKeysSetHash,
+            number, trustLineID, ownSignature,
+            contractorSignature,
             incomingAmount, outgoingAmount, balance
         )
     );
@@ -491,10 +416,6 @@ TEST_F(AuditHandlerSQLiteTest, Integration_FullAuditLifecycle_WorksCorrectly) {
     AuditRecord::Shared fullAudit = handler->getActualAuditFull(trustLineID);
     EXPECT_NE(fullAudit, nullptr);
     
-    // Check key hash existence
-    EXPECT_TRUE(handler->isContainsKeyHash(ownKeyHash));
-    EXPECT_TRUE(handler->isContainsKeyHash(contractorKeyHash));
-    
     // Delete audit
     EXPECT_NO_THROW(
         handler->deleteRecords(trustLineID)
@@ -502,7 +423,6 @@ TEST_F(AuditHandlerSQLiteTest, Integration_FullAuditLifecycle_WorksCorrectly) {
     
     // Verify deletion
     EXPECT_THROW(handler->getActualAuditNumber(trustLineID), NotFoundError);
-    EXPECT_FALSE(handler->isContainsKeyHash(ownKeyHash));
 }
 
 // Performance Tests
@@ -515,17 +435,13 @@ TEST_F(AuditHandlerSQLiteTest, Performance_MultipleAudits_CompletesInReasonableT
     // Save multiple audits
     for (int i = 0; i < numAudits; ++i) {
         AuditNumber number = i + 1;
-        KeyHash::Shared ownKeyHash = generateTestKeyHash();
         Signature::Shared ownSignature = generateTestSignature();
-        KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-        KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
         TrustLineAmount incomingAmount = generateTestAmount();
         TrustLineAmount outgoingAmount = generateTestAmount();
         TrustLineBalance balance = generateTestBalance();
         
         handler->saveOwnAuditPart(
-            number, trustLineID, ownKeyHash, ownSignature,
-            ownKeysSetHash, contractorKeysSetHash,
+            number, trustLineID, ownSignature,
             incomingAmount, outgoingAmount, balance
         );
     }
@@ -553,10 +469,7 @@ TEST_F(AuditHandlerSQLiteTest, ErrorHandling_CorruptedDatabase_ThrowsIOError) {
     
     AuditNumber number = 1;
     TrustLineID trustLineID = generateTestTrustLineID();
-    KeyHash::Shared ownKeyHash = generateTestKeyHash();
     Signature::Shared ownSignature = generateTestSignature();
-    KeyHash::Shared ownKeysSetHash = generateTestKeyHash();
-    KeyHash::Shared contractorKeysSetHash = generateTestKeyHash();
     TrustLineAmount incomingAmount = generateTestAmount();
     TrustLineAmount outgoingAmount = generateTestAmount();
     TrustLineBalance balance = generateTestBalance();
@@ -564,8 +477,7 @@ TEST_F(AuditHandlerSQLiteTest, ErrorHandling_CorruptedDatabase_ThrowsIOError) {
     // Operations should throw IOError
     EXPECT_THROW(
         handler->saveOwnAuditPart(
-            number, trustLineID, ownKeyHash, ownSignature,
-            ownKeysSetHash, contractorKeysSetHash,
+            number, trustLineID, ownSignature,
             incomingAmount, outgoingAmount, balance
         ),
         IOError

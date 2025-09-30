@@ -522,7 +522,9 @@ int Core::initKeysStore()
     try {
         mKeysStore = make_unique<Keystore>(
                          *mLog);
-        mKeysStore->init();
+        // Initialize and ensure at least one payment key exists
+        auto ioTrx = mStorageHandler->beginTransaction();
+        mKeysStore->init(ioTrx);
         info() << "Keys store is successfully initialized";
         return 0;
     } catch (const std::exception &e) {
@@ -895,7 +897,7 @@ void Core::onAddTransactionToObservingCheckingSlot(
 void Core::onObservingParticipantsVotesSlot(
     const TransactionUUID &transactionUUID,
     BlockNumber maximalClaimingBlockNumber,
-    map<PaymentNodeID, lamport::Signature::Shared> participantsSignatures)
+    map<PaymentNodeID, sphincs::Signature::Shared> participantsSignatures)
 {
     mTransactionsManager->launchPaymentTransactionAfterGettingObservingSignatures(
         transactionUUID,
