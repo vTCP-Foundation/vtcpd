@@ -1,6 +1,7 @@
 #include "StorageHandlerSQLite.h"
 
 sqlite3 *StorageHandlerSQLite::mDBConnection = nullptr;
+string StorageHandlerSQLite::mCurrentDatabasePath = "";
 
 StorageHandlerSQLite::StorageHandlerSQLite(
     const string &directory,
@@ -55,9 +56,13 @@ StorageHandlerSQLite::~StorageHandlerSQLite()
 void StorageHandlerSQLite::checkDirectory(
     const string &directory)
 {
-    if (!fs::is_directory(fs::path(directory))) {
-        fs::create_directories(
-            fs::path(directory));
+    try {
+        if (!fs::is_directory(fs::path(directory))) {
+            fs::create_directories(
+                fs::path(directory));
+        }
+    } catch (const fs::filesystem_error& e) {
+        throw IOError(string("StorageHandlerSQLite::checkDirectory: ") + e.what());
     }
 }
 
@@ -67,15 +72,26 @@ sqlite3* StorageHandlerSQLite::connection(
     Logger &logger)
 {
     checkDirectory(directory);
-    if (mDBConnection != nullptr)
-        return mDBConnection;
     string dataBasePath = directory + "/" + dataBaseName;
-    int rc = sqlite3_open_v2(dataBasePath.c_str(), &mDBConnection, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
-    if (rc == SQLITE_OK) {
-    } else {
-        throw IOError("StorageHandlerSQLite::connection "
-                      "Can't open database " + dataBaseName);
+
+    // If connection exists but path changed, close old connection
+    if (mDBConnection != nullptr && mCurrentDatabasePath != dataBasePath) {
+        sqlite3_close_v2(mDBConnection);
+        mDBConnection = nullptr;
+        mCurrentDatabasePath = "";
     }
+
+    // If no connection, open new one
+    if (mDBConnection == nullptr) {
+        int rc = sqlite3_open_v2(dataBasePath.c_str(), &mDBConnection, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+        if (rc == SQLITE_OK) {
+            mCurrentDatabasePath = dataBasePath;
+        } else {
+            throw IOError("StorageHandlerSQLite::connection "
+                          "Can't open database " + dataBaseName);
+        }
+    }
+
     return mDBConnection;
 }
 

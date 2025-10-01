@@ -406,9 +406,6 @@ InitiateMaxFlowExchangeCalculationTransaction::InitiateMaxFlowExchangeCalculatio
         logger),
     mCommand(command),
     mExchangeEquivalents(command->exchangeEquivalents()),
-    mResultStep(1),
-    mShortMaxFlowsCalculated(false),
-    mGatewayResponseProcessed(false),
     mHopsCnt(hopsCount)
 {
     // Validate exchangeEquivalents limit (maximum 5 elements)

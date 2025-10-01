@@ -61,6 +61,7 @@ private:
     const string kContractorAddressesTableName = "contractors_addresses";
     const string kFeaturesTableName = "features";
     static sqlite3 *mDBConnection;
+    static string mCurrentDatabasePath;
     Logger &mLog;
     TrustLineHandlerSQLite mTrustLineHandler;
     TransactionsHandlerSQLite mTransactionHandler;

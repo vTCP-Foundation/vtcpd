@@ -125,21 +125,10 @@ private:
 private:
     InitiateMaxFlowExchangeCalculationCommand::Shared mCommand;
     vector<SerializedEquivalent> mExchangeEquivalents;
-    vector<ContractorID> mForbiddenNodeIDs;
-    byte_t mCurrentPathLength;
-    TrustLineAmount mCurrentMaxFlow;
-    ContractorID mCurrentContractor;
     size_t mCountProcessCollectingTopologyRun;
-    TopologyTrustLinesManager::TrustLineWithPtrHashSet mFirstLevelTopology;
     vector<pair<ContractorID, BaseAddress::Shared>> mContractorIDs;
     map<ContractorID, TrustLineAmount> mMaxFlows;
     map<ContractorID, vector<OptimalPathResult>> mOptimalPathResults;
-    uint16_t mResultStep;
-    bool mShortMaxFlowsCalculated;
-    bool mGatewayResponseProcessed;
-    size_t mCurrentGlobalContractorIdx;
-    bool mFinalTopologyCollected;
-    byte_t mMaxPathLength;
     HopsCount_t mHopsCnt;
 };
 

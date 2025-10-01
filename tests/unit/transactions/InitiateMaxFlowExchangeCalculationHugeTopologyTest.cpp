@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <filesystem>
 
 #include "core/transactions/transactions/max_flow_calculation/InitiateMaxFlowExchangeCalculationTransaction.h"
 #include <boost/uuid/uuid_generators.hpp>
@@ -51,10 +52,14 @@ TEST(InitiateMaxFlowExchangeCalculationHugeTopologyTest, MaxFlowOnHugeTopology_1
 
     std::string dbDir = "build-tests/testdb_huge_topology";
     std::string dbName = "test.db";
+    std::filesystem::remove_all(dbDir);
     StorageHandlerSQLite storage(dbDir, dbName, logger);
 
     crypto::Keystore keystore(logger);
-    keystore.init();
+    {
+        auto ioTransaction = storage.beginTransaction();
+        keystore.init(ioTransaction);
+    }
     EventsInterfaceManager eventsManager({}, {}, logger);
 
     // Self address A

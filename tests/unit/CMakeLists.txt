@@ -13,7 +13,6 @@ add_executable(unit_tests
     sqlite/ContractorsHandlerSQLiteTest.cpp
     sqlite/FeaturesHandlerSQLiteTest.cpp
     sqlite/HistoryStorageSQLiteTest.cpp
-    sqlite/HistoryStorageSQLiteTest.cpp
     sqlite/IncomingPaymentReceiptHandlerSQLiteTest.cpp
     sqlite/IOTransactionSQLiteTest.cpp
     sqlite/OutgoingPaymentReceiptHandlerSQLiteTest.cpp
@@ -31,6 +30,8 @@ add_executable(unit_tests
     equivalents/EquivalentsSubsystemsRouterTest.cpp
     network/TailManagerTest.cpp
     network/IncomingRemoteNodeTest.cpp
+    network/messages/IntermediateNodeReservationRequestMessageTest.cpp
+    network/messages/IntermediateNodeReservationResponseMessageTest.cpp
     commissions/CommissionsManagerTest.cpp
     commissions/TopologyTrustLinesManagerCommissionsTest.cpp
     commands/InitiateMaxFlowExchangeCalculationCommandTest.cpp

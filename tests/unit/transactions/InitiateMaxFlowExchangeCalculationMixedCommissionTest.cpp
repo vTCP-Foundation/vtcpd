@@ -63,7 +63,10 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowWithMixedComm
     StorageHandlerSQLite storage(dbDir, dbName, logger);
 
     crypto::Keystore keystore(logger);
-    keystore.init();
+    {
+        auto ioTransaction = storage.beginTransaction();
+        keystore.init(ioTransaction);
+    }
     EventsInterfaceManager eventsManager({}, {}, logger);
 
     // Self address: A = 172.18.28.1:2000
@@ -164,7 +167,10 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowWithMixedComm
     StorageHandlerSQLite storage(dbDir, dbName, logger);
 
     crypto::Keystore keystore(logger);
-    keystore.init();
+    {
+        auto ioTransaction = storage.beginTransaction();
+        keystore.init(ioTransaction);
+    }
     EventsInterfaceManager eventsManager({}, {}, logger);
 
     vector<pair<string, string>> ownAddrs = {{"ipv4", "172.18.28.1:2000"}};
@@ -256,7 +262,10 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowRespectsShare
     StorageHandlerSQLite storage(dbDir, dbName, logger);
 
     crypto::Keystore keystore(logger);
-    keystore.init();
+    {
+        auto ioTransaction = storage.beginTransaction();
+        keystore.init(ioTransaction);
+    }
     EventsInterfaceManager eventsManager({}, {}, logger);
 
     vector<pair<string, string>> ownAddrs = {{"ipv4", "172.18.28.1:2000"}};
@@ -349,7 +358,10 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowWithSingleTra
     StorageHandlerSQLite storage(dbDir, dbName, logger);
 
     crypto::Keystore keystore(logger);
-    keystore.init();
+    {
+        auto ioTransaction = storage.beginTransaction();
+        keystore.init(ioTransaction);
+    }
     EventsInterfaceManager eventsManager({}, {}, logger);
 
     vector<pair<string, string>> ownAddrs = {{"ipv4", "172.18.31.1:2000"}};

@@ -250,12 +250,23 @@ TEST_F(StorageHandlerSQLiteTest, ConcurrentAccess_MultipleTransactions_HandledPr
 TEST_F(StorageHandlerSQLiteTest, Constructor_LongDirectoryPath_HandlesCorrectly) {
     // Arrange
     string longPath = tempDir.string();
-    for (int i = 0; i < 10; ++i) {
+
+    // Create a path that exceeds platform-specific limits
+    // Windows: MAX_PATH = 260, Linux: PATH_MAX = 4096
+#ifdef _WIN32
+    const size_t pathLimit = 260;
+    const int iterations = 10;
+#else
+    const size_t pathLimit = 4096;
+    const int iterations = 150; // Should create path > 4096 chars
+#endif
+
+    for (int i = 0; i < iterations; ++i) {
         longPath += "/very_long_subdirectory_name_" + to_string(i);
     }
-    
+
     // Act & Assert - Should handle long paths correctly or throw appropriate error
-    if (longPath.length() < 260) { // Typical path length limit
+    if (longPath.length() < pathLimit) {
         EXPECT_NO_THROW({
             StorageHandlerSQLite handler(longPath, validDatabaseName, *logger);
         });
