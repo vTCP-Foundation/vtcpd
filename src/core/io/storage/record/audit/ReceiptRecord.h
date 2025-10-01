@@ -2,8 +2,8 @@
 #define VTCPD_RECEIPTRECORD_H
 
 #include "../../../../common/Types.h"
-#include "../../../../crypto/lamportkeys.h"
-#include "../../../../crypto/lamportscheme.h"
+#include "../../../../crypto/sphincskeys.h"
+#include "../../../../crypto/sphincsscheme.h"
 #include "../../../../common/multiprecision/MultiprecisionUtils.h"
 #include "../../../../common/memory/MemoryUtils.h"
 #include "../../../../transactions/transactions/base/TransactionUUID.h"
@@ -21,8 +21,8 @@ public:
         const AuditNumber auditNumber,
         const TransactionUUID &transactionUUID,
         const TrustLineAmount &amount,
-        const lamport::KeyHash::Shared keyHash,
-        const lamport::Signature::Shared);
+        const sphincs::KeyHash::Shared keyHash,
+        const sphincs::Signature::Shared);
 
     ReceiptRecord(
         byte_t* buffer);
@@ -33,9 +33,9 @@ public:
 
     const TrustLineAmount &amount() const;
 
-    const lamport::KeyHash::Shared keyHash() const;
+    const sphincs::KeyHash::Shared keyHash() const;
 
-    const lamport::Signature::Shared signature() const;
+    const sphincs::Signature::Shared signature() const;
 
     BytesShared serializeToBytes();
 
@@ -49,8 +49,8 @@ private:
     AuditNumber mAuditNumber;
     TransactionUUID mTransactionUUID;
     TrustLineAmount mAmount;
-    lamport::KeyHash::Shared mKeyHash;
-    lamport::Signature::Shared mSignature;
+    sphincs::KeyHash::Shared mKeyHash;
+    sphincs::Signature::Shared mSignature;
 };
 
 #endif // VTCPD_RECEIPTRECORD_H

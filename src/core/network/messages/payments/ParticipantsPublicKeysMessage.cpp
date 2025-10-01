@@ -5,7 +5,7 @@ ParticipantsPublicKeysMessage::ParticipantsPublicKeysMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID &transactionUUID,
-    const map<PaymentNodeID, lamport::PublicKey::Shared> &publicKeys):
+    const map<PaymentNodeID, sphincs::PublicKey::Shared> &publicKeys):
     TransactionMessage(
         equivalent,
         senderAddresses,
@@ -29,8 +29,8 @@ ParticipantsPublicKeysMessage::ParticipantsPublicKeysMessage(
 
         // Get current offset for crypto key creation
         auto currentOffset = deserializer.getCurrentOffset();
-        auto publicKey = make_shared<lamport::PublicKey>(buffer.get() + currentOffset);
-        deserializer.skipBytes(lamport::PublicKey::keySize());
+        auto publicKey = make_shared<sphincs::PublicKey>(buffer.get() + currentOffset);
+        deserializer.skipBytes(sphincs::PublicKey::keySize());
 
         mPublicKeys.insert(
             make_pair(
@@ -44,7 +44,7 @@ const Message::MessageType ParticipantsPublicKeysMessage::typeID() const
     return Message::Payments_ParticipantsPublicKeys;
 }
 
-const map<PaymentNodeID, lamport::PublicKey::Shared>& ParticipantsPublicKeysMessage::publicKeys() const
+const map<PaymentNodeID, sphincs::PublicKey::Shared>& ParticipantsPublicKeysMessage::publicKeys() const
 {
     return mPublicKeys;
 }
@@ -61,7 +61,7 @@ pair<BytesShared, size_t> ParticipantsPublicKeysMessage::serializeToBytes() cons
         parentBytesAndCount.second
         + sizeof(SerializedRecordsCount)
         + mPublicKeys.size()
-        * (sizeof(PaymentNodeID) + lamport::PublicKey::keySize());
+        * (sizeof(PaymentNodeID) + sphincs::PublicKey::keySize());
 
     // Use BytesSerializer for consistent serialization
     BytesSerializer serializer;
@@ -74,7 +74,7 @@ pair<BytesShared, size_t> ParticipantsPublicKeysMessage::serializeToBytes() cons
     // Nodes IDs and publicKeys
     for (const auto &nodeIDAndPublicKey : mPublicKeys) {
         serializer.copy(nodeIDAndPublicKey.first);
-        serializer.copy(nodeIDAndPublicKey.second->data(), lamport::PublicKey::keySize());
+        serializer.copy(nodeIDAndPublicKey.second->data(), sphincs::PublicKey::keySize());
     }
 
     return serializer.collect();

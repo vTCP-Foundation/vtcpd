@@ -28,9 +28,8 @@ FinalPathCycleConfigurationMessage::FinalPathCycleConfigurationMessage(
     const TrustLineAmount &amount,
     const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
     const BlockNumber maximalClaimingBlockNumber,
-    const KeyNumber publicKeyNumber,
-    const lamport::Signature::Shared signature,
-    const lamport::KeyHash::Shared transactionPublicKeyHash) :
+    const sphincs::Signature::Shared signature,
+    const sphincs::KeyHash::Shared transactionPublicKeyHash) :
 
     RequestCycleMessage(
         equivalent,
@@ -40,7 +39,6 @@ FinalPathCycleConfigurationMessage::FinalPathCycleConfigurationMessage(
     mPaymentParticipants(paymentParticipants),
     mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
     mIsReceiptContains(true),
-    mPublicKeyNumber(publicKeyNumber),
     mSignature(signature),
     mTransactionPublicKeyHash(transactionPublicKeyHash)
 {
@@ -73,16 +71,14 @@ FinalPathCycleConfigurationMessage::FinalPathCycleConfigurationMessage(
     deserializer.copyInto(&mIsReceiptContains);
 
     if (mIsReceiptContains) {
-        deserializer.copyInto(&mPublicKeyNumber);
-
-        auto signature = make_shared<lamport::Signature>(
+        auto signature = make_shared<sphincs::Signature>(
             buffer.get() + deserializer.getCurrentOffset());
-        deserializer.skipBytes(lamport::Signature::signatureSize());
+        deserializer.skipBytes(sphincs::Signature::signatureSize());
         mSignature = signature;
 
-        mTransactionPublicKeyHash = make_shared<lamport::KeyHash>(
+        mTransactionPublicKeyHash = make_shared<sphincs::KeyHash>(
             buffer.get() + deserializer.getCurrentOffset());
-        deserializer.skipBytes(lamport::KeyHash::kBytesSize);
+        deserializer.skipBytes(sphincs::KeyHash::kBytesSize);
     }
 }
 
@@ -106,17 +102,12 @@ bool FinalPathCycleConfigurationMessage::isReceiptContains() const
     return mIsReceiptContains;
 }
 
-const KeyNumber FinalPathCycleConfigurationMessage::publicKeyNumber() const
-{
-    return mPublicKeyNumber;
-}
-
-const lamport::Signature::Shared FinalPathCycleConfigurationMessage::signature() const
+const sphincs::Signature::Shared FinalPathCycleConfigurationMessage::signature() const
 {
     return mSignature;
 }
 
-const lamport::KeyHash::Shared FinalPathCycleConfigurationMessage::transactionPublicKeyHash() const
+const sphincs::KeyHash::Shared FinalPathCycleConfigurationMessage::transactionPublicKeyHash() const
 {
     return mTransactionPublicKeyHash;
 }
@@ -139,13 +130,12 @@ pair<BytesShared, size_t> FinalPathCycleConfigurationMessage::serializeToBytes()
     serializer.copy(static_cast<byte_t>(mIsReceiptContains));
 
     if (mIsReceiptContains) {
-        serializer.copy(mPublicKeyNumber);
         serializer.copy(
             mSignature->data(),
             mSignature->signatureSize());
         serializer.copy(
             mTransactionPublicKeyHash->data(),
-            lamport::KeyHash::kBytesSize);
+            sphincs::KeyHash::kBytesSize);
     }
 
     return serializer.collect();

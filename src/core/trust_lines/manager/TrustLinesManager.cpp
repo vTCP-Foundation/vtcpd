@@ -68,16 +68,11 @@ void TrustLinesManager::loadTrustLinesFromStorage()
                     kTrustLine->contractorID());
             }
 
-            auto ownKeysSetAndContractorKeysSetAppropriate = keyChain.checkKeysSetAppropriate(
-                    ioTransaction,
-                    auditRecord->ownKeysSetHash(),
-                    auditRecord->contractorKeysSetHash());
-
-            if (keyChain.ownKeysPresent(ioTransaction) and ownKeysSetAndContractorKeysSetAppropriate.first) {
+            if (keyChain.ownKeysPresent(ioTransaction)) {
                 kTrustLine->setIsOwnKeysPresent(true);
             }
 
-            if (keyChain.contractorKeysPresent(ioTransaction) and ownKeysSetAndContractorKeysSetAppropriate.second) {
+            if (keyChain.contractorKeysPresent(ioTransaction)) {
                 kTrustLine->setIsContractorKeysPresent(true);
             }
 
@@ -85,7 +80,7 @@ void TrustLinesManager::loadTrustLinesFromStorage()
             info() << "init TL in storage with contractor " << kTrustLine->contractorID();
             kTrustLine->setState(
                 TrustLine::Init);
-            if (keyChain.ownKeysPresent(ioTransaction)) {
+            if (!keyChain.ownKeysPresent(ioTransaction)) {
                 warning() << "Something wrong, because TL contains own valid keys";
             }
             if (keyChain.contractorKeysPresent(ioTransaction)) {
@@ -1363,7 +1358,7 @@ TrustLinesManager::TrustLineActionType TrustLinesManager::checkTrustLineAfterTra
             auto keyChain = mKeysStore->keychain(
                 trustLineID(
                     contractorID));
-            if (keyChain.ownKeysCriticalCount(ioTransaction)) {
+            if (!keyChain.ownKeysPresent(ioTransaction)) {
                 setIsOwnKeysPresent(
                     contractorID,
                     false);
@@ -1380,7 +1375,7 @@ TrustLinesManager::TrustLineActionType TrustLinesManager::checkTrustLineAfterTra
         auto keyChain = mKeysStore->keychain(
                             trustLineID(
                                 contractorID));
-        if (keyChain.ownKeysCriticalCount(ioTransaction)) {
+        if (!keyChain.ownKeysPresent(ioTransaction)) {
             setIsOwnKeysPresent(
                 contractorID,
                 false);

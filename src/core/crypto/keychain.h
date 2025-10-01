@@ -2,7 +2,7 @@
 #define VTCPD_KEYCHAIN_H
 
 #include "memory.h"
-#include "lamportscheme.h"
+#include "sphincsscheme.h"
 #include "../logger/Logger.h"
 #include "../transactions/transactions/base/TransactionUUID.h"
 #include "../io/storage/interfaces/IOTransaction.h"
@@ -64,13 +64,17 @@ public:
         // todo memory::SecureSegment &memoryKey,
         Logger &logger) noexcept;
 
-    int init();
+    int init(IOTransaction::Shared ioTransaction);
+
+    // Ensure at least one reusable payment key exists; generate if absent.
+    void ensurePaymentKeyExists(IOTransaction::Shared ioTransaction);
 
     TrustLineKeychain keychain(
         const TrustLineID trustLineID)
     const;
 
-    lamport::PublicKey::Shared generateAndSaveKeyPairForPaymentTransaction(
+    // Deprecated: retained for compatibility; do not use in new code.
+    sphincs::PublicKey::Shared generateAndSaveKeyPairForPaymentTransaction(
         IOTransaction::Shared ioTransaction,
         const TransactionUUID &transactionUUID);
 
@@ -90,9 +94,8 @@ public:
      *
      * Writes corresponding log record before exception throwing if an error is caught internally.
      */
-    std::optional<lamport::Signature::Shared> signPaymentTransaction(
+    std::optional<sphincs::Signature::Shared> signPaymentTransaction(
         IOTransaction::Shared ioTransaction,
-        const TransactionUUID &transactionUUID,
         BytesShared dataForSign,
         size_t dataForSignBytesCount);
 
@@ -122,9 +125,6 @@ private:
 class TrustLineKeychain
 {
 public:
-    static const size_t kDefaultKeysSetSize = 20;
-    static const size_t kMaxKeysSetSize = 1024;
-    static const size_t kMinKeysSetSize = 2;
 
 public:
     /**
@@ -153,9 +153,8 @@ public:
      * @throws "RuntimeError" in case of any internal error.
      * Writes corresponding log record before exception throwing.
      */
-    void generateKeyPairsSet(
-        IOTransaction::Shared ioTransaction,
-        KeysCount keyPairsCount = kDefaultKeysSetSize);
+    void generateKeyPair(
+        IOTransaction::Shared ioTransaction);
 
     /**
      * @returns public key with number = "number".
@@ -170,9 +169,8 @@ public:
      * I think we should iteratively read keys one by one
      * to prevent huge memory usage by the nodes in DC on the startup.
      */
-    lamport::PublicKey::Shared publicKey(
-        IOTransaction::Shared ioTransaction,
-        const KeyNumber number)
+    sphincs::PublicKey::Shared publicKey(
+        IOTransaction::Shared ioTransaction)
     const;
 
     /**
@@ -191,8 +189,7 @@ public:
     void setContractorPublicKey(
         IOTransaction::Shared ioTransaction,
         KeyNumber currentKeysSetSequenceNumber,
-        KeyNumber number,
-        const lamport::PublicKey::Shared key);
+        const sphincs::PublicKey::Shared key);
 
     /**
      * @brief
@@ -206,22 +203,7 @@ public:
     bool contractorKeysPresent(
         IOTransaction::Shared ioTransaction);
 
-    bool allContractorKeysPresent(
-        IOTransaction::Shared ioTransaction,
-        KeysCount contractorKeysCount);
-
     bool ownKeysPresent(
-        IOTransaction::Shared ioTransaction);
-
-    bool allContractorKeysReceive(
-        IOTransaction::Shared ioTransaction,
-        KeyNumber currentKeysSetSequenceNumber,
-        KeysCount contractorKeysCount = kDefaultKeysSetSize);
-
-    bool ownKeysCriticalCount(
-        IOTransaction::Shared ioTransaction);
-
-    bool isInitialAuditCondition(
         IOTransaction::Shared ioTransaction);
 
     /**
@@ -237,7 +219,7 @@ public:
      * @throws "RuntimeError" in case of any internal error.
      * Writes corresponding log record before exception throwing.
      */
-    pair<lamport::Signature::Shared, KeyNumber> sign(
+    sphincs::Signature::Shared sign(
         IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size);
@@ -255,40 +237,27 @@ public:
         IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size,
-        const lamport::Signature::Shared signature,
-        const KeyNumber keyNumber);
-
-    void removeUnusedContractorKeys(
-        IOTransaction::Shared ioTransaction);
-
-    void removeUnusedOwnKeys(
-        IOTransaction::Shared ioTransaction);
+        const sphincs::Signature::Shared signature);
 
     bool saveOutgoingPaymentReceipt(
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber,
         const TransactionUUID &transactionUUID,
-        const KeyNumber ownPublicKeyNumber,
         const TrustLineAmount &amount,
-        const lamport::Signature::Shared signature);
+        const sphincs::Signature::Shared signature);
 
     bool saveIncomingPaymentReceipt(
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber,
         const TransactionUUID &transactionUUID,
-        const KeyNumber contractorPublicKeyNumber,
         const TrustLineAmount &amount,
-        const Signature::Shared contractorSignature);
+        const sphincs::Signature::Shared contractorSignature);
 
     void saveFullAudit(
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber,
-        const KeyNumber ownKeyNumber,
-        const lamport::Signature::Shared ownSignature,
-        const KeyNumber contractorKeyNumber,
-        const lamport::Signature::Shared contractorSignature,
-        const lamport::KeyHash::Shared ownKeysSetHash,
-        const lamport::KeyHash::Shared contractorKeysSetHash,
+        const sphincs::Signature::Shared ownSignature,
+        const sphincs::Signature::Shared contractorSignature,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance);
@@ -296,10 +265,7 @@ public:
     void saveOwnAuditPart(
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber,
-        const KeyNumber ownKeyNumber,
-        const lamport::Signature::Shared ownSignature,
-        const lamport::KeyHash::Shared ownKeysSetHash,
-        const lamport::KeyHash::Shared contractorKeysSetHash,
+        const sphincs::Signature::Shared ownSignature,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
         const TrustLineBalance &balance);
@@ -310,8 +276,7 @@ public:
     void saveContractorAuditPart(
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber,
-        const KeyNumber contractorKeyNumber,
-        const lamport::Signature::Shared contractorSignature);
+        const sphincs::Signature::Shared contractorSignature);
 
     bool isAuditWasCancelled(
         IOTransaction::Shared ioTransaction,
@@ -320,7 +285,7 @@ public:
     bool isActualAuditFull(
         IOTransaction::Shared ioTransaction);
 
-    pair<lamport::Signature::Shared, KeyNumber> getSignatureAndKeyNumberForPendingAudit(
+    sphincs::Signature::Shared getSignatureForPendingAudit(
         IOTransaction::Shared ioTransaction,
         const AuditNumber auditNumber);
 
@@ -339,15 +304,13 @@ public:
         IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size,
-        const lamport::Signature::Shared ownSignature,
-        lamport::KeyHash::Shared ownKeyHash);
+        const sphincs::Signature::Shared ownSignature);
 
     bool checkContractorConflictedSignature(
         IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size,
-        const lamport::Signature::Shared contractorSignature,
-        lamport::KeyHash::Shared contractorKeyHash);
+        const sphincs::Signature::Shared contractorSignature);
 
     vector<ReceiptRecord::Shared> incomingReceipts(
         IOTransaction::Shared ioTransaction,
@@ -361,15 +324,15 @@ public:
         IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size,
-        const lamport::Signature::Shared ownSignature,
-        lamport::KeyHash::Shared ownKeyHash);
+        const sphincs::Signature::Shared ownSignature,
+        sphincs::KeyHash::Shared ownKeyHash);
 
     bool checkConflictedOutgoingReceipt(
         IOTransaction::Shared ioTransaction,
         BytesShared data,
         const size_t size,
-        const lamport::Signature::Shared ownSignature,
-        lamport::KeyHash::Shared ownKeyHash);
+        const sphincs::Signature::Shared ownSignature,
+        sphincs::KeyHash::Shared ownKeyHash);
 
     void acceptAudit(
         IOTransaction::Shared ioTransaction,
@@ -380,19 +343,9 @@ public:
         vector<ReceiptRecord::Shared> contractorIncomingReceipts,
         vector<ReceiptRecord::Shared> contractorOutgoingReceipts);
 
-    pair<lamport::Signature::Shared, KeyNumber> getCurrentAuditSignatureAndKeyNumber(
+    sphincs::Signature::Shared getCurrentAuditSignature(
         IOTransaction::Shared ioTransaction);
 
-    lamport::KeyHash::Shared ownPublicKeysHash(
-        IOTransaction::Shared ioTransaction) const;
-
-    lamport::KeyHash::Shared contractorPublicKeysHash(
-        IOTransaction::Shared ioTransaction) const;
-
-    pair<bool, bool> checkKeysSetAppropriate(
-        IOTransaction::Shared ioTransaction,
-        lamport::KeyHash::Shared ownKeysSetHash,
-        lamport::KeyHash::Shared contractorKeysSetHash) const;
 
     void removeAllTrustLineData(
         IOTransaction::Shared ioTransaction);
@@ -404,26 +357,15 @@ public:
     void removeOutdatedCryptoPaymentsData(
         IOTransaction::Shared ioTransaction);
 
-    void removeOutdatedPaymentsKeysData(
-        IOTransaction::Shared ioTransaction);
-
     bool isReceiptsPresent(
         IOTransaction::Shared ioTransaction,
         const TransactionUUID &transactionUUID) const;
 
     void removeOutdatedKeys(
         IOTransaction::Shared ioTransaction,
-        const KeyNumber currentOwnKeysSetSequenceNumber,
-        const KeyNumber currentContractorKeysSetSequenceNumber);
+        const KeyNumber currentKeysSetSequenceNumber);
 
 protected:
-    /**
-     * @brief checks "number" for it's range.
-     * @throws "ValueError" if "number" is not in range of valid values.
-     */
-    void keyNumberGuard(
-        const KeyNumber &number)
-    const;
 
     /**
      * @brief checks "data" and "size" for correct values.

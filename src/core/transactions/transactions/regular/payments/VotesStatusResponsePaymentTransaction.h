@@ -6,7 +6,7 @@
 #include "../../../../io/storage/interfaces/StorageHandler.h"
 #include "../../../../network/messages/payments/VotesStatusRequestMessage.hpp"
 #include "../../../../network/messages/payments/ParticipantsVotesMessage.h"
-#include "../../../../crypto/lamportscheme.h"
+#include "../../../../crypto/sphincsscheme.h"
 #include "../../../../subsystems_controller/SubsystemsController.h"
 
 using namespace crypto;

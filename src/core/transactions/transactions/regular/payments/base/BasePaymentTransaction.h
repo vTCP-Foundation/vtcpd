@@ -124,7 +124,7 @@ public:
         BasePaymentTransaction::SerializedStep transactionStage);
 
     void setObservingParticipantsSignatures(
-        map<PaymentNodeID, lamport::Signature::Shared> participantsSignatures);
+        map<PaymentNodeID, sphincs::Signature::Shared> participantsSignatures);
 
 public:
     enum Stages
@@ -504,10 +504,10 @@ protected:
     // ids of nodes inside payment transaction
     map<PaymentNodeID, Contractor::Shared> mPaymentParticipants;
     map<string, PaymentNodeID> mPaymentNodesIds;
-    map<string, pair<PaymentNodeID, lamport::KeyHash::Shared>> mParticipantsPublicKeysHashes;
-    map<PaymentNodeID, lamport::PublicKey::Shared> mParticipantsPublicKeys;
-    map<PaymentNodeID, lamport::Signature::Shared> mParticipantsSignatures;
-    lamport::Signature::Shared mSignedTransaction;
+    map<string, pair<PaymentNodeID, sphincs::KeyHash::Shared>> mParticipantsPublicKeysHashes;
+    map<PaymentNodeID, sphincs::PublicKey::Shared> mParticipantsPublicKeys;
+    map<PaymentNodeID, sphincs::Signature::Shared> mParticipantsSignatures;
+    sphincs::Signature::Shared mSignedTransaction;
 
     // this fields are used by coordinators on final amount configuration clarification
     bool mAllNodesSentConfirmationOnFinalAmountsConfiguration;
@@ -517,7 +517,7 @@ protected:
     bool mIsSuspendedOnFinalAmountsConfirmationStage;
     uint8_t mCntSuspendingOnFinalAmountsConfirmationStage;
 
-    lamport::PublicKey::Shared mPublicKey;
+    sphincs::PublicKey::Shared mPublicKey;
 
     BlockNumber mMaximalClaimingBlockNumber;
     bool mBlockNumberObtainingInProcess;

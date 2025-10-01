@@ -6,7 +6,7 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID &transactionUUID,
     const PaymentNodeID paymentNodeID,
-    const lamport::KeyHash::Shared transactionPublicKeyHash) :
+    const sphincs::KeyHash::Shared transactionPublicKeyHash) :
 
     TransactionMessage(
         equivalent,
@@ -23,9 +23,8 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID &transactionUUID,
     const PaymentNodeID paymentNodeID,
-    const lamport::KeyHash::Shared transactionPublicKeyHash,
-    const KeyNumber publicKeyNumber,
-    const lamport::Signature::Shared signature) :
+    const sphincs::KeyHash::Shared transactionPublicKeyHash,
+    const sphincs::Signature::Shared signature) :
 
     TransactionMessage(
         equivalent,
@@ -34,7 +33,6 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     mPaymentNodeID(paymentNodeID),
     mTransactionPublicKeyHash(transactionPublicKeyHash),
     mIsReceiptContains(true),
-    mPublicKeyNumber(publicKeyNumber),
     mSignature(signature)
 {
 }
@@ -49,19 +47,16 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
 
     // Get current offset for crypto key creation
     auto currentOffset = deserializer.getCurrentOffset();
-    mTransactionPublicKeyHash = make_shared<lamport::KeyHash>(buffer.get() + currentOffset);
-    deserializer.skipBytes(lamport::KeyHash::kBytesSize);
+    mTransactionPublicKeyHash = make_shared<sphincs::KeyHash>(buffer.get() + currentOffset);
+    deserializer.skipBytes(sphincs::KeyHash::kBytesSize);
 
     deserializer.copyInto(&mIsReceiptContains);
 
     if (mIsReceiptContains) {
-        deserializer.copyInto(&mPublicKeyNumber);
-
         // Get current offset for signature creation
         currentOffset = deserializer.getCurrentOffset();
-        auto signature = make_shared<lamport::Signature>(buffer.get() + currentOffset);
+        auto signature = make_shared<sphincs::Signature>(buffer.get() + currentOffset);
         mSignature = signature;
-        deserializer.skipBytes(lamport::Signature::signatureSize());
     }
 }
 
@@ -75,7 +70,7 @@ const PaymentNodeID TransactionPublicKeyHashMessage::paymentNodeID() const
     return mPaymentNodeID;
 }
 
-const lamport::KeyHash::Shared TransactionPublicKeyHashMessage::transactionPublicKeyHash() const
+const sphincs::KeyHash::Shared TransactionPublicKeyHashMessage::transactionPublicKeyHash() const
 {
     return mTransactionPublicKeyHash;
 }
@@ -85,12 +80,7 @@ bool TransactionPublicKeyHashMessage::isReceiptContains() const
     return mIsReceiptContains;
 }
 
-const KeyNumber TransactionPublicKeyHashMessage::publicKeyNumber() const
-{
-    return mPublicKeyNumber;
-}
-
-const lamport::Signature::Shared TransactionPublicKeyHashMessage::signature() const
+const sphincs::Signature::Shared TransactionPublicKeyHashMessage::signature() const
 {
     return mSignature;
 }
@@ -104,20 +94,19 @@ pair<BytesShared, size_t> TransactionPublicKeyHashMessage::serializeToBytes() co
     const auto parentBytesAndCount = TransactionMessage::serializeToBytes();
 
     auto kBufferSize =
-        parentBytesAndCount.second + sizeof(PaymentNodeID) + lamport::KeyHash::kBytesSize + sizeof(byte_t);
+        parentBytesAndCount.second + sizeof(PaymentNodeID) + sphincs::KeyHash::kBytesSize + sizeof(byte_t);
     if (mIsReceiptContains) {
-        kBufferSize += (sizeof(KeyNumber) + lamport::Signature::signatureSize());
+        kBufferSize += sphincs::Signature::signatureSize();
     }
 
     // Use BytesSerializer for consistent serialization
     BytesSerializer serializer;
     serializer.enqueue(parentBytesAndCount);
     serializer.copy(mPaymentNodeID);
-    serializer.copy(mTransactionPublicKeyHash->data(), lamport::KeyHash::kBytesSize);
+    serializer.copy(mTransactionPublicKeyHash->data(), sphincs::KeyHash::kBytesSize);
     serializer.copy(mIsReceiptContains);
 
     if (mIsReceiptContains) {
-        serializer.copy(mPublicKeyNumber);
         serializer.copy(mSignature->data(), mSignature->signatureSize());
     }
 

@@ -24,8 +24,6 @@ ContractorKeysHandlerSQLite::ContractorKeysHandlerSQLite(
                    "trust_line_id INTEGER NOT NULL, "
                    "keys_set_sequence_number INTEGER NOT NULL, "
                    "public_key BLOB NOT NULL, "
-                   "number INTEGER NOT NULL, "
-                   "is_valid INTEGER NOT NULL DEFAULT 1, "
                    "FOREIGN KEY(trust_line_id) REFERENCES trust_lines(id) ON DELETE CASCADE ON UPDATE CASCADE);";
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
@@ -61,16 +59,15 @@ ContractorKeysHandlerSQLite::ContractorKeysHandlerSQLite(
 void ContractorKeysHandlerSQLite::saveKey(
     const TrustLineID trustLineID,
     const KeyNumber keysSetSequenceNumber,
-    const PublicKey::Shared publicKey,
-    const KeyNumber number)
+    const PublicKey::Shared publicKey)
 {
     if (!publicKey) {
         throw ValueError("ContractorKeysHandlerSQLite::saveKey: Public key cannot be null.");
     }
 
-    string query = "INSERT INTO " + mTableName +
-                   "(hash, trust_line_id, keys_set_sequence_number, public_key, "
-                   "number) VALUES (?, ?, ?, ?, ?);";
+    string query = "INSERT OR REPLACE INTO " + mTableName +
+                   "(hash, trust_line_id, keys_set_sequence_number, public_key) "
+                   "VALUES (?, ?, ?, ?);";
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
@@ -84,7 +81,7 @@ void ContractorKeysHandlerSQLite::saveKey(
                                (int)KeyHash::kBytesSize, SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) {
         throw IOError("ContractorKeysHandlerSQLite::saveKey: Failed to bind hash. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
@@ -109,24 +106,17 @@ void ContractorKeysHandlerSQLite::saveKey(
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
-    rc = sqlite3_bind_int(stmt.get(), 5, number);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::saveKey: Failed to bind number. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
 
     rc = sqlite3_step(stmt.get());
     if (rc != SQLITE_DONE) {
         throw IOError("ContractorKeysHandlerSQLite::saveKey: Failed to execute INSERT. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+                      "TrustLine=" + to_string(trustLineID) +
                       ", Sequence=" + to_string(keysSetSequenceNumber) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
     info() << "Key saved: TrustLine=" << trustLineID
-           << ", KeyNumber=" << number
            << ", Sequence=" << keysSetSequenceNumber
            << ", KeySize=" << publicKey->keySize();
 #endif
@@ -166,42 +156,34 @@ const KeyNumber ContractorKeysHandlerSQLite::maxKeySetSequenceNumber(
     }
 }
 
-void ContractorKeysHandlerSQLite::invalidKey(
-    const TrustLineID trustLineID,
-    const KeyNumber number)
+void ContractorKeysHandlerSQLite::invalidateKey(
+    const TrustLineID trustLineID)
 {
-    string query = "UPDATE " + mTableName + " SET is_valid = 0 WHERE trust_line_id = ? AND number = ?;";
+    // Note: In single key architecture, we simply remove the key
+    string query = "DELETE FROM " + mTableName + " WHERE trust_line_id = ?;";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
     if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::invalidKey: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_bind_int(stmt.get(), 2, number);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::invalidKey: Failed to bind number. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+        throw IOError("ContractorKeysHandlerSQLite::invalidateKey: Failed to bind trust_line_id. "
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     rc = sqlite3_step(stmt.get());
     if (rc != SQLITE_DONE) {
-        throw IOError("ContractorKeysHandlerSQLite::invalidKey: Failed to execute UPDATE. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) +
+        throw IOError("ContractorKeysHandlerSQLite::invalidateKey: Failed to execute DELETE. "
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     if (sqlite3_changes(mDataBase) == 0) {
-        throw ValueError("ContractorKeysHandlerSQLite::invalidKey: No rows affected. "
-                         "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(number) + ".");
+        throw ValueError("ContractorKeysHandlerSQLite::invalidateKey: No rows affected. "
+                         "TrustLine=" + to_string(trustLineID) + ".");
     }
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
-    info() << "Key invalidated: TrustLine=" << trustLineID
-           << ", KeyNumber=" << number;
+    info() << "Key invalidated: TrustLine=" << trustLineID;
 #endif
 }
 
@@ -213,7 +195,8 @@ void ContractorKeysHandlerSQLite::invalidateKeyByHash(
         throw ValueError("ContractorKeysHandlerSQLite::invalidateKeyByHash: Key hash cannot be null.");
     }
 
-    string query = "UPDATE " + mTableName + " SET is_valid = 0 WHERE trust_line_id = ? AND hash = ?;";
+    // In single key architecture, we simply delete the key
+    string query = "DELETE FROM " + mTableName + " WHERE trust_line_id = ? AND hash = ?;";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
@@ -233,7 +216,7 @@ void ContractorKeysHandlerSQLite::invalidateKeyByHash(
 
     rc = sqlite3_step(stmt.get());
     if (rc != SQLITE_DONE) {
-        throw IOError("ContractorKeysHandlerSQLite::invalidateKeyByHash: Failed to execute UPDATE. "
+        throw IOError("ContractorKeysHandlerSQLite::invalidateKeyByHash: Failed to execute DELETE. "
                       "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
@@ -248,24 +231,16 @@ void ContractorKeysHandlerSQLite::invalidateKeyByHash(
 #endif
 }
 
-PublicKey::Shared ContractorKeysHandlerSQLite::keyByNumber(
-    const TrustLineID trustLineID,
-    const KeyNumber keyNumber)
+PublicKey::Shared ContractorKeysHandlerSQLite::getPublicKey(
+    const TrustLineID trustLineID)
 {
-    string query = "SELECT public_key FROM " + mTableName + " WHERE trust_line_id = ? AND number = ?;";
+    string query = "SELECT public_key FROM " + mTableName + " WHERE trust_line_id = ?;";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
     if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::keyByNumber: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_bind_int(stmt.get(), 2, keyNumber);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::keyByNumber: Failed to bind number. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
+        throw IOError("ContractorKeysHandlerSQLite::getPublicKey: Failed to bind trust_line_id. "
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
@@ -274,16 +249,15 @@ PublicKey::Shared ContractorKeysHandlerSQLite::keyByNumber(
         auto publicKey = make_shared<PublicKey>((byte_t*)sqlite3_column_blob(stmt.get(), 0));
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
-        info() << "Public key retrieved by number: TrustLine=" << trustLineID
-               << ", KeyNumber=" << keyNumber;
+        info() << "Public key retrieved: TrustLine=" << trustLineID;
 #endif
         return publicKey;
     } else if (rc == SQLITE_DONE) {
-        throw NotFoundError("ContractorKeysHandlerSQLite::keyByNumber: Public key not found. "
-                            "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) + ".");
+        throw NotFoundError("ContractorKeysHandlerSQLite::getPublicKey: Public key not found. "
+                            "TrustLine=" + to_string(trustLineID) + ".");
     } else {
-        throw IOError("ContractorKeysHandlerSQLite::keyByNumber: Failed to execute SELECT. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
+        throw IOError("ContractorKeysHandlerSQLite::getPublicKey: Failed to execute SELECT. "
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 }
@@ -332,24 +306,16 @@ PublicKey::Shared ContractorKeysHandlerSQLite::keyByHash(
     }
 }
 
-const KeyHash::Shared ContractorKeysHandlerSQLite::keyHashByNumber(
-    const TrustLineID trustLineID,
-    const KeyNumber keyNumber)
+const KeyHash::Shared ContractorKeysHandlerSQLite::getPublicKeyHash(
+    const TrustLineID trustLineID)
 {
-    string query = "SELECT hash FROM " + mTableName + " WHERE trust_line_id = ? AND number = ?;";
+    string query = "SELECT hash FROM " + mTableName + " WHERE trust_line_id = ?;";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
     if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::keyHashByNumber: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_bind_int(stmt.get(), 2, keyNumber);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::keyHashByNumber: Failed to bind number. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
+        throw IOError("ContractorKeysHandlerSQLite::getPublicKeyHash: Failed to bind trust_line_id. "
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
@@ -358,116 +324,52 @@ const KeyHash::Shared ContractorKeysHandlerSQLite::keyHashByNumber(
         auto hash = make_shared<KeyHash>((byte_t*)sqlite3_column_blob(stmt.get(), 0));
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
-        info() << "Key hash retrieved by number: TrustLine=" << trustLineID
-               << ", KeyNumber=" << keyNumber;
+        info() << "Key hash retrieved: TrustLine=" << trustLineID;
 #endif
         return hash;
     } else if (rc == SQLITE_DONE) {
-        throw NotFoundError("ContractorKeysHandlerSQLite::keyHashByNumber: Key hash not found. "
-                            "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) + ".");
+        throw NotFoundError("ContractorKeysHandlerSQLite::getPublicKeyHash: Key hash not found. "
+                            "TrustLine=" + to_string(trustLineID) + ".");
     } else {
-        throw IOError("ContractorKeysHandlerSQLite::keyHashByNumber: Failed to execute SELECT. "
-                      "TrustLine=" + to_string(trustLineID) + ", KeyNumber=" + to_string(keyNumber) +
+        throw IOError("ContractorKeysHandlerSQLite::getPublicKeyHash: Failed to execute SELECT. "
+                      "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 }
 
-KeysCount ContractorKeysHandlerSQLite::availableKeysCnt(
+bool ContractorKeysHandlerSQLite::hasKey(
     const TrustLineID trustLineID)
 {
-    string query = "SELECT count(*) FROM " + mTableName +
-                   " WHERE trust_line_id = ? AND is_valid = 1";
+    string query = "SELECT 1 FROM " + mTableName +
+                   " WHERE trust_line_id = ? LIMIT 1";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
     if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::availableKeysCnt: Failed to bind trust_line_id. "
+        throw IOError("ContractorKeysHandlerSQLite::hasKey: Failed to bind trust_line_id. "
                       "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_ROW) {
-        KeysCount count = (KeysCount)sqlite3_column_int(stmt.get(), 0);
-
 #ifdef STORAGE_HANDLER_DEBUG_LOG
-        info() << "Available keys count: TrustLine=" << trustLineID
-               << ", Count=" << count;
+        info() << "Key exists for TrustLine=" << trustLineID;
 #endif
-        return count;
+        return true;
+    } else if (rc == SQLITE_DONE) {
+#ifdef STORAGE_HANDLER_DEBUG_LOG
+        info() << "No key exists for TrustLine=" << trustLineID;
+#endif
+        return false;
     } else {
-        throw IOError("ContractorKeysHandlerSQLite::availableKeysCnt: Failed to execute count query. "
+        throw IOError("ContractorKeysHandlerSQLite::hasKey: Failed to execute query. "
                       "TrustLine=" + to_string(trustLineID) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 }
 
-KeysCount ContractorKeysHandlerSQLite::sequenceKeysCnt(
-    const TrustLineID trustLineID,
-    KeyNumber keysSetSequenceNumber)
-{
-    string query = "SELECT count(*) FROM " + mTableName +
-                   " WHERE trust_line_id = ? AND keys_set_sequence_number = ?";
-    SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
-    int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::sequenceKeysCnt: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) + ", Sequence=" + to_string(keysSetSequenceNumber) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_bind_int(stmt.get(), 2, keysSetSequenceNumber);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::sequenceKeysCnt: Failed to bind sequence_number. "
-                      "TrustLine=" + to_string(trustLineID) + ", Sequence=" + to_string(keysSetSequenceNumber) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_step(stmt.get());
-    if (rc == SQLITE_ROW) {
-        KeysCount count = (KeysCount)sqlite3_column_int(stmt.get(), 0);
-
-#ifdef STORAGE_HANDLER_DEBUG_LOG
-        info() << "Sequence keys count: TrustLine=" << trustLineID
-               << ", Sequence=" << keysSetSequenceNumber
-               << ", Count=" << count;
-#endif
-        return count;
-    } else {
-        throw IOError("ContractorKeysHandlerSQLite::sequenceKeysCnt: Failed to execute count query. "
-                      "TrustLine=" + to_string(trustLineID) + ", Sequence=" + to_string(keysSetSequenceNumber) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-}
-
-void ContractorKeysHandlerSQLite::removeUnusedKeys(
-    const TrustLineID trustLineID)
-{
-    string query = "DELETE FROM " + mTableName + " WHERE trust_line_id = ? AND is_valid = 1";
-    SQLiteStatementRAII stmt(mDataBase, query.c_str());
-
-    int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
-    if (rc != SQLITE_OK) {
-        throw IOError("ContractorKeysHandlerSQLite::removeUnusedKeys: Failed to bind trust_line_id. "
-                      "TrustLine=" + to_string(trustLineID) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    rc = sqlite3_step(stmt.get());
-    if (rc != SQLITE_DONE) {
-        throw IOError("ContractorKeysHandlerSQLite::removeUnusedKeys: Failed to execute DELETE. "
-                      "TrustLine=" + to_string(trustLineID) +
-                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
-    }
-
-    int deletedRows = sqlite3_changes(mDataBase);
-
-#ifdef STORAGE_HANDLER_DEBUG_LOG
-    info() << "Unused keys removed: TrustLine=" << trustLineID
-           << ", DeletedCount=" << deletedRows;
-#endif
-}
 
 vector<PublicKey::Shared> ContractorKeysHandlerSQLite::publicKeysBySetNumber(
     const TrustLineID trustLineID,
@@ -508,7 +410,7 @@ vector<PublicKey::Shared> ContractorKeysHandlerSQLite::publicKeysBySetNumber(
 
     // Now get the actual data
     string query = "SELECT public_key FROM " + mTableName +
-                   " WHERE trust_line_id = ? AND keys_set_sequence_number = ? ORDER BY number";
+                   " WHERE trust_line_id = ? AND keys_set_sequence_number = ?";
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
     rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);

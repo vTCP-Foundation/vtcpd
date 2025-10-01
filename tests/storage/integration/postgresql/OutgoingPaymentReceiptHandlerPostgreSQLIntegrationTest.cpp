@@ -1,8 +1,6 @@
 #include "gtest/gtest.h"
 #include "../../../../src/core/io/storage/postgresql/OutgoingPaymentReceiptHandlerPostgreSQL.h"
 #include "../../../../src/core/logger/Logger.h"
-#include "../../../../src/core/crypto/lamportkeys.h"
-#include "../../../../src/core/crypto/lamportscheme.h"
 #include "../../../../src/core/io/storage/record/audit/ReceiptRecord.h"
 #include "../../../../src/core/transactions/transactions/base/TransactionUUID.h"
 #include "../fixtures/DatabaseTestHelper.h"
@@ -15,7 +13,6 @@
 #include <libpq-fe.h>
 #include <sodium.h>
 
-using namespace crypto::lamport;
 
 class OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest : public ::testing::Test {
 protected:
@@ -633,20 +630,4 @@ TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, TableCreation_Val
     PQclear(result);
 }
 
-// Test unique constraint validation
-TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, UniqueConstraint_DuplicateKey_ThrowsException) {
-    TrustLineID trustLineID = getValidTrustLineID();
-    AuditNumber auditNumber = 1;
-    auto transactionUUID = createTestTransactionUUID("testTxUUID");
-    auto ownPublicKeyHash = createTestKeyHash("testOwnKey");
-    auto amount = createTestAmount(1000);
-    
-    // Insert first record
-    mHandler->saveRecord(trustLineID, auditNumber, transactionUUID, ownPublicKeyHash, amount);
-    
-    // Try to insert duplicate with same trust_line_id, audit_number, own_public_key_hash
-    EXPECT_THROW(
-        mHandler->saveRecord(trustLineID, auditNumber, transactionUUID, ownPublicKeyHash, amount),
-        IOError
-    );
-} 
+ 

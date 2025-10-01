@@ -20,7 +20,7 @@ FinalAmountsConfigurationResponseMessage::FinalAmountsConfigurationResponseMessa
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID& transactionUUID,
     const OperationState state,
-    const lamport::PublicKey::Shared publicKey) :
+    const sphincs::PublicKey::Shared publicKey) :
 
     TransactionMessage(
         equivalent,
@@ -42,7 +42,7 @@ FinalAmountsConfigurationResponseMessage::FinalAmountsConfigurationResponseMessa
     deserializer.copyInto(&state);
     mState = (OperationState) state;
     if (mState == Accepted) {
-        auto publicKey = make_shared<lamport::PublicKey>(
+        auto publicKey = make_shared<sphincs::PublicKey>(
                              buffer.get() + currentOffset + sizeof(SerializedOperationState));
         mPublicKey = publicKey;
     }
@@ -53,7 +53,7 @@ const FinalAmountsConfigurationResponseMessage::OperationState FinalAmountsConfi
     return mState;
 }
 
-const lamport::PublicKey::Shared FinalAmountsConfigurationResponseMessage::publicKey() const
+const sphincs::PublicKey::Shared FinalAmountsConfigurationResponseMessage::publicKey() const
 {
     return mPublicKey;
 }
@@ -67,7 +67,7 @@ pair<BytesShared, size_t> FinalAmountsConfigurationResponseMessage::serializeToB
     if (mState == Accepted) {
         serializer.copy(
             mPublicKey->data(),
-            mPublicKey->keySize());
+            sphincs::PublicKey::keySize());
     }
     return serializer.collect();
 }

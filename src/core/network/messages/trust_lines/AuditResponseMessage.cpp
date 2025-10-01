@@ -6,14 +6,12 @@ AuditResponseMessage::AuditResponseMessage(
     const SerializedEquivalent equivalent,
     Contractor::Shared contractor,
     const TransactionUUID &transactionUUID,
-    const KeyNumber keyNumber,
-    const lamport::Signature::Shared signature):
+    const sphincs::Signature::Shared signature):
     ConfirmationMessage(
         equivalent,
         contractor->ownIdOnContractorSide(),
         transactionUUID),
-    mSignature(signature),
-    mKeyNumber(keyNumber)
+    mSignature(signature)
 {
     encrypt(contractor);
 }
@@ -42,11 +40,9 @@ AuditResponseMessage::AuditResponseMessage(
             buffer,
             ConfirmationMessage::kOffsetToInheritedBytes());
 
-        deserializer.copyInto(&mKeyNumber);
-
-        mSignature = make_shared<lamport::Signature>(
+        mSignature = make_shared<sphincs::Signature>(
             buffer.get() + deserializer.getCurrentOffset());
-        deserializer.skipBytes(lamport::Signature::signatureSize());
+        deserializer.skipBytes(sphincs::Signature::signatureSize());
     }
 }
 
@@ -55,12 +51,7 @@ const Message::MessageType AuditResponseMessage::typeID() const
     return Message::TrustLines_AuditConfirmation;
 }
 
-const uint32_t AuditResponseMessage::keyNumber() const
-{
-    return mKeyNumber;
-}
-
-const lamport::Signature::Shared AuditResponseMessage::signature() const
+const sphincs::Signature::Shared AuditResponseMessage::signature() const
 {
     return mSignature;
 }
@@ -72,7 +63,6 @@ pair<BytesShared, size_t> AuditResponseMessage::serializeToBytes() const
     serializer.enqueue(ConfirmationMessage::serializeToBytes());
 
     if (state() == ConfirmationMessage::OK) {
-        serializer.copy(mKeyNumber);
         serializer.copy(
             mSignature->data(),
             mSignature->signatureSize());

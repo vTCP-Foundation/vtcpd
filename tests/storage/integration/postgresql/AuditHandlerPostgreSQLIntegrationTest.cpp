@@ -1,8 +1,6 @@
 #include "gtest/gtest.h"
 #include "../../../../src/core/io/storage/postgresql/AuditHandlerPostgreSQL.h"
 #include "../../../../src/core/logger/Logger.h"
-#include "../../../../src/core/crypto/lamportkeys.h"
-#include "../../../../src/core/crypto/lamportscheme.h"
 #include "../../../../src/core/io/storage/record/audit/AuditRecord.h"
 #include "../fixtures/DatabaseTestHelper.h"
 #include "../fixtures/PostgreSQLTestFixtures.h"
@@ -13,7 +11,6 @@
 #include <libpq-fe.h>
 #include <sodium.h>
 
-using namespace crypto::lamport;
 
 class AuditHandlerPostgreSQLIntegrationTest : public ::testing::Test {
 protected:
@@ -114,22 +111,12 @@ protected:
         return std::make_pair(publicKey, std::move(privateKey));
     }
     
-    KeyHash::Shared createTestKeyHash(const std::string& testData) {
-        // Create a deterministic key hash for testing
-        byte_t hashData[KeyHash::kBytesSize];
-        memset(hashData, 0, KeyHash::kBytesSize);
-        
-        // Fill with test data
-        size_t dataSize = std::min(testData.length(), static_cast<size_t>(KeyHash::kBytesSize));
-        memcpy(hashData, testData.c_str(), dataSize);
-        
-        return std::make_shared<KeyHash>(hashData);
-    }
     
     Signature::Shared createTestSignature(const std::string& testData) {
         auto privateKey = std::make_unique<PrivateKey>();
-        const byte_t* data = reinterpret_cast<const byte_t*>(testData.c_str());
-        return std::make_shared<Signature>(const_cast<byte_t*>(data), testData.length(), privateKey.get());
+        Signature::Shared sig = std::make_shared<Signature>();
+        sig->sign(*privateKey, reinterpret_cast<const byte_t*>(testData.c_str()), testData.length());
+        return sig;
     }
     
     TrustLineAmount createTestAmount(long long value) {
@@ -158,12 +145,8 @@ protected:
     struct RawAuditData {
         int number;
         int trustLineId;
-        std::string ourKeyHashHex;
         std::string ourSignatureHex;
-        std::string contractorKeyHashHex;
         std::string contractorSignatureHex;
-        std::string ownKeysSetHashHex;
-        std::string contractorKeysSetHashHex;
         std::string balanceHex;
         std::string outgoingAmountHex;
         std::string incomingAmountHex;
@@ -171,9 +154,7 @@ protected:
     
     std::vector<RawAuditData> getRawAuditData(TrustLineID trustLineID) {
         std::string query = "SELECT number, trust_line_id, "
-                           "encode(our_key_hash, 'hex'), encode(our_signature, 'hex'), "
-                           "encode(contractor_key_hash, 'hex'), encode(contractor_signature, 'hex'), "
-                           "encode(own_keys_set_hash, 'hex'), encode(contractor_keys_set_hash, 'hex'), "
+                           "encode(our_signature, 'hex'), encode(contractor_signature, 'hex'), "
                            "encode(balance, 'hex'), encode(outgoing_amount, 'hex'), encode(incoming_amount, 'hex') "
                            "FROM " + mTestTableName + " WHERE trust_line_id = " + std::to_string(trustLineID) + " ORDER BY number";
         PGresult* result = PQexec(mConnection, query.c_str());
@@ -190,15 +171,11 @@ protected:
             RawAuditData rawData;
             rawData.number = std::stoi(PQgetvalue(result, i, 0));
             rawData.trustLineId = std::stoi(PQgetvalue(result, i, 1));
-            rawData.ourKeyHashHex = PQgetvalue(result, i, 2);
-            rawData.ourSignatureHex = PQgetvalue(result, i, 3);
-            rawData.contractorKeyHashHex = PQgetvalue(result, i, 4) ? PQgetvalue(result, i, 4) : "";
-            rawData.contractorSignatureHex = PQgetvalue(result, i, 5) ? PQgetvalue(result, i, 5) : "";
-            rawData.ownKeysSetHashHex = PQgetvalue(result, i, 6);
-            rawData.contractorKeysSetHashHex = PQgetvalue(result, i, 7);
-            rawData.balanceHex = PQgetvalue(result, i, 8);
-            rawData.outgoingAmountHex = PQgetvalue(result, i, 9);
-            rawData.incomingAmountHex = PQgetvalue(result, i, 10);
+            rawData.ourSignatureHex = PQgetvalue(result, i, 2);
+            rawData.contractorSignatureHex = PQgetvalue(result, i, 3) ? PQgetvalue(result, i, 3) : "";
+            rawData.balanceHex = PQgetvalue(result, i, 4);
+            rawData.outgoingAmountHex = PQgetvalue(result, i, 5);
+            rawData.incomingAmountHex = PQgetvalue(result, i, 6);
             data.push_back(rawData);
         }
         
@@ -207,22 +184,15 @@ protected:
     }
     
     void insertAuditViaSQL(AuditNumber number, TrustLineID trustLineID, 
-                           const std::string& ourKeyHashHex, const std::string& ourSignatureHex,
-                           const std::string& contractorKeyHashHex, const std::string& contractorSignatureHex,
-                           const std::string& ownKeysSetHashHex, const std::string& contractorKeysSetHashHex,
+                           const std::string& ourSignatureHex,
+                           const std::string& contractorSignatureHex,
                            const std::string& balanceHex, const std::string& outgoingAmountHex,
                            const std::string& incomingAmountHex) {
         std::string query = "INSERT INTO " + mTestTableName + 
-                           " (number, trust_line_id, our_key_hash, our_signature, contractor_key_hash, contractor_signature, "
-                           "own_keys_set_hash, contractor_keys_set_hash, balance, outgoing_amount, incoming_amount) "
+                           " (number, trust_line_id, our_signature, contractor_signature, "
+                           "balance, outgoing_amount, incoming_amount) "
                            "VALUES (" + std::to_string(number) + ", " + std::to_string(trustLineID) + ", "
-                           "decode('" + ourKeyHashHex + "', 'hex'), decode('" + ourSignatureHex + "', 'hex'), ";
-        
-        if (!contractorKeyHashHex.empty()) {
-            query += "decode('" + contractorKeyHashHex + "', 'hex'), ";
-        } else {
-            query += "NULL, ";
-        }
+                           "decode('" + ourSignatureHex + "', 'hex'), ";
         
         if (!contractorSignatureHex.empty()) {
             query += "decode('" + contractorSignatureHex + "', 'hex'), ";
@@ -230,8 +200,7 @@ protected:
             query += "NULL, ";
         }
         
-        query += "decode('" + ownKeysSetHashHex + "', 'hex'), decode('" + contractorKeysSetHashHex + "', 'hex'), "
-                 "decode('" + balanceHex + "', 'hex'), decode('" + outgoingAmountHex + "', 'hex'), "
+        query += "decode('" + balanceHex + "', 'hex'), decode('" + outgoingAmountHex + "', 'hex'), "
                  "decode('" + incomingAmountHex + "', 'hex'))";
         
         DatabaseTestHelper::executeQuery(mConnection, query);
@@ -252,20 +221,16 @@ int AuditHandlerPostgreSQLIntegrationTest::testCounter = 0;
 TEST_F(AuditHandlerPostgreSQLIntegrationTest, saveFullAudit_ValidData_SavesSuccessfully) {
     AuditNumber number = 1;
     TrustLineID trustLineID = getValidTrustLineID();
-    auto ownKeyHash = createTestKeyHash("ownKey");
     auto ownSignature = createTestSignature("ownSig");
-    auto contractorKeyHash = createTestKeyHash("contractorKey");
     auto contractorSignature = createTestSignature("contractorSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
     // Test the method
     EXPECT_NO_THROW(
-        mHandler->saveFullAudit(number, trustLineID, ownKeyHash, ownSignature, contractorKeyHash, 
-                               contractorSignature, ownKeysSetHash, contractorKeysSetHash, 
+        mHandler->saveFullAudit(number, trustLineID, ownSignature, 
+                               contractorSignature, 
                                incomingAmount, outgoingAmount, balance)
     );
     
@@ -277,12 +242,8 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, saveFullAudit_ValidData_SavesSucce
     EXPECT_EQ(rawData.size(), 1);
     EXPECT_EQ(rawData[0].number, number);
     EXPECT_EQ(rawData[0].trustLineId, trustLineID);
-    EXPECT_FALSE(rawData[0].ourKeyHashHex.empty());
     EXPECT_FALSE(rawData[0].ourSignatureHex.empty());
-    EXPECT_FALSE(rawData[0].contractorKeyHashHex.empty());
     EXPECT_FALSE(rawData[0].contractorSignatureHex.empty());
-    EXPECT_FALSE(rawData[0].ownKeysSetHashHex.empty());
-    EXPECT_FALSE(rawData[0].contractorKeysSetHashHex.empty());
     EXPECT_FALSE(rawData[0].balanceHex.empty());
     EXPECT_FALSE(rawData[0].outgoingAmountHex.empty());
     EXPECT_FALSE(rawData[0].incomingAmountHex.empty());
@@ -292,18 +253,14 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, saveFullAudit_ValidData_SavesSucce
 TEST_F(AuditHandlerPostgreSQLIntegrationTest, saveOwnAuditPart_ValidData_SavesSuccessfully) {
     AuditNumber number = 1;
     TrustLineID trustLineID = getValidTrustLineID();
-    auto ownKeyHash = createTestKeyHash("ownKey");
     auto ownSignature = createTestSignature("ownSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
     // Test the method
     EXPECT_NO_THROW(
-        mHandler->saveOwnAuditPart(number, trustLineID, ownKeyHash, ownSignature, 
-                                   ownKeysSetHash, contractorKeysSetHash, 
+        mHandler->saveOwnAuditPart(number, trustLineID, ownSignature, 
                                    incomingAmount, outgoingAmount, balance)
     );
     
@@ -315,12 +272,8 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, saveOwnAuditPart_ValidData_SavesSu
     EXPECT_EQ(rawData.size(), 1);
     EXPECT_EQ(rawData[0].number, number);
     EXPECT_EQ(rawData[0].trustLineId, trustLineID);
-    EXPECT_FALSE(rawData[0].ourKeyHashHex.empty());
     EXPECT_FALSE(rawData[0].ourSignatureHex.empty());
-    EXPECT_TRUE(rawData[0].contractorKeyHashHex.empty()); // Should be NULL
     EXPECT_TRUE(rawData[0].contractorSignatureHex.empty()); // Should be NULL
-    EXPECT_FALSE(rawData[0].ownKeysSetHashHex.empty());
-    EXPECT_FALSE(rawData[0].contractorKeysSetHashHex.empty());
 }
 
 // Test saveContractorAuditPart method
@@ -328,30 +281,25 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, saveContractorAuditPart_ValidData_
     // First insert own audit part
     AuditNumber number = 1;
     TrustLineID trustLineID = getValidTrustLineID();
-    auto ownKeyHash = createTestKeyHash("ownKey");
+    
     auto ownSignature = createTestSignature("ownSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
-    mHandler->saveOwnAuditPart(number, trustLineID, ownKeyHash, ownSignature, 
-                               ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveOwnAuditPart(number, trustLineID, ownSignature, 
                                incomingAmount, outgoingAmount, balance);
     
     // Now add contractor part
-    auto contractorKeyHash = createTestKeyHash("contractorKey");
     auto contractorSignature = createTestSignature("contractorSig");
     
     EXPECT_NO_THROW(
-        mHandler->saveContractorAuditPart(number, trustLineID, contractorKeyHash, contractorSignature)
+        mHandler->saveContractorAuditPart(number, trustLineID, contractorSignature)
     );
     
     // Verify data was updated
     auto rawData = getRawAuditData(trustLineID);
     EXPECT_EQ(rawData.size(), 1);
-    EXPECT_FALSE(rawData[0].contractorKeyHashHex.empty()); // Should now have data
     EXPECT_FALSE(rawData[0].contractorSignatureHex.empty()); // Should now have data
 }
 
@@ -359,11 +307,11 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, saveContractorAuditPart_ValidData_
 TEST_F(AuditHandlerPostgreSQLIntegrationTest, saveContractorAuditPart_NonExistentAudit_ThrowsException) {
     AuditNumber number = 999;
     TrustLineID trustLineID = getValidTrustLineID();
-    auto contractorKeyHash = createTestKeyHash("contractorKey");
+    
     auto contractorSignature = createTestSignature("contractorSig");
     
     EXPECT_THROW(
-        mHandler->saveContractorAuditPart(number, trustLineID, contractorKeyHash, contractorSignature),
+        mHandler->saveContractorAuditPart(number, trustLineID, contractorSignature),
         ValueError
     );
 }
@@ -375,20 +323,15 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, getActualAudit_ValidData_ReturnsCo
     AuditNumber number2 = 2;
     TrustLineID trustLineID = getValidTrustLineID();
     
-    auto ownKeyHash = createTestKeyHash("ownKey");
     auto ownSignature = createTestSignature("ownSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
     // Insert two audits
-    mHandler->saveOwnAuditPart(number1, trustLineID, ownKeyHash, ownSignature, 
-                               ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveOwnAuditPart(number1, trustLineID, ownSignature, 
                                incomingAmount, outgoingAmount, balance);
-    mHandler->saveOwnAuditPart(number2, trustLineID, ownKeyHash, ownSignature, 
-                               ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveOwnAuditPart(number2, trustLineID, ownSignature, 
                                incomingAmount, outgoingAmount, balance);
     
     // Test the method - should return the latest audit
@@ -414,18 +357,15 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, getActualAuditFull_ValidData_Retur
     // Insert full audit
     AuditNumber number = 1;
     TrustLineID trustLineID = getValidTrustLineID();
-    auto ownKeyHash = createTestKeyHash("ownKey");
+    
     auto ownSignature = createTestSignature("ownSig");
-    auto contractorKeyHash = createTestKeyHash("contractorKey");
     auto contractorSignature = createTestSignature("contractorSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
-    mHandler->saveFullAudit(number, trustLineID, ownKeyHash, ownSignature, contractorKeyHash, 
-                           contractorSignature, ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveFullAudit(number, trustLineID, ownSignature, 
+                           contractorSignature, 
                            incomingAmount, outgoingAmount, balance);
     
     // Test the method
@@ -434,12 +374,8 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, getActualAuditFull_ValidData_Retur
     EXPECT_EQ(actualAudit->incomingAmount(), incomingAmount);
     EXPECT_EQ(actualAudit->outgoingAmount(), outgoingAmount);
     EXPECT_EQ(actualAudit->balance(), balance);
-    EXPECT_TRUE(actualAudit->ownKeyHash() != nullptr);
     EXPECT_TRUE(actualAudit->ownSignature() != nullptr);
-    EXPECT_TRUE(actualAudit->contractorKeyHash() != nullptr);
     EXPECT_TRUE(actualAudit->contractorSignature() != nullptr);
-    EXPECT_TRUE(actualAudit->ownKeysSetHash() != nullptr);
-    EXPECT_TRUE(actualAudit->contractorKeysSetHash() != nullptr);
 }
 
 // Test getActualAuditNumber method
@@ -449,20 +385,15 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, getActualAuditNumber_ValidData_Ret
     AuditNumber number2 = 2;
     TrustLineID trustLineID = getValidTrustLineID();
     
-    auto ownKeyHash = createTestKeyHash("ownKey");
     auto ownSignature = createTestSignature("ownSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
     // Insert two audits
-    mHandler->saveOwnAuditPart(number1, trustLineID, ownKeyHash, ownSignature, 
-                               ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveOwnAuditPart(number1, trustLineID, ownSignature, 
                                incomingAmount, outgoingAmount, balance);
-    mHandler->saveOwnAuditPart(number2, trustLineID, ownKeyHash, ownSignature, 
-                               ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveOwnAuditPart(number2, trustLineID, ownSignature, 
                                incomingAmount, outgoingAmount, balance);
     
     // Test the method - should return the latest audit number
@@ -485,16 +416,13 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, deleteRecords_ValidData_DeletesSuc
     // Insert test data
     AuditNumber number = 1;
     TrustLineID trustLineID = getValidTrustLineID();
-    auto ownKeyHash = createTestKeyHash("ownKey");
+    
     auto ownSignature = createTestSignature("ownSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
-    mHandler->saveOwnAuditPart(number, trustLineID, ownKeyHash, ownSignature, 
-                               ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveOwnAuditPart(number, trustLineID, ownSignature, 
                                incomingAmount, outgoingAmount, balance);
     
     // Verify data exists
@@ -513,20 +441,16 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, deleteAuditByNumber_ValidData_Dele
     AuditNumber number1 = 1;
     AuditNumber number2 = 2;
     TrustLineID trustLineID = getValidTrustLineID();
-    auto ownKeyHash = createTestKeyHash("ownKey");
+    
     auto ownSignature = createTestSignature("ownSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
     // Insert two audits
-    mHandler->saveOwnAuditPart(number1, trustLineID, ownKeyHash, ownSignature, 
-                               ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveOwnAuditPart(number1, trustLineID, ownSignature, 
                                incomingAmount, outgoingAmount, balance);
-    mHandler->saveOwnAuditPart(number2, trustLineID, ownKeyHash, ownSignature, 
-                               ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveOwnAuditPart(number2, trustLineID, ownSignature, 
                                incomingAmount, outgoingAmount, balance);
     
     // Verify data exists
@@ -558,20 +482,17 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, deleteAuditByNumber_NonExistentAud
 TEST_F(AuditHandlerPostgreSQLIntegrationTest, auditsLessEqualThanAuditNumber_ValidData_ReturnsCorrectAudits) {
     // Insert test data
     TrustLineID trustLineID = getValidTrustLineID();
-    auto ownKeyHash = createTestKeyHash("ownKey");
+    
     auto ownSignature = createTestSignature("ownSig");
-    auto contractorKeyHash = createTestKeyHash("contractorKey");
     auto contractorSignature = createTestSignature("contractorSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
     // Insert multiple audits
     for (AuditNumber i = 1; i <= 5; ++i) {
-        mHandler->saveFullAudit(i, trustLineID, ownKeyHash, ownSignature, contractorKeyHash, 
-                               contractorSignature, ownKeysSetHash, contractorKeysSetHash, 
+        mHandler->saveFullAudit(i, trustLineID, ownSignature, 
+                               contractorSignature, 
                                incomingAmount, outgoingAmount, balance);
     }
     
@@ -594,59 +515,21 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, auditsLessEqualThanAuditNumber_NoM
     EXPECT_EQ(audits.size(), 0);
 }
 
-// Test isContainsKeyHash method
-TEST_F(AuditHandlerPostgreSQLIntegrationTest, isContainsKeyHash_ValidData_ReturnsTrue) {
-    // Insert test data
-    AuditNumber number = 1;
-    TrustLineID trustLineID = getValidTrustLineID();
-    auto ownKeyHash = createTestKeyHash("ownKey");
-    auto ownSignature = createTestSignature("ownSig");
-    auto contractorKeyHash = createTestKeyHash("contractorKey");
-    auto contractorSignature = createTestSignature("contractorSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
-    auto incomingAmount = createTestAmount(1000);
-    auto outgoingAmount = createTestAmount(2000);
-    auto balance = createTestBalance(3000);
-    
-    mHandler->saveFullAudit(number, trustLineID, ownKeyHash, ownSignature, contractorKeyHash, 
-                           contractorSignature, ownKeysSetHash, contractorKeysSetHash, 
-                           incomingAmount, outgoingAmount, balance);
-    
-    // Test the method with own key hash
-    EXPECT_TRUE(mHandler->isContainsKeyHash(ownKeyHash));
-    
-    // Test the method with contractor key hash
-    EXPECT_TRUE(mHandler->isContainsKeyHash(contractorKeyHash));
-    
-    // Test with non-existent key hash
-    auto nonExistentKeyHash = createTestKeyHash("nonExistentKey");
-    EXPECT_FALSE(mHandler->isContainsKeyHash(nonExistentKeyHash));
-}
 
-// Test isContainsKeyHash with empty database
-TEST_F(AuditHandlerPostgreSQLIntegrationTest, isContainsKeyHash_EmptyDatabase_ReturnsFalse) {
-    auto keyHash = createTestKeyHash("testKey");
-    
-    EXPECT_FALSE(mHandler->isContainsKeyHash(keyHash));
-}
 
 // Test Raw Database Data Validation
 TEST_F(AuditHandlerPostgreSQLIntegrationTest, RawDataValidation_SaveFullAudit_CorrectDatabaseStorage) {
     AuditNumber number = 1;
     TrustLineID trustLineID = getValidTrustLineID();
-    auto ownKeyHash = createTestKeyHash("ownKey");
+    
     auto ownSignature = createTestSignature("ownSig");
-    auto contractorKeyHash = createTestKeyHash("contractorKey");
     auto contractorSignature = createTestSignature("contractorSig");
-    auto ownKeysSetHash = createTestKeyHash("ownKeysSet");
-    auto contractorKeysSetHash = createTestKeyHash("contractorKeysSet");
     auto incomingAmount = createTestAmount(1000);
     auto outgoingAmount = createTestAmount(2000);
     auto balance = createTestBalance(3000);
     
-    mHandler->saveFullAudit(number, trustLineID, ownKeyHash, ownSignature, contractorKeyHash, 
-                           contractorSignature, ownKeysSetHash, contractorKeysSetHash, 
+    mHandler->saveFullAudit(number, trustLineID, ownSignature, 
+                           contractorSignature, 
                            incomingAmount, outgoingAmount, balance);
     
     // Verify raw database data using direct SQL queries
@@ -671,30 +554,21 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, ReverseValidation_InsertViaSQL_Rea
     TrustLineID trustLineID = getValidTrustLineID();
     
     // Generate test data as hex strings
-    std::string ownKeyHashHex = "0000000000000000000000000000000000000000000000000000000000000001";
     std::string ownSignatureHex = "0000000000000000000000000000000000000000000000000000000000000002";
-    std::string contractorKeyHashHex = "0000000000000000000000000000000000000000000000000000000000000003";
     std::string contractorSignatureHex = "0000000000000000000000000000000000000000000000000000000000000004";
-    std::string ownKeysSetHashHex = "0000000000000000000000000000000000000000000000000000000000000005";
-    std::string contractorKeysSetHashHex = "0000000000000000000000000000000000000000000000000000000000000006";
     std::string balanceHex = "00000000000000000000000000000bb8"; // 3000 in balance format
     std::string outgoingAmountHex = "000000000000000000000000000007d0"; // 2000 in amount format
     std::string incomingAmountHex = "00000000000000000000000000000000000000000000000000000000000003e8"; // 1000 in amount format
     
     // Insert data via SQL
-    insertAuditViaSQL(number, trustLineID, ownKeyHashHex, ownSignatureHex, contractorKeyHashHex, 
-                     contractorSignatureHex, ownKeysSetHashHex, contractorKeysSetHashHex, 
+    insertAuditViaSQL(number, trustLineID, ownSignatureHex, contractorSignatureHex, 
                      balanceHex, outgoingAmountHex, incomingAmountHex);
     
     // Read data via class methods
     auto actualAudit = mHandler->getActualAuditFull(trustLineID);
     EXPECT_EQ(actualAudit->auditNumber(), number);
-    EXPECT_TRUE(actualAudit->ownKeyHash() != nullptr);
     EXPECT_TRUE(actualAudit->ownSignature() != nullptr);
-    EXPECT_TRUE(actualAudit->contractorKeyHash() != nullptr);
     EXPECT_TRUE(actualAudit->contractorSignature() != nullptr);
-    EXPECT_TRUE(actualAudit->ownKeysSetHash() != nullptr);
-    EXPECT_TRUE(actualAudit->contractorKeysSetHash() != nullptr);
 }
 
 // Test Constructor with null connection
@@ -714,10 +588,10 @@ TEST_F(AuditHandlerPostgreSQLIntegrationTest, TableCreation_ValidatesSchemaCorre
     
     // Verify we have the expected columns
     int columnCount = PQntuples(result);
-    EXPECT_EQ(columnCount, 11); // number, trust_line_id, our_key_hash, our_signature, contractor_key_hash, contractor_signature, own_keys_set_hash, contractor_keys_set_hash, balance, outgoing_amount, incoming_amount
+    EXPECT_EQ(columnCount, 7); // number, trust_line_id, our_signature, contractor_signature, balance, outgoing_amount, incoming_amount
     
     // Verify some key columns exist
-    std::vector<std::string> expectedColumns = {"number", "trust_line_id", "our_key_hash", "our_signature", "balance"};
+    std::vector<std::string> expectedColumns = {"number", "trust_line_id", "our_signature", "balance"};
     std::vector<std::string> actualColumns;
     for (int i = 0; i < columnCount; ++i) {
         actualColumns.push_back(PQgetvalue(result, i, 0));

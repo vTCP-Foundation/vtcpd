@@ -28,9 +28,7 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig,
     const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
     const BlockNumber maximalClaimingBlockNumber,
-    const KeyNumber publicKeyNumber,
-    const lamport::Signature::Shared signature,
-    const lamport::KeyHash::Shared transactionPublicKeyHash) :
+    const sphincs::Signature::Shared signature) :
 
     RequestMessageWithReservations(
         equivalent,
@@ -40,9 +38,7 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     mPaymentParticipants(paymentParticipants),
     mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
     mIsReceiptContains(true),
-    mPublicKeyNumber(publicKeyNumber),
-    mSignature(signature),
-    mTransactionPublicKeyHash(transactionPublicKeyHash)
+    mSignature(signature)
 {
 }
 
@@ -71,16 +67,9 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     deserializer.copyInto(&mIsReceiptContains);
 
     if (mIsReceiptContains) {
-        deserializer.copyInto(&mPublicKeyNumber);
-
-        auto signature = make_shared<lamport::Signature>(
+        auto signature = make_shared<sphincs::Signature>(
             buffer.get() + deserializer.getCurrentOffset());
-        deserializer.skipBytes(lamport::Signature::signatureSize());
         mSignature = signature;
-
-        mTransactionPublicKeyHash = make_shared<lamport::KeyHash>(
-            buffer.get() + deserializer.getCurrentOffset());
-        deserializer.skipBytes(lamport::KeyHash::kBytesSize);
     }
 }
 
@@ -104,19 +93,9 @@ bool FinalAmountsConfigurationMessage::isReceiptContains() const
     return mIsReceiptContains;
 }
 
-const KeyNumber FinalAmountsConfigurationMessage::publicKeyNumber() const
-{
-    return mPublicKeyNumber;
-}
-
-const lamport::Signature::Shared FinalAmountsConfigurationMessage::signature() const
+const sphincs::Signature::Shared FinalAmountsConfigurationMessage::signature() const
 {
     return mSignature;
-}
-
-const lamport::KeyHash::Shared FinalAmountsConfigurationMessage::transactionPublicKeyHash() const
-{
-    return mTransactionPublicKeyHash;
 }
 
 pair<BytesShared, size_t> FinalAmountsConfigurationMessage::serializeToBytes() const
@@ -137,13 +116,9 @@ pair<BytesShared, size_t> FinalAmountsConfigurationMessage::serializeToBytes() c
     serializer.copy(static_cast<byte_t>(mIsReceiptContains));
 
     if (mIsReceiptContains) {
-        serializer.copy(mPublicKeyNumber);
         serializer.copy(
             mSignature->data(),
             mSignature->signatureSize());
-        serializer.copy(
-            mTransactionPublicKeyHash->data(),
-            lamport::KeyHash::kBytesSize);
     }
 
     return serializer.collect();

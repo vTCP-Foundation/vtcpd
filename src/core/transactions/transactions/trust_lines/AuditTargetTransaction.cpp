@@ -158,7 +158,7 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
             keyChain.removeCancelledOwnAuditPart(ioTransaction);
             info() << "Cancelled audit removed. Continue.";
         } else {
-            mOwnSignatureAndKeyNumber = keyChain.getCurrentAuditSignatureAndKeyNumber(ioTransaction);
+            auto ownSignature = keyChain.getCurrentAuditSignature(ioTransaction);
             // Sending confirmation back.
             sendMessageWithTemporaryCaching<AuditResponseMessage>(
                 mContractorID,
@@ -167,10 +167,9 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
                 mEquivalent,
                 mContractorsManager->contractor(mContractorID),
                 currentTransactionUUID(),
-                mOwnSignatureAndKeyNumber.second,
-                mOwnSignatureAndKeyNumber.first);
+                ownSignature);
 
-            info() << "Send audit again message signed by key " << mOwnSignatureAndKeyNumber.second;
+            info() << "Send audit again message";
             return resultDone();
         }
     }
@@ -194,28 +193,21 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
             closeOutgoingTrustLine(ioTransaction);
         }
 
-        auto contractorSerializedAuditData = getContractorSerializedAuditData(
-                keyChain.ownPublicKeysHash(ioTransaction),
-                keyChain.contractorPublicKeysHash(ioTransaction));
+        auto contractorSerializedAuditData = getContractorSerializedAuditData();
 
         if (!keyChain.checkSign(
                     ioTransaction,
                     contractorSerializedAuditData.first,
                     contractorSerializedAuditData.second,
-                    mMessage->signature(),
-                    mMessage->keyNumber())) {
-            warning() << "Contractor didn't sign message correct by key number " << mMessage->keyNumber();
+                    mMessage->signature())) {
+            warning() << "Contractor didn't sign message correctly";
             return sendAuditErrorConfirmation(
                        ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
         }
         info() << "Signature is correct";
 
-        auto ownPublicKeysHash = keyChain.ownPublicKeysHash(ioTransaction);
-        auto contractorPublicKeysHash = keyChain.contractorPublicKeysHash(ioTransaction);
-        auto serializedAuditData = getOwnSerializedAuditData(
-                                       ownPublicKeysHash,
-                                       contractorPublicKeysHash);
-        mOwnSignatureAndKeyNumber = keyChain.sign(
+        auto serializedAuditData = getOwnSerializedAuditData();
+        mOwnSignature = keyChain.sign(
                                         ioTransaction,
                                         serializedAuditData.first,
                                         serializedAuditData.second);
@@ -223,12 +215,8 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
         keyChain.saveFullAudit(
             ioTransaction,
             mAuditNumber,
-            mOwnSignatureAndKeyNumber.second,
-            mOwnSignatureAndKeyNumber.first,
-            mMessage->keyNumber(),
+            mOwnSignature,
             mMessage->signature(),
-            ownPublicKeysHash,
-            contractorPublicKeysHash,
             mTrustLines->incomingTrustAmount(
                 mContractorID),
             mTrustLines->outgoingTrustAmount(
@@ -245,16 +233,11 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
             TrustLine::Active,
             ioTransaction);
 
-        if (mTrustLines->isTrustLineEmpty(mContractorID) and
-                !keyChain.isInitialAuditCondition(ioTransaction)) {
+        if (mTrustLines->isTrustLineEmpty(mContractorID)) {
             mTrustLines->setTrustLineState(
                 mContractorID,
                 TrustLine::Archived,
                 ioTransaction);
-            keyChain.removeUnusedOwnKeys(ioTransaction);
-            mTrustLines->setIsOwnKeysPresent(mContractorID, false);
-            keyChain.removeUnusedContractorKeys(ioTransaction);
-            mTrustLines->setIsContractorKeysPresent(mContractorID, false);
             info() << "Trust Line become empty";
         } else {
             info() << "All data saved. Now TL is ready for using";
@@ -300,9 +283,8 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
         mEquivalent,
         mContractorsManager->contractor(mContractorID),
         currentTransactionUUID(),
-        mOwnSignatureAndKeyNumber.second,
-        mOwnSignatureAndKeyNumber.first);
-    info() << "Send audit message signed by key " << mOwnSignatureAndKeyNumber.second;
+        mOwnSignature);
+    info() << "Send audit message";
 
     mTrustLines->resetAuditRule(mContractorID);
     trustLineActionSignal(

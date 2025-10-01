@@ -26,10 +26,8 @@ TransactionMessage::Shared ConfirmationCachedResponseMessage::getCachedMessage(
         }
 
     } else if (incomingMessage->typeID() == Message::TrustLines_PublicKey) {
-        auto incomingPublicKeyMessage = static_pointer_cast<PublicKeyMessage>(incomingMessage);
-        auto cachedPublicKeyResponseMessage = static_pointer_cast<PublicKeyHashConfirmation>(mCachedMessage);
-        if (incomingPublicKeyMessage->transactionUUID() == mCachedMessage->transactionUUID() and
-                incomingPublicKeyMessage->number() == cachedPublicKeyResponseMessage->number()) {
+        // Single-key architecture - only check transaction UUID
+        if (incomingMessage->transactionUUID() == mCachedMessage->transactionUUID()) {
             return mCachedMessage;
         }
 

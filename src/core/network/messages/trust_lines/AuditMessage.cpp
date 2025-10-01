@@ -9,15 +9,13 @@ AuditMessage::AuditMessage(
     const AuditNumber auditNumber,
     const TrustLineAmount &incomingAmount,
     const TrustLineAmount &outgoingAmount,
-    const KeyNumber keyNumber,
-    const lamport::Signature::Shared signature) : TransactionMessage(equivalent,
+    const sphincs::Signature::Shared signature) : TransactionMessage(equivalent,
                 contractor->ownIdOnContractorSide(),
                 transactionUUID),
     mAuditNumber(auditNumber),
     mIncomingAmount(incomingAmount),
     mOutgoingAmount(outgoingAmount),
-    mSignature(signature),
-    mKeyNumber(keyNumber)
+    mSignature(signature)
 {
     encrypt(contractor);
 }
@@ -32,11 +30,10 @@ AuditMessage::AuditMessage(
     deserializer.copyInto(&mAuditNumber);
     deserializer.copyInto(&mIncomingAmount);
     deserializer.copyInto(&mOutgoingAmount);
-    deserializer.copyInto(&mKeyNumber);
 
-    mSignature = make_shared<lamport::Signature>(
+    mSignature = make_shared<sphincs::Signature>(
         buffer.get() + deserializer.getCurrentOffset());
-    deserializer.skipBytes(lamport::Signature::signatureSize());
+    deserializer.skipBytes(sphincs::Signature::signatureSize());
 }
 
 const Message::MessageType AuditMessage::typeID() const
@@ -59,12 +56,7 @@ const TrustLineAmount &AuditMessage::outgoingAmount() const
     return mOutgoingAmount;
 }
 
-const uint32_t AuditMessage::keyNumber() const
-{
-    return mKeyNumber;
-}
-
-const lamport::Signature::Shared AuditMessage::signature() const
+const sphincs::Signature::Shared AuditMessage::signature() const
 {
     return mSignature;
 }
@@ -82,7 +74,6 @@ pair<BytesShared, size_t> AuditMessage::serializeToBytes() const
     serializer.copy(mAuditNumber);
     serializer.copy(mIncomingAmount);
     serializer.copy(mOutgoingAmount);
-    serializer.copy(mKeyNumber);
     serializer.copy(
         mSignature->data(),
         mSignature->signatureSize());
@@ -93,6 +84,6 @@ pair<BytesShared, size_t> AuditMessage::serializeToBytes() const
 const size_t AuditMessage::kOffsetToInheritedBytes() const
 {
     const auto kOffset =
-        TransactionMessage::kOffsetToInheritedBytes() + sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + sizeof(KeyNumber) + mSignature->signatureSize();
+        TransactionMessage::kOffsetToInheritedBytes() + sizeof(AuditNumber) + kTrustLineAmountBytesCount + kTrustLineAmountBytesCount + mSignature->signatureSize();
     return kOffset;
 }

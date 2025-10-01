@@ -7,13 +7,13 @@
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/exceptions/ValueError.h"
 #include "../../../common/memory/MemoryUtils.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincskeys.h"
 #include "../../../contractors/Contractor.h"
 #include <libpq-fe.h>
 #include <string>
 #include <map>
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class PaymentParticipantsVotesHandlerPostgreSQL : public PaymentParticipantsVotesHandler
 {

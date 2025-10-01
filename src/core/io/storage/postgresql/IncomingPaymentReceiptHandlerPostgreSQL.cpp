@@ -49,12 +49,6 @@ IncomingPaymentReceiptHandlerPostgreSQL::IncomingPaymentReceiptHandlerPostgreSQL
     checkCmd(mDataBase, res, "IncomingPaymentReceiptHandlerPostgreSQL::create table");
     PQclear(res);
 
-    // Unique index on trust_line_id, audit_number, contractor_public_key_hash
-    query = "CREATE UNIQUE INDEX IF NOT EXISTS " + mTableName + "_tl_audit_key_idx ON " + mTableName + "(trust_line_id, audit_number, contractor_public_key_hash);";
-    res = PQexec(mDataBase, query.c_str());
-    checkCmd(mDataBase, res, "IncomingPaymentReceiptHandlerPostgreSQL::create unique index");
-    PQclear(res);
-
     // Index on transaction_uuid
     query = "CREATE INDEX IF NOT EXISTS " + mTableName + "_transaction_uuid_idx ON " + mTableName + "(transaction_uuid);";
     res = PQexec(mDataBase, query.c_str());

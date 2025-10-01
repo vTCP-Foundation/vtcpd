@@ -164,7 +164,7 @@ public:
     void launchPaymentTransactionAfterGettingObservingSignatures(
         const TransactionUUID& transactionUUID,
         BlockNumber maximalClaimingBlockNumber,
-        map<PaymentNodeID, lamport::Signature::Shared> participantsSignatures);
+        map<PaymentNodeID, sphincs::Signature::Shared> participantsSignatures);
 
     void launchPaymentTransactionForObservingRejecting(
         const TransactionUUID& transactionUUID,

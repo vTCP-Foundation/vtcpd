@@ -6,7 +6,7 @@ ParticipantsVotesMessage::ParticipantsVotesMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> senderAddresses,
     const TransactionUUID& transactionUUID,
-    map<PaymentNodeID, lamport::Signature::Shared> &participantsSignatures) :
+    map<PaymentNodeID, sphincs::Signature::Shared> &participantsSignatures) :
 
     TransactionMessage(
         equivalent,
@@ -30,12 +30,12 @@ ParticipantsVotesMessage::ParticipantsVotesMessage(
         deserializer.copyInto(&paymentNodeID);
 
         // Read signature data through deserializer to maintain offset consistency
-        BytesShared signatureBytes = tryMalloc(lamport::Signature::signatureSize());
+        BytesShared signatureBytes = tryMalloc(sphincs::Signature::signatureSize());
         deserializer.copyInto(
             signatureBytes.get(),
-            lamport::Signature::signatureSize());
+            sphincs::Signature::signatureSize());
 
-        auto signature = make_shared<lamport::Signature>(signatureBytes.get());
+        auto signature = make_shared<sphincs::Signature>(signatureBytes.get());
 
         mParticipantsSignatures.insert(
             make_pair(
@@ -82,13 +82,13 @@ pair<BytesShared, size_t> ParticipantsVotesMessage::serializeToBytes() const
         serializer.copy(paymentNodeIDAndVote.first);
         serializer.copy(
             paymentNodeIDAndVote.second->data(),
-            lamport::Signature::signatureSize());
+            sphincs::Signature::signatureSize());
     }
 
     return serializer.collect();
 }
 
-const map<PaymentNodeID, lamport::Signature::Shared>& ParticipantsVotesMessage::participantsSignatures() const
+const map<PaymentNodeID, sphincs::Signature::Shared>& ParticipantsVotesMessage::participantsSignatures() const
 {
     return mParticipantsSignatures;
 }

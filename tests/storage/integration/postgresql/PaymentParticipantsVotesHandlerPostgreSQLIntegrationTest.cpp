@@ -1,8 +1,6 @@
 #include "../../../../src/core/io/storage/postgresql/PaymentParticipantsVotesHandlerPostgreSQL.h"
 #include "../../../../src/core/contractors/addresses/IPv4WithPortAddress.h"
 #include "../../../../src/core/contractors/Contractor.h"
-#include "../../../../src/core/crypto/lamportkeys.h"
-#include "../../../../src/core/crypto/lamportscheme.h"
 #include "../../../../src/core/transactions/transactions/base/TransactionUUID.h"
 #include "../../../../src/core/logger/Logger.h"
 #include "../../../../src/core/common/exceptions/IOError.h"
@@ -14,7 +12,6 @@
 #include <libpq-fe.h>
 #include <sodium.h>
 
-using namespace crypto::lamport;
 
 class PaymentParticipantsVotesHandlerPostgreSQLIntegrationTest : public ::testing::Test
 {
@@ -97,8 +94,8 @@ protected:
     Signature::Shared createTestSignature(const std::string& testData)
     {
         // Create a simple signature with fixed size data
-        std::vector<byte_t> sigData(Signature::kSize, 0);
-        size_t dataSize = std::min(testData.length(), static_cast<size_t>(Signature::kSize));
+        std::vector<byte_t> sigData(Signature::signatureSize(), 0);
+        size_t dataSize = std::min(testData.length(), static_cast<size_t>(Signature::signatureSize()));
         memcpy(sigData.data(), testData.c_str(), dataSize);
         
         return std::make_shared<Signature>(sigData.data());

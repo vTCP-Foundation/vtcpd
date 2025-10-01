@@ -79,9 +79,8 @@ private:
     Keystore *mKeysStore;
 
     ContractorID mContractorID;
-    KeyNumber mCurrentKeyNumber;
     KeysCount mKeysCount;
-    lamport::PublicKey::Shared mCurrentPublicKey;
+    crypto::sphincs::PublicKey::Shared mCurrentPublicKey;
 
     uint16_t mCountSendingAttempts;
 

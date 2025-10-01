@@ -6,13 +6,13 @@
 #include "../../../common/exceptions/IOError.h"
 #include "../../../common/exceptions/NotFoundError.h"
 #include "../../../common/exceptions/ValueError.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincskeys.h"
 #include "../../../common/memory/MemoryUtils.h"
 #include "SQLiteStatementRAII.h"
 #include <sqlite3.h>
 #include <memory>
 
-using namespace crypto::lamport;
+using namespace crypto::sphincs;
 
 class PaymentKeysHandlerSQLite : public PaymentKeysHandler
 {
@@ -23,17 +23,19 @@ public:
         Logger &logger);
 
     void saveOwnKey(
-        const TransactionUUID &transactionUUID,
         const PublicKey::Shared publicKey,
-        const PrivateKey *privateKey);
+        const PrivateKey *privateKey) override;
 
-    PrivateKey* getOwnPrivateKey(
-        const TransactionUUID &transactionUUID);
+    PrivateKey* getOwnPrivateKey() override;
 
-    void deleteKeyByTransactionUUID(
-        const TransactionUUID &transactionUUID);
+    PublicKey::Shared getOwnPublicKey() override;
 
-    vector<TransactionUUID> allTransactionUUIDs();
+    void deleteKeyByID(
+        const uint64_t id) override;
+
+    bool hasAnyKeys() override;
+
+    uint64_t latestKeyID() override;
 
 private:
     LoggerStream info() const;

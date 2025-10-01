@@ -2,7 +2,7 @@
 #define VTCPD_PARTICIPANTSPUBLICKEYSMESSAGE_H
 
 #include "../base/transaction/TransactionMessage.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincsscheme.h"
 
 #include <map>
 
@@ -19,7 +19,7 @@ public:
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> &senderAddresses,
         const TransactionUUID &transactionUUID,
-        const map<PaymentNodeID, lamport::PublicKey::Shared>& publicKeys);
+        const map<PaymentNodeID, sphincs::PublicKey::Shared>& publicKeys);
 
     ParticipantsPublicKeysMessage(
         BytesShared buffer);
@@ -28,10 +28,10 @@ public:
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
-    const map<PaymentNodeID, lamport::PublicKey::Shared>& publicKeys() const;
+    const map<PaymentNodeID, sphincs::PublicKey::Shared>& publicKeys() const;
 
 private:
-    map<PaymentNodeID, lamport::PublicKey::Shared> mPublicKeys;
+    map<PaymentNodeID, sphincs::PublicKey::Shared> mPublicKeys;
 };
 
 

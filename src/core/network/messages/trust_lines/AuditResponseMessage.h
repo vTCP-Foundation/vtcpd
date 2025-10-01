@@ -2,7 +2,7 @@
 #define VTCPD_AUDITRESPONSEMESSAGE_H
 
 #include "../base/transaction/ConfirmationMessage.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincsscheme.h"
 
 using namespace crypto;
 
@@ -17,8 +17,7 @@ public:
         const SerializedEquivalent equivalent,
         Contractor::Shared contractor,
         const TransactionUUID &transactionUUID,
-        const KeyNumber keyNumber,
-        const lamport::Signature::Shared signature);
+        const sphincs::Signature::Shared signature);
 
     AuditResponseMessage(
         const SerializedEquivalent equivalent,
@@ -29,17 +28,14 @@ public:
     AuditResponseMessage(
         BytesShared buffer);
 
-    const lamport::Signature::Shared signature() const;
-
-    const KeyNumber keyNumber() const;
+    const sphincs::Signature::Shared signature() const;
 
     const MessageType typeID() const override;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
 private:
-    KeyNumber mKeyNumber;
-    lamport::Signature::Shared mSignature;
+    sphincs::Signature::Shared mSignature;
 };
 
 

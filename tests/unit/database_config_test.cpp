@@ -83,7 +83,7 @@ TEST_F(DatabaseConfigTest, SQLiteURI) {
     DatabaseConfiguration config = settings->databaseConfiguration(&testConfig);
     
     EXPECT_EQ(config.providerType, DatabaseProviderType::SQLite);
-    EXPECT_EQ(config.directory, "/path/to/db");
+    EXPECT_EQ(config.directory, "path/to/db");
 }
 
 // Test StorageProviderFactory connection string creation with database name

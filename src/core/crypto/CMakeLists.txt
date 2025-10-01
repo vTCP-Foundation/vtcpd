@@ -5,10 +5,10 @@ add_library(crypto
     memory.cpp
     keychain.h
     keychain.cpp
-    lamportkeys.cpp
-    lamportkeys.h
-    lamportscheme.cpp
-    lamportscheme.h
+    sphincskeys.cpp
+    sphincskeys.h
+    sphincsscheme.cpp
+    sphincsscheme.h
     ByteEncryptor.cpp
     ByteEncryptor.h
     MsgEncryptor.cpp
@@ -26,15 +26,28 @@ target_compile_features(crypto
         cxx_std_20
 )
 
+# Find OpenSSL package (required for SPHINCS+ support)
+# SPHINCS+ SLH-DSA-SHA2-256s is available in OpenSSL 3.5+
+find_package(OpenSSL 3.5 REQUIRED)
+
+# Verify SPHINCS+ availability at configure time
+if(NOT OPENSSL_FOUND OR OPENSSL_VERSION VERSION_LESS "3.5")
+    message(FATAL_ERROR "OpenSSL 3.5+ is required for SPHINCS+ SLH-DSA-SHA2-256s support. Found version: ${OPENSSL_VERSION}")
+endif()
+
 # Find sodium package if available, otherwise fall back to direct linking
 find_package(sodium QUIET)
 if(sodium_FOUND)
     target_link_libraries(crypto
+        PUBLIC
+            OpenSSL::Crypto
         PRIVATE
             sodium::sodium
     )
 else()
     target_link_libraries(crypto
+        PUBLIC
+            OpenSSL::Crypto
         PRIVATE
             sodium
     )

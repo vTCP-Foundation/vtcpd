@@ -39,8 +39,6 @@ ContractorKeysHandlerPostgreSQL::ContractorKeysHandlerPostgreSQL(
                    "trust_line_id INTEGER NOT NULL, "
                    "keys_set_sequence_number INTEGER NOT NULL, "
                    "public_key BYTEA NOT NULL, "
-                   "number INTEGER NOT NULL, "
-                   "is_valid INTEGER NOT NULL DEFAULT 1, "
                    "FOREIGN KEY(trust_line_id) REFERENCES trust_lines(id) ON DELETE CASCADE ON UPDATE CASCADE);";
     PGresult *res = PQexec(mDataBase, query.c_str());
     checkCmd(mDataBase, res, "ContractorKeysHandlerPostgreSQL::creating table");
@@ -63,8 +61,7 @@ ContractorKeysHandlerPostgreSQL::ContractorKeysHandlerPostgreSQL(
 void ContractorKeysHandlerPostgreSQL::saveKey(
     const TrustLineID trustLineID,
     const KeyNumber keysSetSequenceNumber,
-    const PublicKey::Shared publicKey,
-    const KeyNumber number)
+    const PublicKey::Shared publicKey)
 {
     if (!publicKey) {
         throw ValueError("saveKey: publicKey null");
@@ -73,13 +70,16 @@ void ContractorKeysHandlerPostgreSQL::saveKey(
     auto keyHashShared = publicKey->hash();
 
     const string query = "INSERT INTO " + mTableName +
-                         "(hash, trust_line_id, keys_set_sequence_number, public_key, number) "
-                         "VALUES ($1,$2,$3,$4,$5);";
+                         "(hash, trust_line_id, keys_set_sequence_number, public_key) "
+                         "VALUES ($1,$2,$3,$4) ON CONFLICT (hash) DO UPDATE SET "
+                         "trust_line_id=EXCLUDED.trust_line_id, "
+                         "keys_set_sequence_number=EXCLUDED.keys_set_sequence_number, "
+                         "public_key=EXCLUDED.public_key;";
 
-    const int kParams = 5;
+    const int kParams = 4;
     const char *params[kParams];
     int lengths[kParams];
-    int formats[kParams] = {1,0,0,1,0};
+    int formats[kParams] = {1,0,0,1};
 
     params[0] = reinterpret_cast<const char *>(keyHashShared->data());
     lengths[0] = KeyHash::kBytesSize;
@@ -93,14 +93,11 @@ void ContractorKeysHandlerPostgreSQL::saveKey(
     params[3] = reinterpret_cast<const char *>(publicKey->data());
     lengths[3] = publicKey->keySize();
 
-    string numStr = to_string(number);
-    params[4] = numStr.c_str(); lengths[4]=0;
-
     PGresult *res = PQexecParams(mDataBase, query.c_str(), kParams, nullptr, params, lengths, formats, 0);
     checkCmd(mDataBase, res, "ContractorKeysHandlerPostgreSQL::saveKey");
     PQclear(res);
 #ifdef STORAGE_HANDLER_DEBUG_LOG
-    info() << "Key saved TL=" << trustLineID << " num=" << number;
+    info() << "Key saved TL=" << trustLineID << " seq=" << keysSetSequenceNumber;
 #endif
 }
 
@@ -122,16 +119,16 @@ const KeyNumber ContractorKeysHandlerPostgreSQL::maxKeySetSequenceNumber(
     return seq;
 }
 
-void ContractorKeysHandlerPostgreSQL::invalidKey(
-    const TrustLineID trustLineID,
-    const KeyNumber number)
+void ContractorKeysHandlerPostgreSQL::invalidateKey(
+    const TrustLineID trustLineID)
 {
-    const string query = "UPDATE " + mTableName + " SET is_valid=0 WHERE trust_line_id=$1 AND number=$2;";
-    const char *params[2]; int lengths[2]={0,0}; int formats[2]={0,0};
-    string tlIdStr=to_string(trustLineID); string numStr=to_string(number);
-    params[0]=tlIdStr.c_str(); params[1]=numStr.c_str();
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,params,lengths,formats,0);
-    checkCmd(mDataBase,res,"invalidKey");
+    // Note: In single key architecture, we simply remove the key
+    const string query = "DELETE FROM " + mTableName + " WHERE trust_line_id=$1;";
+    const char *params[1]; int lengths[1]={0}; int formats[1]={0};
+    string tlIdStr=to_string(trustLineID);
+    params[0]=tlIdStr.c_str();
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,0);
+    checkCmd(mDataBase,res,"invalidateKey");
     if (PQcmdTuples(res)[0]=='0') { PQclear(res); throw ValueError("No rows affected"); }
     PQclear(res);
 }
@@ -141,7 +138,8 @@ void ContractorKeysHandlerPostgreSQL::invalidateKeyByHash(
     const KeyHash::Shared keyHash)
 {
     if (!keyHash) throw ValueError("invalidateKeyByHash: keyHash null");
-    const string query = "UPDATE " + mTableName + " SET is_valid=0 WHERE trust_line_id=$1 AND hash=$2;";
+    // In single key architecture, we simply delete the key
+    const string query = "DELETE FROM " + mTableName + " WHERE trust_line_id=$1 AND hash=$2;";
     const char *params[2]; int lengths[2]; int formats[2]={0,1};
     string tlIdStr=to_string(trustLineID);
     params[0]=tlIdStr.c_str(); lengths[0]=0;
@@ -152,19 +150,25 @@ void ContractorKeysHandlerPostgreSQL::invalidateKeyByHash(
     PQclear(res);
 }
 
-PublicKey::Shared ContractorKeysHandlerPostgreSQL::keyByNumber(
-    const TrustLineID trustLineID,
-    const KeyNumber keyNumber)
+PublicKey::Shared ContractorKeysHandlerPostgreSQL::getPublicKey(
+    const TrustLineID trustLineID)
 {
-    const string query = "SELECT public_key FROM " + mTableName + " WHERE trust_line_id=$1 AND number=$2 LIMIT 1;";
-    const char *params[2]; int lengths[2]={0,0}; int formats[2]={0,0};
-    string tlIdStr=to_string(trustLineID); string numStr=to_string(keyNumber);
-    params[0]=tlIdStr.c_str(); params[1]=numStr.c_str();
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,params,lengths,formats,1);
-    checkTuples(mDataBase,res,"keyByNumber");
+    const string query = "SELECT public_key FROM " + mTableName + " WHERE trust_line_id=$1 LIMIT 1;";
+    const char *params[1]; int lengths[1]={0}; int formats[1]={0};
+    string tlIdStr=to_string(trustLineID);
+    params[0]=tlIdStr.c_str();
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,1);
+    checkTuples(mDataBase,res,"getPublicKey");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Public key not found"); }
-    auto pub = make_shared<PublicKey>(reinterpret_cast<const unsigned char *>(PQgetvalue(res,0,0)));
+    
+    // Safely copy public key data before clearing the result
+    const unsigned char *pubBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    BytesShared pubBuf = tryMalloc(PublicKey::keySize());
+    memcpy(pubBuf.get(), pubBytesConst, PublicKey::keySize());
+    
     PQclear(res);
+    
+    auto pub=make_shared<PublicKey>(pubBuf.get());
     return pub;
 }
 
@@ -186,70 +190,60 @@ PublicKey::Shared ContractorKeysHandlerPostgreSQL::keyByHash(
     return pub;
 }
 
-const KeyHash::Shared ContractorKeysHandlerPostgreSQL::keyHashByNumber(
-    const TrustLineID trustLineID,
-    const KeyNumber keyNumber)
+const KeyHash::Shared ContractorKeysHandlerPostgreSQL::getPublicKeyHash(
+    const TrustLineID trustLineID)
 {
-    const string query = "SELECT hash FROM " + mTableName + " WHERE trust_line_id=$1 AND number=$2 LIMIT 1;";
-    const char *params[2]; int lengths[2]={0,0}; int formats[2]={0,0};
-    string tlIdStr=to_string(trustLineID); string numStr=to_string(keyNumber);
-    params[0]=tlIdStr.c_str(); params[1]=numStr.c_str();
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,params,lengths,formats,1);
-    checkTuples(mDataBase,res,"keyHashByNumber");
+    const string query = "SELECT hash FROM " + mTableName + " WHERE trust_line_id=$1 LIMIT 1;";
+    const char *params[1]; int lengths[1]={0}; int formats[1]={0};
+    string tlIdStr=to_string(trustLineID);
+    params[0]=tlIdStr.c_str();
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,params,lengths,formats,1);
+    checkTuples(mDataBase,res,"getPublicKeyHash");
     if (PQntuples(res)==0) { PQclear(res); throw NotFoundError("Key hash not found"); }
-    auto hash = make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res,0,0)));
+    
+    // Safely copy hash data before clearing the result
+    const unsigned char *hashBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,0,0));
+    BytesShared hashBuf = tryMalloc(KeyHash::kBytesSize);
+    memcpy(hashBuf.get(), hashBytesConst, KeyHash::kBytesSize);
+    
     PQclear(res);
+    
+    auto hash=make_shared<KeyHash>(hashBuf.get());
     return hash;
 }
 
-KeysCount ContractorKeysHandlerPostgreSQL::availableKeysCnt(
+bool ContractorKeysHandlerPostgreSQL::hasKey(
     const TrustLineID trustLineID)
 {
-    const string query = "SELECT count(*) FROM " + mTableName + " WHERE trust_line_id=$1 AND is_valid=1;";
+    const string query = "SELECT count(*) FROM " + mTableName + " WHERE trust_line_id=$1;";
     const char *p[1]; int l[1]={0}; int f[1]={0}; string s=to_string(trustLineID); p[0]=s.c_str();
     PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,p,l,f,0);
-    checkTuples(mDataBase,res,"availableKeysCnt");
-    KeysCount c = static_cast<KeysCount>(atoi(PQgetvalue(res,0,0)));
+    checkTuples(mDataBase,res,"hasKey");
+    int c = atoi(PQgetvalue(res,0,0));
     PQclear(res);
-    return c;
+    return c > 0;
 }
 
-KeysCount ContractorKeysHandlerPostgreSQL::sequenceKeysCnt(
-    const TrustLineID trustLineID,
-    KeyNumber keysSetSequenceNumber)
-{
-    const string query = "SELECT count(*) FROM " + mTableName + " WHERE trust_line_id=$1 AND keys_set_sequence_number=$2;";
-    const char *p[2]; int l[2]={0,0}; int f[2]={0,0}; string tl=to_string(trustLineID); string seq=to_string(keysSetSequenceNumber); p[0]=tl.c_str(); p[1]=seq.c_str();
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,p,l,f,0);
-    checkTuples(mDataBase,res,"sequenceKeysCnt");
-    KeysCount c=static_cast<KeysCount>(atoi(PQgetvalue(res,0,0)));
-    PQclear(res);
-    return c;
-}
-
-void ContractorKeysHandlerPostgreSQL::removeUnusedKeys(
-    const TrustLineID trustLineID)
-{
-    const string query = "DELETE FROM " + mTableName + " WHERE trust_line_id=$1 AND is_valid=1;";
-    const char *p[1]; int l[1]={0}; int f[1]={0}; string tl=to_string(trustLineID); p[0]=tl.c_str();
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),1,nullptr,p,l,f,0);
-    checkCmd(mDataBase,res,"removeUnusedKeys");
-    PQclear(res);
-}
 
 vector<PublicKey::Shared> ContractorKeysHandlerPostgreSQL::publicKeysBySetNumber(
     const TrustLineID trustLineID,
     const KeyNumber keysSetSequenceNumber) const
 {
     vector<PublicKey::Shared> result;
-    const string query = "SELECT public_key FROM " + mTableName + " WHERE trust_line_id=$1 AND keys_set_sequence_number=$2 ORDER BY number;";
+    const string query = "SELECT public_key FROM " + mTableName + " WHERE trust_line_id=$1 AND keys_set_sequence_number=$2 ORDER BY hash;";
     const char *p[2]; int l[2]={0,0}; int f[2]={0,0}; string tl=to_string(trustLineID); string seq=to_string(keysSetSequenceNumber); p[0]=tl.c_str(); p[1]=seq.c_str();
     PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,p,l,f,1);
     checkTuples(mDataBase,res,"publicKeysBySetNumber");
     int rows = PQntuples(res);
     result.reserve(rows);
     for(int i=0;i<rows;++i) {
-        result.push_back(make_shared<PublicKey>(reinterpret_cast<const unsigned char *>(PQgetvalue(res,i,0))));
+        // Safely copy public key data before creating the object
+        const unsigned char *pubBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,0));
+        BytesShared pubBuf = tryMalloc(PublicKey::keySize());
+        memcpy(pubBuf.get(), pubBytesConst, PublicKey::keySize());
+        
+        auto pub=make_shared<PublicKey>(pubBuf.get());
+        result.push_back(pub);
     }
     PQclear(res);
     return result;
@@ -291,7 +285,13 @@ vector<KeyHash::Shared> ContractorKeysHandlerPostgreSQL::publicKeyHashesLessThan
     int rows=PQntuples(res);
     result.reserve(rows);
     for(int i=0;i<rows;++i) {
-        result.push_back(make_shared<KeyHash>(reinterpret_cast<const unsigned char *>(PQgetvalue(res,i,0))));
+        // Safely copy hash data before creating the object
+        const unsigned char *hashBytesConst = reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,0));
+        BytesShared hashBuf = tryMalloc(KeyHash::kBytesSize);
+        memcpy(hashBuf.get(), hashBytesConst, KeyHash::kBytesSize);
+        
+        auto hash=make_shared<KeyHash>(hashBuf.get());
+        result.push_back(hash);
     }
     PQclear(res);
     return result;

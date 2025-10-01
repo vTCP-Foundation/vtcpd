@@ -2,7 +2,7 @@
 #define VTCPD_PUBLICKEYMESSAGE_H
 
 #include "../base/transaction/TransactionMessage.h"
-#include "../../../crypto/lamportkeys.h"
+#include "../../../crypto/sphincskeys.h"
 
 using namespace crypto;
 
@@ -17,15 +17,12 @@ public:
         const SerializedEquivalent equivalent,
         Contractor::Shared contractor,
         const TransactionUUID &transactionUUID,
-        const KeyNumber number,
-        const lamport::PublicKey::Shared publicKey);
+        const crypto::sphincs::PublicKey::Shared publicKey);
 
     PublicKeyMessage(
         BytesShared buffer);
 
-    const KeyNumber number() const;
-
-    const lamport::PublicKey::Shared publicKey() const;
+    const crypto::sphincs::PublicKey::Shared publicKey() const;
 
     const MessageType typeID() const override;
 
@@ -37,8 +34,7 @@ protected:
     const size_t kOffsetToInheritedBytes() const override;
 
 private:
-    KeyNumber mNumber;
-    lamport::PublicKey::Shared mPublicKey;
+    crypto::sphincs::PublicKey::Shared mPublicKey;
 };
 
 

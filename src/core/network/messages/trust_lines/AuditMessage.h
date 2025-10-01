@@ -2,7 +2,7 @@
 #define VTCPD_AUDITMESSAGE_H
 
 #include "../base/transaction/TransactionMessage.h"
-#include "../../../crypto/lamportscheme.h"
+#include "../../../crypto/sphincsscheme.h"
 #include "../../../common/multiprecision/MultiprecisionUtils.h"
 
 using namespace crypto;
@@ -21,8 +21,7 @@ public:
         const AuditNumber auditNumber,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
-        const KeyNumber keyNumber,
-        const lamport::Signature::Shared signature);
+        const sphincs::Signature::Shared signature);
 
     AuditMessage(
         BytesShared buffer);
@@ -33,9 +32,7 @@ public:
 
     const TrustLineAmount& outgoingAmount() const;
 
-    const lamport::Signature::Shared signature() const;
-
-    const KeyNumber keyNumber() const;
+    const sphincs::Signature::Shared signature() const;
 
     const MessageType typeID() const override;
 
@@ -50,8 +47,7 @@ private:
     AuditNumber mAuditNumber;
     TrustLineAmount mIncomingAmount;
     TrustLineAmount mOutgoingAmount;
-    uint32_t mKeyNumber;
-    lamport::Signature::Shared mSignature;
+    sphincs::Signature::Shared mSignature;
 };
 
 

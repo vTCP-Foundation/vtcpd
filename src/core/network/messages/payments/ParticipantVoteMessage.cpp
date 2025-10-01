@@ -6,7 +6,7 @@ ParticipantVoteMessage::ParticipantVoteMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID &transactionUUID,
-    lamport::Signature::Shared signature) :
+    sphincs::Signature::Shared signature) :
     TransactionMessage(
         equivalent,
         senderAddresses,
@@ -25,7 +25,7 @@ ParticipantVoteMessage::ParticipantVoteMessage(
     deserializer.copyInto(&state);
     mState = (OperationState) state;
     if (mState == Accepted) {
-        auto signature = make_shared<lamport::Signature>(
+        auto signature = make_shared<sphincs::Signature>(
                              buffer.get() + currentOffset + sizeof(SerializedOperationState));
         mSignature = signature;
     }
@@ -41,7 +41,7 @@ const ParticipantVoteMessage::OperationState ParticipantVoteMessage::state() con
     return mState;
 }
 
-const lamport::Signature::Shared ParticipantVoteMessage::signature() const
+const sphincs::Signature::Shared ParticipantVoteMessage::signature() const
 {
     return mSignature;
 }
@@ -55,7 +55,7 @@ pair<BytesShared, size_t> ParticipantVoteMessage::serializeToBytes() const
         serializer.copy((SerializedOperationState)ParticipantVoteMessage::Accepted);
         serializer.copy(
             mSignature->data(),
-            lamport::Signature::signatureSize());
+            sphincs::Signature::signatureSize());
     } else {
         serializer.copy((SerializedOperationState)ParticipantVoteMessage::Rejected);
     }

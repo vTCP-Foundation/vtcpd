@@ -2,12 +2,11 @@
 #define VTCPD_TESTDATAFACTORY_H
 
 #include "../../../src/core/io/storage/sqlite/StorageHandlerSQLite.h"
+#include "../../../src/core/network/messages/Message.hpp"
 #include "../../../src/core/common/Types.h"
 #include "../../../src/core/common/memory/MemoryUtils.h"
 #include "../../../src/core/transactions/transactions/base/TransactionUUID.h"
 #include "../../../src/core/contractors/addresses/BaseAddress.h"
-#include "../../../src/core/crypto/lamportkeys.h"
-#include "../../../src/core/crypto/lamportscheme.h"
 #include "../../../src/core/logger/Logger.h"
 #include <memory>
 #include <vector>
@@ -15,7 +14,9 @@
 #include <random>
 
 using namespace std;
-using namespace crypto::lamport;
+
+// Backward-compatible alias removed in core: map KeysSetSequenceNumber to KeyNumber for tests
+using KeysSetSequenceNumber = KeyNumber;
 
 /**
  * Factory class for creating test data objects for all SQLite handler tests.

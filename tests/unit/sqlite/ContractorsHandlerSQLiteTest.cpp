@@ -202,10 +202,9 @@ TEST_F(ContractorsHandlerSQLiteTest, SaveContractorValidData) {
 }
 
 TEST_F(ContractorsHandlerSQLiteTest, SaveContractorNullPointer) {
-    EXPECT_THROW(
-        handler->saveContractor(nullptr),
-        IOError
-    );
+    EXPECT_DEATH({
+        handler->saveContractor(nullptr);
+    }, ".*");
 }
 
 TEST_F(ContractorsHandlerSQLiteTest, SaveContractorDuplicateId) {
@@ -239,10 +238,9 @@ TEST_F(ContractorsHandlerSQLiteTest, SaveContractorFullValidData) {
 }
 
 TEST_F(ContractorsHandlerSQLiteTest, SaveContractorFullNullPointer) {
-    EXPECT_THROW(
-        handler->saveContractorFull(nullptr),
-        IOError
-    );
+    EXPECT_DEATH({
+        handler->saveContractorFull(nullptr);
+    }, ".*");
 }
 
 TEST_F(ContractorsHandlerSQLiteTest, SaveContractorFullDuplicateId) {
@@ -289,10 +287,9 @@ TEST_F(ContractorsHandlerSQLiteTest, SaveConfirmationInfoNonExistentContractor) 
 }
 
 TEST_F(ContractorsHandlerSQLiteTest, SaveConfirmationInfoNullPointer) {
-    EXPECT_THROW(
-        handler->saveConfirmationInfo(nullptr),
-        IOError
-    );
+    EXPECT_DEATH({
+        handler->saveConfirmationInfo(nullptr);
+    }, ".*");
 }
 
 // Update Crypto Key Tests
@@ -326,10 +323,9 @@ TEST_F(ContractorsHandlerSQLiteTest, UpdateCryptoKeyNonExistentContractor) {
 }
 
 TEST_F(ContractorsHandlerSQLiteTest, UpdateCryptoKeyNullPointer) {
-    EXPECT_THROW(
-        handler->updateCryptoKey(nullptr),
-        IOError
-    );
+    EXPECT_DEATH({
+        handler->updateCryptoKey(nullptr);
+    }, ".*");
 }
 
 // Update Channel ID Tests
@@ -362,10 +358,9 @@ TEST_F(ContractorsHandlerSQLiteTest, UpdateChannelIdOnContractorSideNonExistentC
 }
 
 TEST_F(ContractorsHandlerSQLiteTest, UpdateChannelIdOnContractorSideNullPointer) {
-    EXPECT_THROW(
-        handler->updateChannelIdOnContractorSide(nullptr),
-        IOError
-    );
+    EXPECT_DEATH({
+        handler->updateChannelIdOnContractorSide(nullptr);
+    }, ".*");
 }
 
 // Retrieve Contractors Tests
