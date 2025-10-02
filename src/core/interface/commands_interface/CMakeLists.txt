@@ -42,6 +42,10 @@ add_library(interface__commands
     commands/max_flow_calculation/InitiateMaxFlowCalculationCommand.cpp
     commands/max_flow_calculation/InitiateMaxFlowExchangeCalculationCommand.h
     commands/max_flow_calculation/InitiateMaxFlowExchangeCalculationCommand.cpp
+    commands/max_flow_calculation/EstimateReceiveForPaymentAmountCommand.h
+    commands/max_flow_calculation/EstimateReceiveForPaymentAmountCommand.cpp
+    commands/max_flow_calculation/EstimatePaymentForReceiveAmountCommand.h
+    commands/max_flow_calculation/EstimatePaymentForReceiveAmountCommand.cpp
     commands/max_flow_calculation/InitiateMaxFlowCalculationFullyCommand.h
     commands/max_flow_calculation/InitiateMaxFlowCalculationFullyCommand.cpp
     commands/total_balances/TotalBalancesCommand.h

@@ -83,6 +83,19 @@ public:
     void invalidatePathsForEquivalent(
         SerializedEquivalent equivalent);
 
+    // Path simulation algorithms for estimation
+    double forwardSimulatePath(
+        const ExchangePath &path,
+        double inputAmount,
+        set<pair<ContractorID, SerializedEquivalent>> &appliedCommissions,
+        map<EdgeKey, double> &edgeRemainingCapacity);
+
+    double inverseSimulatePath(
+        const ExchangePath &path,
+        double targetOutputAmount,
+        set<pair<ContractorID, SerializedEquivalent>> &appliedCommissions,
+        map<EdgeKey, double> &edgeRemainingCapacity);
+
 private:
     // Path enumeration methods
     vector<ExchangePath> enumerateAllFeasiblePaths(

@@ -5,6 +5,10 @@ add_library(transactions__max_flow_calculation
     InitiateMaxFlowCalculationTransaction.cpp
     InitiateMaxFlowExchangeCalculationTransaction.h
     InitiateMaxFlowExchangeCalculationTransaction.cpp
+    EstimateReceiveForPaymentAmountTransaction.h
+    EstimateReceiveForPaymentAmountTransaction.cpp
+    EstimatePaymentForReceiveAmountTransaction.h
+    EstimatePaymentForReceiveAmountTransaction.cpp
     ReceiveMaxFlowCalculationOnTargetTransaction.h
     ReceiveMaxFlowCalculationOnTargetTransaction.cpp
     ReceiveMaxFlowCalculationForExchangeOnTargetTransaction.h

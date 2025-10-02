@@ -229,6 +229,16 @@ pair<bool, BaseUserCommand::Shared> CommandsParser::tryParseCommand(
                 uuid,
                 buffer);
 
+        } else if (identifier == EstimateReceiveForPaymentAmountCommand::identifier()) {
+            command = new EstimateReceiveForPaymentAmountCommand(
+                uuid,
+                buffer);
+
+        } else if (identifier == EstimatePaymentForReceiveAmountCommand::identifier()) {
+            command = new EstimatePaymentForReceiveAmountCommand(
+                uuid,
+                buffer);
+
         } else if (identifier == TotalBalancesCommand::identifier()) {
             command = new TotalBalancesCommand(
                 uuid,

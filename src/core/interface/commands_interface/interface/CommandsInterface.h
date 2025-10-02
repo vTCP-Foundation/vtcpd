@@ -21,6 +21,8 @@
 #include "../commands/max_flow_calculation/InitiateMaxFlowCalculationCommand.h"
 #include "../commands/max_flow_calculation/InitiateMaxFlowCalculationFullyCommand.h"
 #include "../commands/max_flow_calculation/InitiateMaxFlowExchangeCalculationCommand.h"
+#include "../commands/max_flow_calculation/EstimateReceiveForPaymentAmountCommand.h"
+#include "../commands/max_flow_calculation/EstimatePaymentForReceiveAmountCommand.h"
 #include "../commands/total_balances/TotalBalancesCommand.h"
 #include "../commands/history/HistoryPaymentsCommand.h"
 #include "../commands/history/HistoryPaymentsAllEquivalentsCommand.h"

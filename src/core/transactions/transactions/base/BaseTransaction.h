@@ -97,6 +97,8 @@ public:
         MaxFlowCalculationStepTwoTransactionType = 408,
         MaxFlowCalculationFullyTransactionType = 409,
         CollectTopologyForExchangeTransactionType = 410,
+        EstimateReceiveForPaymentAmountTransactionType = 411,
+        EstimatePaymentForReceiveAmountTransactionType = 412,
 
         // TrustLine list
         TrustLinesList = 500,

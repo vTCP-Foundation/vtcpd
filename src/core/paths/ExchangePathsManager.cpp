@@ -612,6 +612,231 @@ TrustLineAmount ExchangePathsManager::getSenderBalance(
     return sum;
 }
 
+double ExchangePathsManager::forwardSimulatePath(
+    const ExchangePath &path,
+    double inputAmount,
+    set<pair<ContractorID, SerializedEquivalent>> &appliedCommissions,
+    map<EdgeKey, double> &edgeRemainingCapacity)
+{
+    if (!std::isfinite(inputAmount) || inputAmount <= 0.0) {
+        return 0.0;
+    }
+    if (!path.isValid()) {
+        return 0.0;
+    }
+
+    double currentAmount = inputAmount;
+
+    for (size_t i = 0; i + 1 < path.nodes.size(); ++i) {
+        ContractorID fromNode = path.nodes[i];
+        ContractorID toNode = path.nodes[i + 1];
+        SerializedEquivalent currentEquiv = path.equivalents[i];
+        SerializedEquivalent nextEquiv = path.equivalents[i + 1];
+
+        // Check if this is an exchange step (same node, different equivalents)
+        if (fromNode == toNode && currentEquiv != nextEquiv) {
+            // Apply exchange rate
+            for (const auto &ex : path.exchangeSteps) {
+                if (ex.nodeID == fromNode &&
+                    ex.fromEquivalent == currentEquiv &&
+                    ex.toEquivalent == nextEquiv) {
+
+                    // Calculate exchange rate with shift
+                    double rate = ex.exchangeRate.convert_to<double>();
+                    int16_t shift = ex.exchangeRateShift;
+                    double divisor = std::pow(10.0, shift);
+                    double effectiveRate = rate / divisor;
+
+                    double amountBeforeExchange = currentAmount;
+                    currentAmount *= effectiveRate;
+
+                    // Validate exchange limits if set
+                    if (ex.minExchangeAmount > TrustLineAmount(0)) {
+                        if (amountBeforeExchange < ex.minExchangeAmount.convert_to<double>()) {
+                            // Below minimum exchange amount - skip path
+                            return 0.0;
+                        }
+                    }
+                    if (ex.maxExchangeAmount > TrustLineAmount(0)) {
+                        if (amountBeforeExchange > ex.maxExchangeAmount.convert_to<double>()) {
+                            // Above maximum - cap at max
+                            double maxAllowed = ex.maxExchangeAmount.convert_to<double>();
+                            currentAmount = maxAllowed * effectiveRate;
+                        }
+                    }
+
+                    break;
+                }
+            }
+            continue;
+        }
+
+        // Check and update edge capacity for regular edge
+        EdgeKey edgeKey{fromNode, toNode, currentEquiv};
+
+        // Initialize edge capacity if not yet tracked
+        if (edgeRemainingCapacity.find(edgeKey) == edgeRemainingCapacity.end()) {
+            edgeRemainingCapacity[edgeKey] = fetchEdgeCapacity(mRouter, fromNode, toNode, currentEquiv);
+        }
+
+        // Check if edge has sufficient capacity
+        double availableCapacity = edgeRemainingCapacity[edgeKey];
+        if (currentAmount > availableCapacity) {
+            // Reduce flow to available capacity
+            currentAmount = availableCapacity;
+            if (currentAmount <= 0.0) {
+                return 0.0;
+            }
+        }
+
+        // Update remaining capacity
+        edgeRemainingCapacity[edgeKey] -= currentAmount;
+
+        // Apply commission at destination node (if intermediate node)
+        if (i + 1 < path.nodes.size() - 1) {
+            ContractorID nodeId = toNode;
+            SerializedEquivalent nodeEq = nextEquiv;
+
+            try {
+                auto tlm = mRouter->topologyTrustLineManager(nodeEq);
+                auto commission = tlm->getCommission(nodeId, nodeEq);
+
+                if (commission) {
+                    auto commissionKey = std::make_pair(nodeId, nodeEq);
+
+                    // Check if commission already applied ("charge once" semantics)
+                    if (appliedCommissions.find(commissionKey) == appliedCommissions.end()) {
+                        double commissionAmount = static_cast<double>(commission->amount());
+                        currentAmount -= commissionAmount;
+
+                        if (currentAmount <= 0.0) {
+                            appliedCommissions.insert(commissionKey);
+                            return 0.0;
+                        }
+
+                        appliedCommissions.insert(commissionKey);
+                    }
+                }
+            } catch (...) {
+                // If commission lookup fails, continue without commission
+            }
+        }
+    }
+
+    return std::max(0.0, currentAmount);
+}
+
+double ExchangePathsManager::inverseSimulatePath(
+    const ExchangePath &path,
+    double targetOutputAmount,
+    set<pair<ContractorID, SerializedEquivalent>> &appliedCommissions,
+    map<EdgeKey, double> &edgeRemainingCapacity)
+{
+    if (!std::isfinite(targetOutputAmount) || targetOutputAmount <= 0.0) {
+        return 0.0;
+    }
+    if (!path.isValid()) {
+        return 0.0;
+    }
+
+    double requiredAmount = targetOutputAmount;
+
+    // Work backwards through path from receiver to sender
+    for (int i = static_cast<int>(path.nodes.size()) - 2; i >= 0; --i) {
+        ContractorID fromNode = path.nodes[i];
+        ContractorID toNode = path.nodes[i + 1];
+        SerializedEquivalent currentEquiv = path.equivalents[i];
+        SerializedEquivalent nextEquiv = path.equivalents[i + 1];
+
+        // Apply commission at destination node (if intermediate node)
+        // Commission is added when going backwards
+        if (i + 1 < static_cast<int>(path.nodes.size()) - 1) {
+            ContractorID nodeId = toNode;
+            SerializedEquivalent nodeEq = nextEquiv;
+
+            try {
+                auto tlm = mRouter->topologyTrustLineManager(nodeEq);
+                auto commission = tlm->getCommission(nodeId, nodeEq);
+
+                if (commission) {
+                    auto commissionKey = std::make_pair(nodeId, nodeEq);
+
+                    // Check if commission already applied ("charge once" semantics)
+                    if (appliedCommissions.find(commissionKey) == appliedCommissions.end()) {
+                        double commissionAmount = static_cast<double>(commission->amount());
+                        requiredAmount += commissionAmount;
+                        appliedCommissions.insert(commissionKey);
+                    }
+                }
+            } catch (...) {
+                // If commission lookup fails, continue without commission
+            }
+        }
+
+        // Check if this is an exchange step (same node, different equivalents)
+        if (fromNode == toNode && currentEquiv != nextEquiv) {
+            // Apply inverse exchange rate
+            for (const auto &ex : path.exchangeSteps) {
+                if (ex.nodeID == fromNode &&
+                    ex.fromEquivalent == currentEquiv &&
+                    ex.toEquivalent == nextEquiv) {
+
+                    // Calculate exchange rate with shift
+                    double rate = ex.exchangeRate.convert_to<double>();
+                    int16_t shift = ex.exchangeRateShift;
+                    double divisor = std::pow(10.0, shift);
+                    double effectiveRate = rate / divisor;
+
+                    // Inverse exchange: divide by rate
+                    if (effectiveRate <= 0.0) {
+                        return 0.0; // Invalid rate
+                    }
+
+                    double amountAfterInverse = requiredAmount / effectiveRate;
+
+                    // Validate exchange limits if set
+                    if (ex.minExchangeAmount > TrustLineAmount(0)) {
+                        if (amountAfterInverse < ex.minExchangeAmount.convert_to<double>()) {
+                            // Below minimum exchange amount - path cannot satisfy
+                            return 0.0;
+                        }
+                    }
+                    if (ex.maxExchangeAmount > TrustLineAmount(0)) {
+                        if (amountAfterInverse > ex.maxExchangeAmount.convert_to<double>()) {
+                            // Above maximum - cannot use this path
+                            return 0.0;
+                        }
+                    }
+
+                    requiredAmount = amountAfterInverse;
+                    break;
+                }
+            }
+            continue;
+        }
+
+        // Check edge capacity for regular edge
+        EdgeKey edgeKey{fromNode, toNode, currentEquiv};
+
+        // Initialize edge capacity if not yet tracked
+        if (edgeRemainingCapacity.find(edgeKey) == edgeRemainingCapacity.end()) {
+            edgeRemainingCapacity[edgeKey] = fetchEdgeCapacity(mRouter, fromNode, toNode, currentEquiv);
+        }
+
+        // Check if edge has sufficient capacity for required amount
+        double availableCapacity = edgeRemainingCapacity[edgeKey];
+        if (requiredAmount > availableCapacity) {
+            // Path cannot satisfy required amount
+            return 0.0;
+        }
+
+        // Update remaining capacity
+        edgeRemainingCapacity[edgeKey] -= requiredAmount;
+    }
+
+    return std::max(0.0, requiredAmount);
+}
+
 vector<ExchangePath> ExchangePathsManager::enumerateAllFeasiblePaths(
     ContractorID targetContractor,
     SerializedEquivalent receiverEquivalent,

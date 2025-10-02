@@ -56,6 +56,8 @@
 
 #include "../transactions/max_flow_calculation/InitiateMaxFlowCalculationTransaction.h"
 #include "../transactions/max_flow_calculation/InitiateMaxFlowExchangeCalculationTransaction.h"
+#include "../transactions/max_flow_calculation/EstimateReceiveForPaymentAmountTransaction.h"
+#include "../transactions/max_flow_calculation/EstimatePaymentForReceiveAmountTransaction.h"
 #include "../transactions/max_flow_calculation/MaxFlowCalculationFullyTransaction.h"
 #include "../transactions/max_flow_calculation/ReceiveMaxFlowCalculationOnTargetTransaction.h"
 #include "../transactions/max_flow_calculation/ReceiveMaxFlowCalculationForExchangeOnTargetTransaction.h"
@@ -260,6 +262,12 @@ protected: // Transactions
         
     void launchInitiateMaxFlowExchangeCalculationTransaction(
         InitiateMaxFlowExchangeCalculationCommand::Shared command);
+
+    void launchEstimateReceiveForPaymentAmountTransaction(
+        EstimateReceiveForPaymentAmountCommand::Shared command);
+
+    void launchEstimatePaymentForReceiveAmountTransaction(
+        EstimatePaymentForReceiveAmountCommand::Shared command);
 
     void launchMaxFlowCalculationFullyTransaction(
         InitiateMaxFlowCalculationFullyCommand::Shared command);

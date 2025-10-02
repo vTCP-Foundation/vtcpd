@@ -332,6 +332,16 @@ void TransactionsManager::processCommand(
             static_pointer_cast<InitiateMaxFlowCalculationFullyCommand>(
                 command));
 
+    } else if (command->identifier() == EstimateReceiveForPaymentAmountCommand::identifier()) {
+        launchEstimateReceiveForPaymentAmountTransaction(
+            static_pointer_cast<EstimateReceiveForPaymentAmountCommand>(
+                command));
+
+    } else if (command->identifier() == EstimatePaymentForReceiveAmountCommand::identifier()) {
+        launchEstimatePaymentForReceiveAmountTransaction(
+            static_pointer_cast<EstimatePaymentForReceiveAmountCommand>(
+                command));
+
     } else if (command->identifier() == TotalBalancesCommand::identifier()) {
         launchTotalBalancesTransaction(
             static_pointer_cast<TotalBalancesCommand>(
@@ -1137,6 +1147,60 @@ void TransactionsManager::launchInitiateMaxFlowExchangeCalculationTransaction(
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for InitiateMaxFlowExchangeCalculationTransaction "
                    "with equivalent " << command->equivalent() << " Details are: " << e.what();
+        prepareAndSchedule(
+            make_shared<NoEquivalentTransaction>(
+                command,
+                mLog),
+            false,
+            false,
+            false);
+    }
+}
+
+void TransactionsManager::launchEstimateReceiveForPaymentAmountTransaction(
+    EstimateReceiveForPaymentAmountCommand::Shared command)
+{
+    try {
+        prepareAndSchedule(
+            make_shared<EstimateReceiveForPaymentAmountTransaction>(
+                command,
+                mContractorsManager,
+                mEquivalentsSubsystemsRouter,
+                mExchangePathsManager,
+                mLog),
+            false,
+            false,
+            false);
+    } catch (NotFoundError &e) {
+        error() << "There are no subsystems for EstimateReceiveForPaymentAmountTransaction "
+                   "with equivalent " << command->senderEquivalent() << " Details are: " << e.what();
+        prepareAndSchedule(
+            make_shared<NoEquivalentTransaction>(
+                command,
+                mLog),
+            false,
+            false,
+            false);
+    }
+}
+
+void TransactionsManager::launchEstimatePaymentForReceiveAmountTransaction(
+    EstimatePaymentForReceiveAmountCommand::Shared command)
+{
+    try {
+        prepareAndSchedule(
+            make_shared<EstimatePaymentForReceiveAmountTransaction>(
+                command,
+                mContractorsManager,
+                mEquivalentsSubsystemsRouter,
+                mExchangePathsManager,
+                mLog),
+            false,
+            false,
+            false);
+    } catch (NotFoundError &e) {
+        error() << "There are no subsystems for EstimatePaymentForReceiveAmountTransaction "
+                   "with equivalent " << command->senderEquivalent() << " Details are: " << e.what();
         prepareAndSchedule(
             make_shared<NoEquivalentTransaction>(
                 command,
