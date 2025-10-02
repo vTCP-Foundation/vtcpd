@@ -173,6 +173,11 @@ int Core::initSubsystems()
         return initCode;
     }
 
+    initCode = initExchangePathsManager();
+    if (initCode != 0) {
+        return initCode;
+    }
+
     initCode = initCommissionsManager(conf);
     if (initCode != 0) {
         return initCode;
@@ -432,6 +437,7 @@ int Core::initTransactionsManager(
                                    mSubsystemsController.get(),
                                    mTrustLinesInfluenceController.get(),
                                    mExchangeRatesManager.get(),
+                                   mExchangePathsManager.get(),
                                    mCommissionsManager.get(),
                                    mSettings->hopsCount(&conf));
         info() << "Transactions handler is successfully initialised";
@@ -630,6 +636,23 @@ int Core::initExchangeRatesManager()
                                     mIOCtx,
                                     *mLog);
         info() << "Exchange Rates Manager is successfully initialized";
+        return 0;
+    } catch (const std::exception &e) {
+        mLog->logException("Core", e);
+        return -1;
+    }
+}
+
+int Core::initExchangePathsManager()
+{
+    try {
+        mExchangePathsManager = make_unique<ExchangePathsManager>(
+                                    mIOCtx,
+                                    mEquivalentsSubsystemsRouter.get(),
+                                    mExchangeRatesManager.get(),
+                                    mContractorsManager.get(),
+                                    *mLog);
+        info() << "Exchange Paths Manager is successfully initialized";
         return 0;
     } catch (const std::exception &e) {
         mLog->logException("Core", e);

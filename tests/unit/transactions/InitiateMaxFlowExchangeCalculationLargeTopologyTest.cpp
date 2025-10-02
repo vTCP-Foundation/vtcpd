@@ -9,6 +9,7 @@
 #include "core/contractors/addresses/IPv4WithPortAddress.h"
 #include "core/equivalents/EquivalentsSubsystemsRouter.h"
 #include "core/rates/manager/ExchangeRatesManager.h"
+#include "core/paths/ExchangePathsManager.h"
 #include "core/logger/Logger.h"
 #include "core/io/storage/sqlite/StorageHandlerSQLite.h"
 #include "core/crypto/keychain.h"
@@ -207,6 +208,9 @@ TEST(InitiateMaxFlowExchangeCalculationLargeTopologyTest, MaxFlowIs116OnLargeTop
     tlm1001->storeCommission(id19, EQ_1001, make_shared<Commission>(5));
     tlm2002->storeCommission(id19, EQ_2002, make_shared<Commission>(5));
 
+    // Exchange paths manager
+    ExchangePathsManager pathsMgr(io, &router, &ratesMgr, &contractors, logger);
+
     // Tail manager
     TailManager tail(io, logger);
 
@@ -220,6 +224,7 @@ TEST(InitiateMaxFlowExchangeCalculationLargeTopologyTest, MaxFlowIs116OnLargeTop
         &contractors,
         &router,
         &ratesMgr,
+        &pathsMgr,
         &tail,
         logger,
         /*hopsCount*/ 6);

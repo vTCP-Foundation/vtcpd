@@ -9,6 +9,7 @@
 #include "core/contractors/addresses/IPv4WithPortAddress.h"
 #include "core/equivalents/EquivalentsSubsystemsRouter.h"
 #include "core/rates/manager/ExchangeRatesManager.h"
+#include "core/paths/ExchangePathsManager.h"
 #include "core/logger/Logger.h"
 #include "core/io/storage/sqlite/StorageHandlerSQLite.h"
 #include "core/crypto/keychain.h"
@@ -107,6 +108,7 @@ TEST(InitiateMaxFlowExchangeCalculationMegaTopologyTest, MaxFlowOnMegaTopology_1
     auto tlm2002 = router.topologyTrustLineManager(EQ_2002);
 
     ExchangeRatesManager ratesMgr(io, logger);
+    ExchangePathsManager pathsMgr(io, &router, &ratesMgr, &contractors, logger);
     auto expiresAt = utc_now() + boost::posix_time::seconds(600);
     ExchangeRate r_eq(EQ_1001, EQ_2002, TrustLineAmount(1), 0, expiresAt,
                       TrustLineAmount(0), TrustLineAmount(0));
@@ -171,6 +173,7 @@ TEST(InitiateMaxFlowExchangeCalculationMegaTopologyTest, MaxFlowOnMegaTopology_1
         &contractors,
         &router,
         &ratesMgr,
+        &pathsMgr,
         &tail,
         logger,
         /*hopsCount*/ 8);

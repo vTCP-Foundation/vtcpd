@@ -9,6 +9,7 @@
 #include "core/contractors/addresses/IPv4WithPortAddress.h"
 #include "core/equivalents/EquivalentsSubsystemsRouter.h"
 #include "core/rates/manager/ExchangeRatesManager.h"
+#include "core/paths/ExchangePathsManager.h"
 #include "core/network/communicator/internal/incoming/TailManager.h"
 #include "core/logger/Logger.h"
 #include "core/io/storage/sqlite/StorageHandlerSQLite.h"
@@ -135,7 +136,10 @@ TEST(InitiateMaxFlowExchangeCalculationApplyLogicTest, MaxFlowIs200ForGivenTopol
                       TrustLineAmount(0), TrustLineAmount(0));
     ratesMgr.addOrUpdateExternal(idC, rate);
 
-    // Tail manager (not used directly in this test’s path)
+    // Exchange paths manager (for caching computed paths)
+    ExchangePathsManager pathsMgr(io, &router, &ratesMgr, &contractors, logger);
+
+    // Tail manager (not used directly in this test's path)
     TailManager tail(io, logger);
 
     // Build command: contractor E, receiver equivalent 2002, exchange equivalents {1001}
@@ -149,6 +153,7 @@ TEST(InitiateMaxFlowExchangeCalculationApplyLogicTest, MaxFlowIs200ForGivenTopol
         &contractors,
         &router,
         &ratesMgr,
+        &pathsMgr,
         &tail,
         logger,
         /*hopsCount*/ 6);

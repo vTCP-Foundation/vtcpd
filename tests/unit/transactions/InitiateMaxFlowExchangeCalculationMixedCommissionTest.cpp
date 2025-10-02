@@ -9,6 +9,7 @@
 #include "core/contractors/addresses/IPv4WithPortAddress.h"
 #include "core/equivalents/EquivalentsSubsystemsRouter.h"
 #include "core/rates/manager/ExchangeRatesManager.h"
+#include "core/paths/ExchangePathsManager.h"
 #include "core/network/communicator/internal/incoming/TailManager.h"
 #include "core/logger/Logger.h"
 #include "core/io/storage/sqlite/StorageHandlerSQLite.h"
@@ -122,6 +123,7 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowWithMixedComm
     tlm1001->storeCommission(idC, EQ_1001, commissionC);
 
     ExchangeRatesManager ratesManager(io, logger);
+    ExchangePathsManager pathsManager(io, &router, &ratesManager, &contractors, logger);
     auto expiresAt = utc_now() + boost::posix_time::seconds(300);
     ExchangeRate rate(EQ_1001, EQ_2002, TrustLineAmount(1), /*shift*/ 0, expiresAt,
                       TrustLineAmount(0), TrustLineAmount(0));
@@ -138,6 +140,7 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowWithMixedComm
         &contractors,
         &router,
         &ratesManager,
+        &pathsManager,
         &tailManager,
         logger,
         6);
@@ -217,6 +220,7 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowWithMixedComm
     tlm1001->storeCommission(idC, EQ_1001, commissionC);
 
     ExchangeRatesManager ratesManager(io, logger);
+    ExchangePathsManager pathsManager(io, &router, &ratesManager, &contractors, logger);
     auto expiresAt = utc_now() + boost::posix_time::seconds(300);
     ExchangeRate rate(EQ_1001, EQ_2002, TrustLineAmount(1), 0, expiresAt,
                       TrustLineAmount(0), TrustLineAmount(0));
@@ -233,6 +237,7 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowWithMixedComm
         &contractors,
         &router,
         &ratesManager,
+        &pathsManager,
         &tailManager,
         logger,
         6);
@@ -310,6 +315,7 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowRespectsShare
     tlm2002->addTrustLine(make_shared<TopologyTrustLine>(idD, idE, A(500)));
 
     ExchangeRatesManager ratesManager(io, logger);
+    ExchangePathsManager pathsManager(io, &router, &ratesManager, &contractors, logger);
     auto expiresAt = utc_now() + boost::posix_time::seconds(300);
     ExchangeRate rateC(EQ_1001, EQ_2002, TrustLineAmount(5), /*shift*/ -2, expiresAt,
                        TrustLineAmount(0), TrustLineAmount(0));
@@ -329,6 +335,7 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowRespectsShare
         &contractors,
         &router,
         &ratesManager,
+        &pathsManager,
         &tailManager,
         logger,
         6);
@@ -407,6 +414,7 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowWithSingleTra
     tlm2002->storeCommission(idB, EQ_2002, commissionB);
 
     ExchangeRatesManager ratesManager(io, logger);
+    ExchangePathsManager pathsManager(io, &router, &ratesManager, &contractors, logger);
 
     TailManager tailManager(io, logger);
 
@@ -419,6 +427,7 @@ TEST(InitiateMaxFlowExchangeCalculationMixedCommissionTest, MaxFlowWithSingleTra
         &contractors,
         &router,
         &ratesManager,
+        &pathsManager,
         &tailManager,
         logger,
         6);

@@ -4,7 +4,9 @@ add_subdirectory(lib)
 
 add_library(paths
     PathsManager.h
-    PathsManager.cpp)
+    PathsManager.cpp
+    ExchangePathsManager.h
+    ExchangePathsManager.cpp)
 
 target_include_directories(paths
     PUBLIC
@@ -20,3 +22,8 @@ target_link_libraries(paths
     PRIVATE
         slib_paths
 )
+
+# Add OR-Tools linking when available
+if(ortools_FOUND)
+   target_link_libraries(paths PUBLIC ortools::ortools)
+endif()

@@ -21,6 +21,7 @@
 #include "providing/ProvidingHandler.h"
 #include "rates/manager/ExchangeRatesManager.h"
 #include "rates/manager/CommissionsManager.h"
+#include "paths/ExchangePathsManager.h"
 
 #include "logger/Logger.h"
 
@@ -107,7 +108,9 @@ private:
         const json &conf);
 
     int initExchangeRatesManager();
-    
+
+    int initExchangePathsManager();
+
     int initCommissionsManager(
         const json &conf);
 
@@ -239,6 +242,7 @@ protected:
     unique_ptr<FeaturesManager> mFeaturesManager;
     unique_ptr<ProvidingHandler> mProvidingHandler;
     unique_ptr<ExchangeRatesManager> mExchangeRatesManager;
+    unique_ptr<ExchangePathsManager> mExchangePathsManager;
     unique_ptr<CommissionsManager> mCommissionsManager;
 };
 

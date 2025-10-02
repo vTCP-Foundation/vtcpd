@@ -9,6 +9,7 @@
 #include "core/contractors/addresses/IPv4WithPortAddress.h"
 #include "core/equivalents/EquivalentsSubsystemsRouter.h"
 #include "core/rates/manager/ExchangeRatesManager.h"
+#include "core/paths/ExchangePathsManager.h"
 #include "core/network/communicator/internal/incoming/TailManager.h"
 #include "core/logger/Logger.h"
 #include "core/io/storage/sqlite/StorageHandlerSQLite.h"
@@ -118,6 +119,7 @@ TEST(InitiateMaxFlowExchangeCalculationCommissionTest, MaxFlowWithSourceCommissi
 
     // Exchange rate at node C: amount=5, shift=-1 (rate=0.5) from 1001->2002
     ExchangeRatesManager ratesMgr(io, logger);
+    ExchangePathsManager pathsMgr(io, &router, &ratesMgr, &contractors, logger);
     auto expiresAt = utc_now() + boost::posix_time::seconds(300);
     ExchangeRate rate(EQ_1001, EQ_2002, TrustLineAmount(5), /*shift*/ -1, expiresAt,
                       TrustLineAmount(0), TrustLineAmount(0));
@@ -136,6 +138,7 @@ TEST(InitiateMaxFlowExchangeCalculationCommissionTest, MaxFlowWithSourceCommissi
         &contractors,
         &router,
         &ratesMgr,
+        &pathsMgr,
         &tail,
         logger,
         /*hopsCount*/ 6);

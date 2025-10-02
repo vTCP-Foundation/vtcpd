@@ -20,6 +20,7 @@ TransactionsManager::TransactionsManager(
     SubsystemsController *subsystemsController,
     TrustLinesInfluenceController *trustLinesInfluenceController,
     ExchangeRatesManager *exchangeRatesManager,
+    ExchangePathsManager *exchangePathsManager,
     CommissionsManager *commissionsManager,
     uint8_t hops_count) :
 
@@ -37,6 +38,7 @@ TransactionsManager::TransactionsManager(
     mSubsystemsController(subsystemsController),
     mTrustLinesInfluenceController(trustLinesInfluenceController),
     mExchangeRatesManager(exchangeRatesManager),
+    mExchangePathsManager(exchangePathsManager),
     mCommissionsManager(commissionsManager),
     mHopsCnt(hops_count),
     isPaymentTransactionsAllowedDueToObserving(true),
@@ -1123,6 +1125,7 @@ void TransactionsManager::launchInitiateMaxFlowExchangeCalculationTransaction(
                 mContractorsManager,
                 mEquivalentsSubsystemsRouter,
                 mExchangeRatesManager,
+                mExchangePathsManager,
                 mTailManager,
                 mLog,
                 mHopsCnt),

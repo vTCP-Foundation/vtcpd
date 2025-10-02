@@ -6,6 +6,7 @@
 #include "../../interface/commands_interface/commands/ErrorUserCommand.h"
 #include "../../rates/manager/ExchangeRatesManager.h"
 #include "../../rates/manager/CommissionsManager.h"
+#include "../../paths/ExchangePathsManager.h"
 
 /*
  * Transactions
@@ -136,6 +137,7 @@ public:
         SubsystemsController *subsystemsController,
         TrustLinesInfluenceController *trustLinesInfluenceController,
         ExchangeRatesManager *exchangeRatesManager,
+        ExchangePathsManager *exchangePathsManager,
         CommissionsManager *commissionsManager,
 		uint8_t hops_count);
 
@@ -606,6 +608,7 @@ private:
     SubsystemsController *mSubsystemsController;
     TrustLinesInfluenceController *mTrustLinesInfluenceController;
     ExchangeRatesManager *mExchangeRatesManager;
+    ExchangePathsManager *mExchangePathsManager;
     CommissionsManager *mCommissionsManager;
 
     unique_ptr<TransactionsScheduler> mScheduler;

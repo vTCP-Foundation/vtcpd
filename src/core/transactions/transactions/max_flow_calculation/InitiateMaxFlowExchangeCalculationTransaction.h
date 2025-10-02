@@ -10,42 +10,12 @@
 
 #include "CollectTopologyForExchangeTransaction.h"
 
-// Data structures for exchange path handling
-struct ExchangeStep {
-    ContractorID nodeID;
-    SerializedEquivalent fromEquivalent;
-    SerializedEquivalent toEquivalent;
-    TrustLineAmount exchangeRate; // raw integer rate without shift
-    int16_t exchangeRateShift{0};
-    TrustLineAmount minExchangeAmount{0};
-    TrustLineAmount maxExchangeAmount{0};
-    TrustLineAmount commission;
-};
+// Data structures for exchange path handling (extracted to separate headers)
+#include "../../../paths/lib/ExchangePath.h"
+#include "../../../paths/lib/OptimalPathResult.h"
 
-struct ExchangePath {
-    vector<ContractorID> nodes;
-    vector<SerializedEquivalent> equivalents;
-    vector<ExchangeStep> exchangeSteps;
-    TrustLineAmount minCapacity;
-    double effectiveExchangeRate;
-    TrustLineAmount totalCommissions;
-    
-    bool isValid() const { return !nodes.empty() && nodes.size() == equivalents.size(); }
-    TrustLineAmount calculateMaxCapacity() const { return minCapacity; }
-    double calculateEffectiveExchangeRate() const { return effectiveExchangeRate; }
-    TrustLineAmount sumFixedCommissions() const { return totalCommissions; }
-    bool startsWithEquivalent(SerializedEquivalent equiv) const { 
-        return !equivalents.empty() && equivalents[0] == equiv; 
-    }
-};
-
-struct OptimalPathResult {
-    ExchangePath path;
-    TrustLineAmount optimal_flow;
-    TrustLineAmount received_amount;
-    double effective_exchange_rate;
-    double path_efficiency;
-};
+// Forward declaration
+class ExchangePathsManager;
 
 class InitiateMaxFlowExchangeCalculationTransaction : public BaseCollectTopologyForExchangeTransaction
 {
@@ -59,6 +29,7 @@ public:
         ContractorsManager *contractorsManager,
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         ExchangeRatesManager *exchangeRatesManager,
+        ExchangePathsManager *exchangePathsManager,
         TailManager *tailManager,
         Logger &logger,
         HopsCount_t hopsCount);
@@ -73,31 +44,6 @@ private:
 
     TransactionResult::SharedConst applyCustomLogic() override;
 
-    // Path enumeration and LP methods
-    vector<ExchangePath> enumerateAllFeasiblePaths(ContractorID targetContractor);
-    
-    void enumeratePathsFromEquivalent(
-        SerializedEquivalent startEquivalent,
-        ContractorID targetContractor,
-        vector<ExchangePath> &allPaths,
-        int maxPathLength = 6);
-        
-    void dfsEnumeratePaths(
-        ContractorID currentNode,
-        SerializedEquivalent currentEquivalent,
-        ContractorID targetNode,
-        SerializedEquivalent targetEquivalent,
-        vector<ContractorID> &currentPath,
-        vector<SerializedEquivalent> &currentEquivPath,
-        vector<ExchangeStep> &currentExchanges,
-        vector<ExchangePath> &results,
-        int maxDepth,
-        int currentDepth = 0);
-
-    // removed legacy formatter; use external helper in cpp
-
-    // Helper methods
-    TrustLineAmount getSenderBalance(SerializedEquivalent equivalent);
 
     TrustLineAmount calculateMaxFlow(
         ContractorID contractorID);
@@ -124,6 +70,7 @@ private:
 
 private:
     InitiateMaxFlowExchangeCalculationCommand::Shared mCommand;
+    ExchangePathsManager *mExchangePathsManager;
     vector<SerializedEquivalent> mExchangeEquivalents;
     size_t mCountProcessCollectingTopologyRun;
     vector<pair<ContractorID, BaseAddress::Shared>> mContractorIDs;
