@@ -87,8 +87,6 @@ BaseTransaction::BaseTransaction(
     mTimeStarted(utc_now()),
     mLog(log)
 {
-    mLog.debug("BaseTransaction") << "BaseTransaction. transactionUUID: " << mTransactionUUID.stringUUID() 
-                                << " equivalent: " << mEquivalent;
 }
 
 BaseTransaction::BaseTransaction(

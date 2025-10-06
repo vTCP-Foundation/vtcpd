@@ -38,6 +38,19 @@ TransactionResult::SharedConst EstimateReceiveForPaymentAmountTransaction::run()
         debug() << "EstimateReceiveForPaymentAmount: estimated receive=" << receiveAmount;
         return resultOK(receiveAmount);
 
+    } catch (const runtime_error &e) {
+        // Check for specific error messages
+        string errorMsg = e.what();
+        if (errorMsg.find("error 462") != string::npos) {
+            warning() << "EstimateReceiveForPaymentAmount: " << errorMsg;
+            return resultError(462);
+        } else if (errorMsg.find("error 412") != string::npos) {
+            warning() << "EstimateReceiveForPaymentAmount: " << errorMsg;
+            return resultError(412);
+        } else {
+            error() << "EstimateReceiveForPaymentAmount: Unexpected error: " << errorMsg;
+            return resultError(401);
+        }
     } catch (const exception &e) {
         error() << "EstimateReceiveForPaymentAmount: Unexpected error: " << e.what();
         return resultError(401);
@@ -98,6 +111,13 @@ TrustLineAmount EstimateReceiveForPaymentAmountTransaction::estimateReceive(
 
         totalReceive = totalReceive + pathOutputAmount;
         remainingPayment = remainingPayment - pathInputAmount;
+    }
+
+    // Check if all payment was consumed
+    if (remainingPayment > TrustLineAmount(0)) {
+        warning() << "Insufficient path capacity to consume full payment amount " << paymentAmount
+                  << "; only " << (paymentAmount - remainingPayment) << " could be sent";
+        throw runtime_error("Insufficient paths (error 412)");
     }
 
     return totalReceive;

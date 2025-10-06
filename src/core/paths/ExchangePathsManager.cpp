@@ -644,8 +644,7 @@ double ExchangePathsManager::forwardSimulatePath(
                     // Calculate exchange rate with shift
                     double rate = ex.exchangeRate.convert_to<double>();
                     int16_t shift = ex.exchangeRateShift;
-                    double divisor = std::pow(10.0, shift);
-                    double effectiveRate = rate / divisor;
+                    double effectiveRate = rate * std::pow(10.0, shift);
 
                     double amountBeforeExchange = currentAmount;
                     currentAmount *= effectiveRate;
@@ -659,9 +658,8 @@ double ExchangePathsManager::forwardSimulatePath(
                     }
                     if (ex.maxExchangeAmount > TrustLineAmount(0)) {
                         if (amountBeforeExchange > ex.maxExchangeAmount.convert_to<double>()) {
-                            // Above maximum - cap at max
-                            double maxAllowed = ex.maxExchangeAmount.convert_to<double>();
-                            currentAmount = maxAllowed * effectiveRate;
+                            // Above maximum - cannot use this path
+                            return 0.0;
                         }
                     }
 
@@ -784,8 +782,7 @@ double ExchangePathsManager::inverseSimulatePath(
                     // Calculate exchange rate with shift
                     double rate = ex.exchangeRate.convert_to<double>();
                     int16_t shift = ex.exchangeRateShift;
-                    double divisor = std::pow(10.0, shift);
-                    double effectiveRate = rate / divisor;
+                    double effectiveRate = rate * std::pow(10.0, shift);
 
                     // Inverse exchange: divide by rate
                     if (effectiveRate <= 0.0) {
@@ -841,6 +838,7 @@ vector<ExchangePath> ExchangePathsManager::enumerateAllFeasiblePaths(
     ContractorID targetContractor,
     SerializedEquivalent receiverEquivalent,
     const vector<SerializedEquivalent> &senderEquivalents,
+    ContractorID senderID,
     int maxPathLength)
 {
     vector<ExchangePath> allPaths;
@@ -860,9 +858,6 @@ vector<ExchangePath> ExchangePathsManager::enumerateAllFeasiblePaths(
 
     std::sort(startEquivalents.begin(), startEquivalents.end());
     startEquivalents.erase(std::unique(startEquivalents.begin(), startEquivalents.end()), startEquivalents.end());
-
-    ContractorID senderID = mRouter->getOrCreateParticipantID(
-        mContractorsManager->selfContractor()->mainAddress());
 
     for (const auto& senderEquiv : startEquivalents) {
         enumeratePathsFromEquivalent(senderEquiv, targetContractor, receiverEquivalent, senderID, allPaths, maxPathLength);
@@ -903,14 +898,14 @@ void ExchangePathsManager::dfsEnumeratePaths(
     int maxDepth,
     int currentDepth)
 {
-    // Check depth limit
-    if (currentDepth >= maxDepth) {
-        return;
-    }
+    debug() << "DFS: node=" << currentNode << " eq=" << currentEquivalent
+            << " target=" << targetNode << " targetEq=" << targetEquivalent
+            << " depth=" << currentDepth << "/" << maxDepth;
 
     // Avoid cycles on (node, equivalent)
     for (size_t i = 0; i < currentPath.size(); ++i) {
         if (currentPath[i] == currentNode && currentEquivPath[i] == currentEquivalent) {
+            debug() << "DFS: cycle detected at node " << currentNode << " eq " << currentEquivalent;
             return;
         }
     }
@@ -921,6 +916,7 @@ void ExchangePathsManager::dfsEnumeratePaths(
 
     // If target reached with desired equivalent – finalize the path
     if (currentNode == targetNode && currentEquivalent == targetEquivalent) {
+        debug() << "DFS: TARGET REACHED! Path length: " << currentPath.size();
         ExchangePath completePath;
         completePath.nodes = currentPath;
         completePath.equivalents = currentEquivPath;
@@ -1057,32 +1053,65 @@ void ExchangePathsManager::dfsEnumeratePaths(
         completePath.totalCommissions = sumComm;
 
         if (completePath.isValid()) {
+            debug() << "DFS: Valid path added with capacity " << completePath.minCapacity;
             results.push_back(completePath);
+        } else {
+            warning() << "DFS: Path invalid: nodes=" << completePath.nodes.size()
+                     << " equivs=" << completePath.equivalents.size();
         }
     } else {
+        // Check depth limit before continuing search
+        if (currentDepth >= maxDepth) {
+            debug() << "DFS: depth limit reached at node " << currentNode;
+            // Backtrack
+            currentPath.pop_back();
+            currentEquivPath.pop_back();
+            return;
+        }
+
         // 1) Traverse neighbors in same equivalent
+        debug() << "DFS: Looking for neighbors of node " << currentNode << " in eq " << currentEquivalent;
         auto tlm = mRouter->topologyTrustLineManager(currentEquivalent);
+        size_t neighborCount = 0;
         for (auto tlPtr : tlm->trustLinePtrsSet(currentNode)) {
             auto tl = tlPtr->topologyTrustLine();
             if (*tl->freeAmount() == TrustLineAmount(0)) {
+                debug() << "DFS: Skipping edge " << currentNode << "->" << tl->targetID() << " (zero capacity)";
                 continue;
             }
+            debug() << "DFS: Following edge " << currentNode << "->" << tl->targetID()
+                   << " capacity=" << *tl->freeAmount();
+            neighborCount++;
             dfsEnumeratePaths(
                 tl->targetID(), currentEquivalent,
                 targetNode, targetEquivalent,
                 currentPath, currentEquivPath, currentExchanges,
                 results, maxDepth, currentDepth + 1);
         }
+        debug() << "DFS: Found " << neighborCount << " neighbors for node " << currentNode << " in eq " << currentEquivalent;
 
         // 2) Try exchanges at current node to any available next equivalent (multi-step exchanges)
+        debug() << "DFS: Looking for exchange rates at node " << currentNode;
         auto allRates = mRatesManager->listExternalRates();
+        debug() << "DFS: Total external rates available: " << allRates.size();
+        size_t exchangeCount = 0;
         for (const auto &p : allRates) {
+            debug() << "DFS: Checking rate: contractorID=" << p.first
+                   << " from=" << p.second->equivalentFrom()
+                   << " to=" << p.second->equivalentTo();
             if (p.first != currentNode) continue; // rate not offered here
             auto rate = p.second;
             if (rate->equivalentFrom() != currentEquivalent) continue;
 
             SerializedEquivalent nextEq = rate->equivalentTo();
-            if (nextEq == currentEquivalent) continue;
+            if (nextEq == currentEquivalent) {
+                debug() << "DFS: Skipping exchange (same equivalent)";
+                continue;
+            }
+
+            debug() << "DFS: Found exchange at node " << currentNode
+                   << " from eq " << currentEquivalent << " to eq " << nextEq;
+            exchangeCount++;
 
             ExchangeStep step;
             step.nodeID = currentNode;
@@ -1102,6 +1131,7 @@ void ExchangePathsManager::dfsEnumeratePaths(
                 results, maxDepth, currentDepth + 1);
             currentExchanges.pop_back();
         }
+        debug() << "DFS: Found " << exchangeCount << " applicable exchanges at node " << currentNode;
     }
 
     // Backtrack
@@ -1123,7 +1153,7 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
         // Step 1: Enumerate all feasible paths
         info() << "Step 1: Enumerate all feasible paths to contractor " << targetContractor;
         vector<ExchangePath> feasiblePaths = enumerateAllFeasiblePaths(
-            targetContractor, receiverEquivalent, senderEquivalents, hopsCount);
+            targetContractor, receiverEquivalent, senderEquivalents, senderID, hopsCount);
 
         if (feasiblePaths.empty()) {
             warning() << "No feasible paths found to contractor " << targetContractor;

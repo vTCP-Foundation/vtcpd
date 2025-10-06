@@ -102,6 +102,7 @@ private:
         ContractorID targetContractor,
         SerializedEquivalent receiverEquivalent,
         const vector<SerializedEquivalent> &senderEquivalents,
+        ContractorID senderID,
         int maxPathLength = 10);
 
     void enumeratePathsFromEquivalent(
