@@ -304,7 +304,7 @@ double ExchangePathsManager::findExchangeRateForStep(
     size_t index)
 {
     for (const auto &ex : path.exchangeSteps) {
-        if (ex.nodeID == path.nodes[index] &&
+        if (ex.nodeID == path.ids[index] &&
             ex.fromEquivalent == path.equivalents[index] &&
             ex.toEquivalent == path.equivalents[index + 1]) {
             double rate = ex.exchangeRate.convert_to<double>();
@@ -353,15 +353,15 @@ double ExchangePathsManager::computeMaxRawAllowed(
         maxAllowed = std::numeric_limits<double>::infinity();
     }
 
-    for (size_t k = 0; k + 1 < path.nodes.size(); ++k) {
-        if (path.nodes[k] == path.nodes[k + 1] && path.equivalents[k] != path.equivalents[k + 1]) {
+    for (size_t k = 0; k + 1 < path.ids.size(); ++k) {
+        if (path.ids[k] == path.ids[k + 1] && path.equivalents[k] != path.equivalents[k + 1]) {
             double rate = findExchangeRateForStep(path, k);
             alpha *= rate;
             beta *= rate;
             continue;
         }
 
-        EdgeKey key{path.nodes[k], path.nodes[k + 1], path.equivalents[k]};
+        EdgeKey key{path.ids[k], path.ids[k + 1], path.equivalents[k]};
         double residual = 0.0;
         auto it = edgeRemaining.find(key);
         if (it != edgeRemaining.end()) {
@@ -381,7 +381,7 @@ double ExchangePathsManager::computeMaxRawAllowed(
             maxAllowed = 0.0;
         }
 
-        ContractorID arrivalNode = path.nodes[k + 1];
+        ContractorID arrivalNode = path.ids[k + 1];
         SerializedEquivalent arrivalEq = path.equivalents[k + 1];
         if (commissionAppliedOnPath(appliedCommissions, arrivalNode, arrivalEq)) {
             try {
@@ -430,10 +430,10 @@ string ExchangePathsManager::formatDetailedPathWithRouter(
     double currentFlow = pathResult.optimal_flow.convert_to<double>();
     bool needsArrow = false;
 
-    for (size_t i = 0; i + 1 < path.nodes.size(); i++) {
-        if (path.nodes[i] == path.nodes[i + 1]) {
+    for (size_t i = 0; i + 1 < path.ids.size(); i++) {
+        if (path.ids[i] == path.ids[i + 1]) {
             for (const auto &exchange : path.exchangeSteps) {
-                if (exchange.nodeID == path.nodes[i] &&
+                if (exchange.nodeID == path.ids[i] &&
                     exchange.fromEquivalent == path.equivalents[i] &&
                     exchange.toEquivalent == path.equivalents[i + 1]) {
                     double r = exchange.exchangeRate.convert_to<double>();
@@ -460,13 +460,13 @@ string ExchangePathsManager::formatDetailedPathWithRouter(
         bool showCommission = false;
         bool commissionAvailable = false;
         double commissionAmount = 0.0;
-        pair<ContractorID, SerializedEquivalent> nodeCommissionKey = {path.nodes[i + 1], path.equivalents[i + 1]};
+        pair<ContractorID, SerializedEquivalent> nodeCommissionKey = {path.ids[i + 1], path.equivalents[i + 1]};
 
-        if (i + 1 > 0 && i + 1 < path.nodes.size() - 1 &&
-            exchangeNodes.find(path.nodes[i + 1]) == exchangeNodes.end()) {
+        if (i + 1 > 0 && i + 1 < path.ids.size() - 1 &&
+            exchangeNodes.find(path.ids[i + 1]) == exchangeNodes.end()) {
             try {
                 auto tlm = router->topologyTrustLineManager(path.equivalents[i + 1]);
-                auto commission = tlm->getCommission(path.nodes[i + 1], path.equivalents[i + 1]);
+                auto commission = tlm->getCommission(path.ids[i + 1], path.equivalents[i + 1]);
                 if (commission) {
                     commissionAmount = static_cast<double>(commission->amount());
                     commissionAvailable = commissionAmount > 0.0;
@@ -485,7 +485,7 @@ string ExchangePathsManager::formatDetailedPathWithRouter(
 
         double flowBeforeCommission = currentFlow;
         if (edgeRemaining) {
-            EdgeKey key{path.nodes[i], path.nodes[i + 1], path.equivalents[i]};
+            EdgeKey key{path.ids[i], path.ids[i + 1], path.equivalents[i]};
             auto it = edgeRemaining->find(key);
             double &remain = (it != edgeRemaining->end())
                 ? it->second
@@ -496,8 +496,8 @@ string ExchangePathsManager::formatDetailedPathWithRouter(
             remain = std::max(0.0, remain - flowBeforeCommission);
         }
 
-        ss << "F(nodes: [" << addrOf(path.nodes[i]) << " -> " << addrOf(path.nodes[i + 1])
-           << "]; ids [" << path.nodes[i] << " -> " << path.nodes[i + 1]
+        ss << "F(nodes: [" << addrOf(path.ids[i]) << " -> " << addrOf(path.ids[i + 1])
+           << "]; ids [" << path.ids[i] << " -> " << path.ids[i + 1]
            << "; flow: " << flowBeforeCommission
            << "; eq: " << path.equivalents[i] << ")";
 
@@ -508,8 +508,8 @@ string ExchangePathsManager::formatDetailedPathWithRouter(
             if (currentFlow < 0.0) {
                 currentFlow = 0.0;
             }
-            ss << " -> C(node: " << addrOf(path.nodes[i + 1])
-               << "; id: " << path.nodes[i + 1]
+            ss << " -> C(node: " << addrOf(path.ids[i + 1])
+               << "; id: " << path.ids[i + 1]
                << "; commission: " << commissionAmount
                << "; flow after: " << currentFlow
                << "; eq: " << path.equivalents[i + 1] << ")";
@@ -535,16 +535,16 @@ double ExchangePathsManager::simulatePathNetAmount(
     if (!std::isfinite(sourceFlow) || sourceFlow <= 0.0) {
         return 0.0;
     }
-    if (path.nodes.empty() || path.nodes.size() != path.equivalents.size()) {
+    if (path.ids.empty() || path.ids.size() != path.equivalents.size()) {
         return 0.0;
     }
 
     double currentAmount = sourceFlow;
 
-    for (size_t k = 0; k + 1 < path.nodes.size(); ++k) {
-        if (path.nodes[k] == path.nodes[k + 1] && path.equivalents[k] != path.equivalents[k + 1]) {
+    for (size_t k = 0; k + 1 < path.ids.size(); ++k) {
+        if (path.ids[k] == path.ids[k + 1] && path.equivalents[k] != path.equivalents[k + 1]) {
             for (const auto &ex : path.exchangeSteps) {
-                if (ex.nodeID == path.nodes[k] && ex.fromEquivalent == path.equivalents[k]
+                if (ex.nodeID == path.ids[k] && ex.fromEquivalent == path.equivalents[k]
                     && ex.toEquivalent == path.equivalents[k + 1]) {
                     double r = ex.exchangeRate.convert_to<double>();
                     int16_t sh = ex.exchangeRateShift;
@@ -558,8 +558,8 @@ double ExchangePathsManager::simulatePathNetAmount(
         }
 
         size_t arrivalIndex = k + 1;
-        if (arrivalIndex > 0 && arrivalIndex < path.nodes.size() - 1) {
-            ContractorID nodeId = path.nodes[arrivalIndex];
+        if (arrivalIndex > 0 && arrivalIndex < path.ids.size() - 1) {
+            ContractorID nodeId = path.ids[arrivalIndex];
             SerializedEquivalent nodeEq = path.equivalents[arrivalIndex];
 
             if (exchangeNodes.find(nodeId) == exchangeNodes.end()) {
@@ -635,9 +635,9 @@ double ExchangePathsManager::forwardSimulatePath(
     // Will be merged into edgeRemainingCapacity only if path succeeds
     map<EdgeKey, double> capacityChangesOnThisPath;
 
-    for (size_t i = 0; i + 1 < path.nodes.size(); ++i) {
-        ContractorID fromNode = path.nodes[i];
-        ContractorID toNode = path.nodes[i + 1];
+    for (size_t i = 0; i + 1 < path.ids.size(); ++i) {
+        ContractorID fromNode = path.ids[i];
+        ContractorID toNode = path.ids[i + 1];
         SerializedEquivalent currentEquiv = path.equivalents[i];
         SerializedEquivalent nextEquiv = path.equivalents[i + 1];
 
@@ -706,7 +706,7 @@ double ExchangePathsManager::forwardSimulatePath(
         capacityChangesOnThisPath[edgeKey] = availableCapacity - currentAmount;
 
         // Apply commission at destination node (if intermediate node)
-        if (i + 1 < path.nodes.size() - 1) {
+        if (i + 1 < path.ids.size() - 1) {
             ContractorID nodeId = toNode;
             SerializedEquivalent nodeEq = nextEquiv;
 
@@ -774,15 +774,15 @@ double ExchangePathsManager::inverseSimulatePath(
     map<EdgeKey, double> capacityChangesOnThisPath;
 
     // Work backwards through path from receiver to sender
-    for (int i = static_cast<int>(path.nodes.size()) - 2; i >= 0; --i) {
-        ContractorID fromNode = path.nodes[i];
-        ContractorID toNode = path.nodes[i + 1];
+    for (int i = static_cast<int>(path.ids.size()) - 2; i >= 0; --i) {
+        ContractorID fromNode = path.ids[i];
+        ContractorID toNode = path.ids[i + 1];
         SerializedEquivalent currentEquiv = path.equivalents[i];
         SerializedEquivalent nextEquiv = path.equivalents[i + 1];
 
         // Apply commission at destination node (if intermediate node)
         // Commission is added when going backwards
-        if (i + 1 < static_cast<int>(path.nodes.size()) - 1) {
+        if (i + 1 < static_cast<int>(path.ids.size()) - 1) {
             ContractorID nodeId = toNode;
             SerializedEquivalent nodeEq = nextEquiv;
 
@@ -972,7 +972,7 @@ void ExchangePathsManager::dfsEnumeratePaths(
     if (currentNode == targetNode && currentEquivalent == targetEquivalent) {
         debug() << "DFS: TARGET REACHED! Path length: " << currentPath.size();
         ExchangePath completePath;
-        completePath.nodes = currentPath;
+        completePath.ids = currentPath;
         completePath.equivalents = currentEquivPath;
         completePath.exchangeSteps = currentExchanges;
 
@@ -1110,7 +1110,7 @@ void ExchangePathsManager::dfsEnumeratePaths(
             debug() << "DFS: Valid path added with capacity " << completePath.minCapacity;
             results.push_back(completePath);
         } else {
-            warning() << "DFS: Path invalid: nodes=" << completePath.nodes.size()
+            warning() << "DFS: Path invalid: nodes=" << completePath.ids.size()
                      << " equivs=" << completePath.equivalents.size();
         }
     } else {
@@ -1292,7 +1292,7 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
 
         for (size_t i = 0; i < feasiblePaths.size(); ++i) {
             const auto &path = feasiblePaths[i];
-            if (path.nodes.size() < 2) {
+            if (path.ids.size() < 2) {
                 continue;
             }
 
@@ -1313,9 +1313,9 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                 constantTerm *= r;
             };
 
-            for (size_t k = 0; k + 1 < path.nodes.size(); ++k) {
-                ContractorID fromNode = path.nodes[k];
-                ContractorID toNode = path.nodes[k + 1];
+            for (size_t k = 0; k + 1 < path.ids.size(); ++k) {
+                ContractorID fromNode = path.ids[k];
+                ContractorID toNode = path.ids[k + 1];
 
                 if (fromNode == toNode && path.equivalents[k] != path.equivalents[k + 1]) {
                     for (const auto &ex : path.exchangeSteps) {
@@ -1354,8 +1354,8 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                 edge.constantSum += constantTerm;
 
                 size_t arrivalIndex = k + 1;
-                if (arrivalIndex > 0 && arrivalIndex < path.nodes.size() - 1) {
-                    ContractorID arrivalNode = path.nodes[arrivalIndex];
+                if (arrivalIndex > 0 && arrivalIndex < path.ids.size() - 1) {
+                    ContractorID arrivalNode = path.ids[arrivalIndex];
                     SerializedEquivalent arrivalEq = path.equivalents[arrivalIndex];
                     if (exchangeNodesInPath.find(arrivalNode) == exchangeNodesInPath.end()) {
                         try {
@@ -1390,8 +1390,8 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
 
         for (size_t i = 0; i < feasiblePaths.size(); i++) {
             const auto &path = feasiblePaths[i];
-            for (size_t j = 1; j < path.nodes.size() - 1; ++j) {
-                allUniqueCommissionNodes.insert({path.nodes[j], path.equivalents[j]});
+            for (size_t j = 1; j < path.ids.size() - 1; ++j) {
+                allUniqueCommissionNodes.insert({path.ids[j], path.equivalents[j]});
             }
         }
 
@@ -1460,7 +1460,7 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
         // Node balance constraints
         std::set<ContractorID> pathNodes;
         for (const auto &p : feasiblePaths) {
-            for (auto nid : p.nodes) pathNodes.insert(nid);
+            for (auto nid : p.ids) pathNodes.insert(nid);
         }
 
         for (ContractorID node : pathNodes) {
@@ -1468,8 +1468,8 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
 
             std::set<SerializedEquivalent> nodeEqs;
             for (const auto &p : feasiblePaths) {
-                for (size_t idx = 0; idx < p.nodes.size(); ++idx) {
-                    if (p.nodes[idx] == node) nodeEqs.insert(p.equivalents[idx]);
+                for (size_t idx = 0; idx < p.ids.size(); ++idx) {
+                    if (p.ids[idx] == node) nodeEqs.insert(p.equivalents[idx]);
                 }
             }
 
@@ -1482,10 +1482,10 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
 
                     auto cumulativeRateAt = [&](size_t idx) -> double {
                         double cr = 1.0;
-                        for (size_t j = 1; j <= idx && j < p.nodes.size(); ++j) {
-                            if (p.nodes[j-1] == p.nodes[j] && p.equivalents[j-1] != p.equivalents[j]) {
+                        for (size_t j = 1; j <= idx && j < p.ids.size(); ++j) {
+                            if (p.ids[j-1] == p.ids[j] && p.equivalents[j-1] != p.equivalents[j]) {
                                 for (const auto &ex : p.exchangeSteps) {
-                                    if (ex.nodeID == p.nodes[j] && ex.fromEquivalent == p.equivalents[j-1]
+                                    if (ex.nodeID == p.ids[j] && ex.fromEquivalent == p.equivalents[j-1]
                                         && ex.toEquivalent == p.equivalents[j]) {
                                         double r = ex.exchangeRate.convert_to<double>();
                                         int16_t sh = ex.exchangeRateShift;
@@ -1501,20 +1501,20 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                     };
 
                     double coeff = 0.0;
-                    for (size_t idx = 1; idx < p.nodes.size(); ++idx) {
-                        if (p.nodes[idx] == node && p.equivalents[idx] == eq
-                            && p.nodes[idx-1] != node && p.equivalents[idx-1] == eq) {
+                    for (size_t idx = 1; idx < p.ids.size(); ++idx) {
+                        if (p.ids[idx] == node && p.equivalents[idx] == eq
+                            && p.ids[idx-1] != node && p.equivalents[idx-1] == eq) {
                             coeff += cumulativeRateAt(idx);
                         }
                     }
-                    for (size_t idx = 0; idx + 1 < p.nodes.size(); ++idx) {
-                        if (p.nodes[idx] == node && p.equivalents[idx] == eq
-                            && p.nodes[idx+1] != node && p.equivalents[idx+1] == eq) {
+                    for (size_t idx = 0; idx + 1 < p.ids.size(); ++idx) {
+                        if (p.ids[idx] == node && p.equivalents[idx] == eq
+                            && p.ids[idx+1] != node && p.equivalents[idx+1] == eq) {
                             coeff -= cumulativeRateAt(idx);
                         }
                     }
-                    for (size_t idx = 0; idx + 1 < p.nodes.size(); ++idx) {
-                        if (p.nodes[idx] == node && p.nodes[idx+1] == node
+                    for (size_t idx = 0; idx + 1 < p.ids.size(); ++idx) {
+                        if (p.ids[idx] == node && p.ids[idx+1] == node
                             && p.equivalents[idx] != p.equivalents[idx+1]) {
                             for (const auto &ex : p.exchangeSteps) {
                                 if (ex.nodeID == node && ex.fromEquivalent == p.equivalents[idx]
@@ -1647,8 +1647,8 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                         if (std::fabs(diff) > eps) {
                             return diff > 0.0;
                         }
-                        auto aNodes = a.path.nodes.size();
-                        auto bNodes = b.path.nodes.size();
+                        auto aNodes = a.path.ids.size();
+                        auto bNodes = b.path.ids.size();
                         if (aNodes != bNodes) {
                             return aNodes < bNodes;
                         }
@@ -1668,11 +1668,11 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
 
                 for (const auto &pathResult : optimalPaths) {
                     const auto &path = pathResult.path;
-                    for (size_t idx = 0; idx + 1 < path.nodes.size(); ++idx) {
-                        if (path.nodes[idx] == path.nodes[idx + 1]) {
+                    for (size_t idx = 0; idx + 1 < path.ids.size(); ++idx) {
+                        if (path.ids[idx] == path.ids[idx + 1]) {
                             continue;
                         }
-                        ensureEdgeCapacity(path.nodes[idx], path.nodes[idx + 1], path.equivalents[idx]);
+                        ensureEdgeCapacity(path.ids[idx], path.ids[idx + 1], path.equivalents[idx]);
                     }
                 }
 

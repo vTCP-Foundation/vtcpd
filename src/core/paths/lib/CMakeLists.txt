@@ -4,7 +4,9 @@ add_library(slib_paths
     Path.h
     Path.cpp
     PathsCollection.h
-    PathsCollection.cpp)
+    PathsCollection.cpp
+    OptimalPathResult.h
+    OptimalPathResult.cpp)
 
 target_include_directories(slib_paths
     PUBLIC

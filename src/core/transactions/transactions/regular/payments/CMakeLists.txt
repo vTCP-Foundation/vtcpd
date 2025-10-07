@@ -5,12 +5,20 @@ add_library(transactions__payments
     base/BasePaymentTransaction.cpp
     base/PathStats.h
     base/PathStats.cpp
+    base/BaseExchangePaymentTransaction.h
+    base/BaseExchangePaymentTransaction.cpp
     CoordinatorPaymentTransaction.h
     CoordinatorPaymentTransaction.cpp
     ReceiverPaymentTransaction.h
     ReceiverPaymentTransaction.cpp
     IntermediateNodePaymentTransaction.h
     IntermediateNodePaymentTransaction.cpp
+    CoordinatorExchangePaymentTransaction.h
+    CoordinatorExchangePaymentTransaction.cpp
+    ReceiverExchangePaymentTransaction.h
+    ReceiverExchangePaymentTransaction.cpp
+    IntermediateNodeExchangePaymentTransaction.h
+    IntermediateNodeExchangePaymentTransaction.cpp
     VotesStatusResponsePaymentTransaction.h
     VotesStatusResponsePaymentTransaction.cpp
     CycleCloserInitiatorTransaction.h
