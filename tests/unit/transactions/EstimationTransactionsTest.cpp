@@ -125,12 +125,12 @@ namespace {
                       const vector<ExchangeStep>& exchanges = {})
     {
         OptimalPathResult pathResult;
-        pathResult.path.nodes = nodes;
-        pathResult.path.equivalents = equivs;
-        pathResult.path.exchangeSteps = exchanges;
-        pathResult.path.minCapacity = optimalFlow;
-        pathResult.path.effectiveExchangeRate = 1.0;
-        pathResult.path.totalCommissions = TrustLineAmount(0);
+        pathResult.path().ids = nodes;
+        pathResult.path().equivalents = equivs;
+        pathResult.path().exchangeSteps = exchanges;
+        pathResult.path().minCapacity = optimalFlow;
+        pathResult.path().effectiveExchangeRate = 1.0;
+        pathResult.path().totalCommissions = TrustLineAmount(0);
         pathResult.optimal_flow = optimalFlow;
         pathResult.received_amount = optimalFlow;
         pathResult.effective_exchange_rate = 1.0;
@@ -142,7 +142,7 @@ namespace {
                 double rate = ex.exchangeRate.convert_to<double>() * pow(10.0, ex.exchangeRateShift);
                 totalRate *= rate;
             }
-            pathResult.path.effectiveExchangeRate = totalRate;
+            pathResult.path().effectiveExchangeRate = totalRate;
             pathResult.effective_exchange_rate = totalRate;
         }
 
@@ -275,12 +275,12 @@ TEST(EstimateReceiveTransactionTest, Topology2_CrossEquivalentExchange)
     // Store path with exchange - nodes: A → B → X → X (exchange) → target
     PathCacheKey key{targetID, EQ1, EQ2};
     OptimalPathResult pathResult;
-    pathResult.path.nodes = {idA, idB, idX, idX, targetID};
-    pathResult.path.equivalents = {EQ1, EQ1, EQ1, EQ2, EQ2};
-    pathResult.path.exchangeSteps = {exchange};
-    pathResult.path.minCapacity = TrustLineAmount(800);
-    pathResult.path.effectiveExchangeRate = 2.0;
-    pathResult.path.totalCommissions = TrustLineAmount(0);
+    pathResult.path().ids = {idA, idB, idX, idX, targetID};
+    pathResult.path().equivalents = {EQ1, EQ1, EQ1, EQ2, EQ2};
+    pathResult.path().exchangeSteps = {exchange};
+    pathResult.path().minCapacity = TrustLineAmount(800);
+    pathResult.path().effectiveExchangeRate = 2.0;
+    pathResult.path().totalCommissions = TrustLineAmount(0);
     pathResult.optimal_flow = TrustLineAmount(800);
     pathResult.received_amount = TrustLineAmount(1600);
     pathResult.effective_exchange_rate = 2.0;
@@ -378,11 +378,11 @@ TEST(EstimateReceiveTransactionTest, Topology4_ExchangeLimits)
     // Path: A → X → X (exchange) → target
     PathCacheKey key{targetID, EQ1, EQ2};
     OptimalPathResult pathResult;
-    pathResult.path.nodes = {idA, idX, idX, targetID};
-    pathResult.path.equivalents = {EQ1, EQ1, EQ2, EQ2};
-    pathResult.path.exchangeSteps = {exchange};
-    pathResult.path.minCapacity = TrustLineAmount(1000);
-    pathResult.path.effectiveExchangeRate = 1.5;
+    pathResult.path().ids = {idA, idX, idX, targetID};
+    pathResult.path().equivalents = {EQ1, EQ1, EQ2, EQ2};
+    pathResult.path().exchangeSteps = {exchange};
+    pathResult.path().minCapacity = TrustLineAmount(1000);
+    pathResult.path().effectiveExchangeRate = 1.5;
     pathResult.optimal_flow = TrustLineAmount(1000);
     pathResult.received_amount = TrustLineAmount(1500);
     env.pathsManager->storePaths(key, {pathResult});
@@ -588,11 +588,11 @@ TEST(EstimatePaymentTransactionTest, Topology2_CrossEquivalentExchange)
     // Path: A → B → X → X (exchange) → target
     PathCacheKey key{targetID, EQ1, EQ2};
     OptimalPathResult pathResult;
-    pathResult.path.nodes = {idA, idB, idX, idX, targetID};
-    pathResult.path.equivalents = {EQ1, EQ1, EQ1, EQ2, EQ2};
-    pathResult.path.exchangeSteps = {exchange};
-    pathResult.path.minCapacity = TrustLineAmount(800);
-    pathResult.path.effectiveExchangeRate = 2.0;
+    pathResult.path().ids = {idA, idB, idX, idX, targetID};
+    pathResult.path().equivalents = {EQ1, EQ1, EQ1, EQ2, EQ2};
+    pathResult.path().exchangeSteps = {exchange};
+    pathResult.path().minCapacity = TrustLineAmount(800);
+    pathResult.path().effectiveExchangeRate = 2.0;
     pathResult.optimal_flow = TrustLineAmount(800);
     pathResult.received_amount = TrustLineAmount(1600);
     env.pathsManager->storePaths(key, {pathResult});
@@ -687,11 +687,11 @@ TEST(EstimatePaymentTransactionTest, Topology4_ExchangeLimits)
     // Path: A → X → X (exchange) → target
     PathCacheKey key{targetID, EQ1, EQ2};
     OptimalPathResult pathResult;
-    pathResult.path.nodes = {idA, idX, idX, targetID};
-    pathResult.path.equivalents = {EQ1, EQ1, EQ2, EQ2};
-    pathResult.path.exchangeSteps = {exchange};
-    pathResult.path.minCapacity = TrustLineAmount(1000);
-    pathResult.path.effectiveExchangeRate = 1.5;
+    pathResult.path().ids = {idA, idX, idX, targetID};
+    pathResult.path().equivalents = {EQ1, EQ1, EQ2, EQ2};
+    pathResult.path().exchangeSteps = {exchange};
+    pathResult.path().minCapacity = TrustLineAmount(1000);
+    pathResult.path().effectiveExchangeRate = 1.5;
     pathResult.optimal_flow = TrustLineAmount(1000);
     pathResult.received_amount = TrustLineAmount(1500);
     env.pathsManager->storePaths(key, {pathResult});

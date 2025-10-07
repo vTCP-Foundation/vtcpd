@@ -94,7 +94,7 @@ TrustLineAmount EstimatePaymentForReceiveAmountTransaction::estimatePayment(
 
         // Inverse simulate to calculate required input
         double requiredInput = mExchangePathsManager->inverseSimulatePath(
-            pathResult.path,
+            pathResult.path(),
             targetForPath,
             appliedCommissions,
             edgeRemainingCapacity);

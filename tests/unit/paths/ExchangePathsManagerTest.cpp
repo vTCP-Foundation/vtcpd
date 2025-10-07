@@ -81,11 +81,11 @@ namespace {
         TrustLineAmount flow = TrustLineAmount(100))
     {
         OptimalPathResult result;
-        result.path.nodes = nodes;
-        result.path.equivalents = equivalents;
-        result.path.minCapacity = flow;
-        result.path.effectiveExchangeRate = 1.0;
-        result.path.totalCommissions = TrustLineAmount(0);
+        result.path().ids = nodes;
+        result.path().equivalents = equivalents;
+        result.path().minCapacity = flow;
+        result.path().effectiveExchangeRate = 1.0;
+        result.path().totalCommissions = TrustLineAmount(0);
         result.optimal_flow = flow;
         result.received_amount = flow;
         result.effective_exchange_rate = 1.0;

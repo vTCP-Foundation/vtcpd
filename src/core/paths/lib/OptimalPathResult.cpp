@@ -47,14 +47,14 @@ void OptimalPathResult::shortageMaxFlow(
             "attempt to increase max flow occurred.");
 }
 
-ExchangePath& OptimalPathResult::path_ref()
+ExchangePath& OptimalPathResult::path()
 {
-    return path;
+    return mPath;
 }
 
-const ExchangePath& OptimalPathResult::path_ref() const
+const ExchangePath& OptimalPathResult::path() const
 {
-    return path;
+    return mPath;
 }
 
 bool OptimalPathResult::containsIntermediateNodes() const
@@ -74,7 +74,7 @@ const pair<BaseAddress::Shared, SerializedPositionInPath> OptimalPathResult::cur
     for (SerializedPositionInPath idx = 0; idx < mIntermediateNodesStates.size(); ++idx)
         if (mIntermediateNodesStates[idx] != OptimalPathResult::ReservationApproved &&
                 mIntermediateNodesStates[idx] != OptimalPathResult::ReservationRejected)
-            return make_pair(path.intermediates()[idx], idx);
+            return make_pair(mPath.intermediates()[idx], idx);
 
     throw NotFoundError(
         "OptimalPathResult::currentIntermediateNodeAndPos: "
@@ -95,11 +95,11 @@ const pair<BaseAddress::Shared, SerializedPositionInPath> OptimalPathResult::nex
     for (SerializedPositionInPath idx = 0; idx < mIntermediateNodesStates.size(); ++idx) {
         if (0 == idx &&
                 mIntermediateNodesStates[idx] == OptimalPathResult::NeighbourReservationApproved) {
-            return make_pair(path.intermediates()[idx], idx);
+            return make_pair(mPath.intermediates()[idx], idx);
         }
 
         if (mIntermediateNodesStates[idx] == OptimalPathResult::ReservationRequestDoesntSent) {
-            return make_pair(path.intermediates()[idx], idx);
+            return make_pair(mPath.intermediates()[idx], idx);
         }
     }
 
@@ -135,7 +135,7 @@ const bool OptimalPathResult::isWaitingForNeighborReservationPropagationResponse
  */
 const bool OptimalPathResult::isWaitingForReservationResponse() const
 {
-    if (path.length() == 1) {
+    if (mPath.length() == 1) {
         return false;
     }
 

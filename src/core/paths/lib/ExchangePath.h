@@ -86,6 +86,10 @@ struct ExchangePath {
         }
         return s.str();
     }
+
+    friend bool operator== (
+        const ExchangePath &p1,
+        const ExchangePath &p2);
 };
 
 #endif // VTCPD_EXCHANGEPATH_H

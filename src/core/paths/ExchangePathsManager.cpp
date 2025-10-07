@@ -419,7 +419,7 @@ string ExchangePathsManager::formatDetailedPathWithRouter(
     double *deliveredOut)
 {
     stringstream ss;
-    const auto &path = pathResult.path;
+    const auto &path = pathResult.path();
 
     auto addrOf = [&](ContractorID id) -> string {
         auto addr = router->resolveParticipantAddress(id);
@@ -1631,7 +1631,7 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                     if (optimalFlow > 1e-6) {
                         const auto &path = feasiblePaths[i];
                         OptimalPathResult pathResult;
-                        pathResult.path = path;
+                        pathResult.mPath = path;
                         pathResult.optimal_flow = toAmountSafe(optimalFlow);
                         pathResult.received_amount = TrustLineAmount(0);
                         pathResult.effective_exchange_rate = path.calculateEffectiveExchangeRate();
@@ -1647,8 +1647,8 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                         if (std::fabs(diff) > eps) {
                             return diff > 0.0;
                         }
-                        auto aNodes = a.path.ids.size();
-                        auto bNodes = b.path.ids.size();
+                        auto aNodes = a.path().ids.size();
+                        auto bNodes = b.path().ids.size();
                         if (aNodes != bNodes) {
                             return aNodes < bNodes;
                         }
@@ -1667,7 +1667,7 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                 };
 
                 for (const auto &pathResult : optimalPaths) {
-                    const auto &path = pathResult.path;
+                    const auto &path = pathResult.path();
                     for (size_t idx = 0; idx + 1 < path.ids.size(); ++idx) {
                         if (path.ids[idx] == path.ids[idx + 1]) {
                             continue;
@@ -1682,7 +1682,7 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                     double solverRaw = pathResult.optimal_flow.convert_to<double>();
                     std::vector<std::pair<ContractorID, SerializedEquivalent>> appliedNow;
                     simulatePathNetAmount(
-                        pathResult.path,
+                        pathResult.path(),
                         solverRaw,
                         mRouter,
                         exchangeNodes,
@@ -1690,7 +1690,7 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                         &appliedNow);
 
                     double maxRawAllowed = computeMaxRawAllowed(
-                        pathResult.path,
+                        pathResult.path(),
                         appliedNow,
                         edgeRemaining,
                         mRouter,

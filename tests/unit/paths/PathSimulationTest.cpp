@@ -117,7 +117,7 @@ TEST(PathSimulationTest, ForwardSimulateSimplePath)
 
     // Create path: A → B → C
     ExchangePath path;
-    path.nodes = {idA, idB, idC};
+    path.ids = {idA, idB, idC};
     path.equivalents = {EQ, EQ, EQ};
     path.minCapacity = TrustLineAmount(800);
     path.effectiveExchangeRate = 1.0;
@@ -168,7 +168,7 @@ TEST(PathSimulationTest, ForwardSimulateWithExchange)
     // Create path: A (eq1) → B (eq1) → X (eq1) → X (eq2) [exchange at X] → C (eq2)
     // Exchange happens when same node changes equivalent
     ExchangePath path;
-    path.nodes = {idA, idB, idX, idX, idC};
+    path.ids = {idA, idB, idX, idX, idC};
     path.equivalents = {EQ1, EQ1, EQ1, EQ2, EQ2};
     path.minCapacity = TrustLineAmount(800);
     path.effectiveExchangeRate = 2.0;
@@ -215,7 +215,7 @@ TEST(PathSimulationTest, ForwardSimulateExchangeLimits)
 
     // Create path: A (eq1) → X (eq1) → X (eq2) [exchange at X] → B (eq2)
     ExchangePath path;
-    path.nodes = {idA, idX, idX, idB};
+    path.ids = {idA, idX, idX, idB};
     path.equivalents = {EQ1, EQ1, EQ2, EQ2};
     path.minCapacity = TrustLineAmount(1000);
     path.effectiveExchangeRate = 1.5;
@@ -283,7 +283,7 @@ TEST(PathSimulationTest, ForwardSimulateCapacityConstraint)
         {});
 
     ExchangePath path;
-    path.nodes = {idA, idB, idC};
+    path.ids = {idA, idB, idC};
     path.equivalents = {EQ, EQ, EQ};
     path.minCapacity = TrustLineAmount(500);
     path.effectiveExchangeRate = 1.0;
@@ -323,7 +323,7 @@ TEST(PathSimulationTest, InverseSimulateSimplePath)
         });
 
     ExchangePath path;
-    path.nodes = {idA, idB, idC};
+    path.ids = {idA, idB, idC};
     path.equivalents = {EQ, EQ, EQ};
     path.minCapacity = TrustLineAmount(800);
     path.effectiveExchangeRate = 1.0;
@@ -359,7 +359,7 @@ TEST(PathSimulationTest, InverseSimulateWithExchange)
 
     // Path: A (eq1) → B (eq1) → X (eq1) → X (eq2) [exchange] → C (eq2)
     ExchangePath path;
-    path.nodes = {idA, idB, idX, idX, idC};
+    path.ids = {idA, idB, idX, idX, idC};
     path.equivalents = {EQ1, EQ1, EQ1, EQ2, EQ2};
     path.minCapacity = TrustLineAmount(800);
     path.effectiveExchangeRate = 2.0;
@@ -404,7 +404,7 @@ TEST(PathSimulationTest, InverseSimulateExchangeLimits)
 
     // Path: A (eq1) → X (eq1) → X (eq2) [exchange] → B (eq2)
     ExchangePath path;
-    path.nodes = {idA, idX, idX, idB};
+    path.ids = {idA, idX, idX, idB};
     path.equivalents = {EQ1, EQ1, EQ2, EQ2};
     path.minCapacity = TrustLineAmount(1000);
     path.effectiveExchangeRate = 1.5;
@@ -466,7 +466,7 @@ TEST(PathSimulationTest, InverseSimulateCapacityConstraint)
         {});
 
     ExchangePath path;
-    path.nodes = {idA, idB, idC};
+    path.ids = {idA, idB, idC};
     path.equivalents = {EQ, EQ, EQ};
     path.minCapacity = TrustLineAmount(500);
     path.effectiveExchangeRate = 1.0;
@@ -503,7 +503,7 @@ TEST(PathSimulationTest, CommissionChargedOnceAcrossPaths)
 
     // Path 1: A -> B -> C
     ExchangePath path1;
-    path1.nodes = {idA, idB, idC};
+    path1.ids = {idA, idB, idC};
     path1.equivalents = {EQ, EQ, EQ};
     path1.minCapacity = TrustLineAmount(500);
     path1.effectiveExchangeRate = 1.0;
@@ -511,7 +511,7 @@ TEST(PathSimulationTest, CommissionChargedOnceAcrossPaths)
 
     // Path 2: A -> B -> D (shares B)
     ExchangePath path2;
-    path2.nodes = {idA, idB, idD};
+    path2.ids = {idA, idB, idD};
     path2.equivalents = {EQ, EQ, EQ};
     path2.minCapacity = TrustLineAmount(500);
     path2.effectiveExchangeRate = 1.0;

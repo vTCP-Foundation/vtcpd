@@ -22,13 +22,13 @@ struct OptimalPathResult {
     };
 
     // Original fields from OR-Tools optimization
-    ExchangePath path;
     TrustLineAmount optimal_flow;
     TrustLineAmount received_amount;
     double effective_exchange_rate;
     double path_efficiency;
 
     // Fields from PathStats for reservation management
+    ExchangePath mPath;
     TrustLineAmount mMaxPathFlow;
     bool mIsValid;
     vector<NodeState> mIntermediateNodesStates;
@@ -40,8 +40,8 @@ struct OptimalPathResult {
     void setNodeState(const SerializedPositionInPath positionInPath, const NodeState state);
     const TrustLineAmount& maxFlow() const;
     void shortageMaxFlow(const TrustLineAmount &kAmount);
-    ExchangePath& path_ref();
-    const ExchangePath& path_ref() const;
+    ExchangePath& path();
+    const ExchangePath& path() const;
     bool containsIntermediateNodes() const;
     const pair<BaseAddress::Shared, SerializedPositionInPath> currentIntermediateNodeAndPos() const;
     const pair<BaseAddress::Shared, SerializedPositionInPath> nextIntermediateNodeAndPos() const;

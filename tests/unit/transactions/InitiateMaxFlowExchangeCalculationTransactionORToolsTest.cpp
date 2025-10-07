@@ -138,12 +138,12 @@ TEST_F(InitiateMaxFlowExchangeCalculationTransactionORToolsTest, InfeasibleModel
 TEST_F(InitiateMaxFlowExchangeCalculationTransactionORToolsTest, ExchangePathDataStructureTest) {
     // Test ExchangePath data structure
     ExchangePath path;
-    path.nodes = {1, 2, 3};
+    path.ids = {1, 2, 3};
     path.equivalents = {1, 1, 2};
     path.minCapacity = TrustLineAmount(100);
     path.effectiveExchangeRate = 0.95;
     path.totalCommissions = TrustLineAmount(5);
-    
+
     EXPECT_TRUE(path.isValid()) << "Path should be valid";
     EXPECT_EQ(path.calculateMaxCapacity(), TrustLineAmount(100));
     EXPECT_DOUBLE_EQ(path.calculateEffectiveExchangeRate(), 0.95);
@@ -155,17 +155,17 @@ TEST_F(InitiateMaxFlowExchangeCalculationTransactionORToolsTest, ExchangePathDat
 TEST_F(InitiateMaxFlowExchangeCalculationTransactionORToolsTest, OptimalPathResultTest) {
     // Test OptimalPathResult data structure
     ExchangePath path;
-    path.nodes = {1, 2};
+    path.ids = {1, 2};
     path.equivalents = {1, 2};
     path.effectiveExchangeRate = 0.9;
-    
+
     OptimalPathResult result;
-    result.path = path;
+    result.mPath = path;
     result.optimal_flow = TrustLineAmount(100);
     result.received_amount = TrustLineAmount(90);
     result.effective_exchange_rate = 0.9;
     result.path_efficiency = 0.9;
-    
+
     EXPECT_EQ(result.optimal_flow, TrustLineAmount(100));
     EXPECT_EQ(result.received_amount, TrustLineAmount(90));
     EXPECT_DOUBLE_EQ(result.effective_exchange_rate, 0.9);

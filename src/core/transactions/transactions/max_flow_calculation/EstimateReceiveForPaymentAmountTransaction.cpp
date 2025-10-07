@@ -96,7 +96,7 @@ TrustLineAmount EstimateReceiveForPaymentAmountTransaction::estimateReceive(
 
         // Forward simulate to get output amount
         double pathOutput = mExchangePathsManager->forwardSimulatePath(
-            pathResult.path,
+            pathResult.path(),
             pathInput,
             appliedCommissions,
             edgeRemainingCapacity);

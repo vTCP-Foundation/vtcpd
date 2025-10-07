@@ -5,6 +5,8 @@ add_library(slib_paths
     Path.cpp
     PathsCollection.h
     PathsCollection.cpp
+    ExchangePath.h
+    ExchangePath.cpp
     OptimalPathResult.h
     OptimalPathResult.cpp)
 

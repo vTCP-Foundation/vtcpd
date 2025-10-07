@@ -158,8 +158,8 @@ TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::ap
             if (!result.optimalPaths.empty()) {
                 map<SerializedEquivalent, vector<OptimalPathResult>> pathsBySenderEq;
                 for (const auto &pathResult : result.optimalPaths) {
-                    if (!pathResult.path.equivalents.empty()) {
-                        SerializedEquivalent senderEq = pathResult.path.equivalents.front();
+                    if (!pathResult.path().equivalents.empty()) {
+                        SerializedEquivalent senderEq = pathResult.path().equivalents.front();
                         pathsBySenderEq[senderEq].push_back(pathResult);
                     }
                 }
