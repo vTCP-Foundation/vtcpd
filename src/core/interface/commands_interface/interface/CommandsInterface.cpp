@@ -214,6 +214,11 @@ pair<bool, BaseUserCommand::Shared> CommandsParser::tryParseCommand(
                 uuid,
                 buffer);
 
+        } else if (identifier == CreditUsageExchangeCommand::identifier()) {
+            command = new CreditUsageExchangeCommand(
+                uuid,
+                buffer);
+
         } else if (identifier == InitiateMaxFlowCalculationCommand::identifier()) {
             command = new InitiateMaxFlowCalculationCommand(
                 uuid,

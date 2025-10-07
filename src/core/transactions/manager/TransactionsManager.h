@@ -4,6 +4,7 @@
 #include "../scheduler/TransactionsScheduler.h"
 #include "../../interface/results_interface/interface/ResultsInterface.h"
 #include "../../interface/commands_interface/commands/ErrorUserCommand.h"
+#include "../../interface/commands_interface/commands/payments/CreditUsageExchangeCommand.h"
 #include "../../rates/manager/ExchangeRatesManager.h"
 #include "../../rates/manager/CommissionsManager.h"
 #include "../../paths/ExchangePathsManager.h"
@@ -295,6 +296,9 @@ protected: // Transactions
      */
     void launchCoordinatorPaymentTransaction(
         CreditUsageCommand::Shared command);
+
+    void launchCoordinatorExchangePaymentTransaction(
+        CreditUsageExchangeCommand::Shared command);
 
     void launchReceiverPaymentTransaction(
         ReceiverInitPaymentRequestMessage::Shared message);

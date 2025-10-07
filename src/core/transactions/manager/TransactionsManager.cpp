@@ -317,6 +317,11 @@ void TransactionsManager::processCommand(
             dynamic_pointer_cast<CreditUsageCommand>(
                 command));
 
+    } else if (command->identifier() == CreditUsageExchangeCommand::identifier()) {
+        launchCoordinatorExchangePaymentTransaction(
+            static_pointer_cast<CreditUsageExchangeCommand>(
+                command));
+
     } else if (command->identifier() == InitiateMaxFlowCalculationCommand::identifier()) {
         launchInitiateMaxFlowCalculatingTransaction(
             static_pointer_cast<InitiateMaxFlowCalculationCommand>(
@@ -1446,6 +1451,14 @@ void TransactionsManager::launchCoordinatorPaymentTransaction(
             false,
             false);
     }
+}
+
+void TransactionsManager::launchCoordinatorExchangePaymentTransaction(
+    CreditUsageExchangeCommand::Shared command)
+{
+    warning() << "CoordinatorExchangePaymentTransaction is not implemented yet";
+    onCommandResultReady(
+        command->responseForbiddenRunTransaction());
 }
 
 void TransactionsManager::launchReceiverPaymentTransaction(

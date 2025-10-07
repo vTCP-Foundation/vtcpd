@@ -18,6 +18,7 @@
 #include "../commands/trust_lines/RemoveTrustLineCommand.h"
 #include "../commands/trust_lines/ResetTrustLineCommand.h"
 #include "../commands/payments/CreditUsageCommand.h"
+#include "../commands/payments/CreditUsageExchangeCommand.h"
 #include "../commands/max_flow_calculation/InitiateMaxFlowCalculationCommand.h"
 #include "../commands/max_flow_calculation/InitiateMaxFlowCalculationFullyCommand.h"
 #include "../commands/max_flow_calculation/InitiateMaxFlowExchangeCalculationCommand.h"

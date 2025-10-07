@@ -38,6 +38,8 @@ add_library(interface__commands
     commands/trust_lines/ResetTrustLineCommand.cpp
     commands/payments/CreditUsageCommand.cpp
     commands/payments/CreditUsageCommand.h
+    commands/payments/CreditUsageExchangeCommand.cpp
+    commands/payments/CreditUsageExchangeCommand.h
     commands/max_flow_calculation/InitiateMaxFlowCalculationCommand.h
     commands/max_flow_calculation/InitiateMaxFlowCalculationCommand.cpp
     commands/max_flow_calculation/InitiateMaxFlowExchangeCalculationCommand.h
