@@ -52,12 +52,14 @@ protected:
     bool checkReservationsDirections() const override;
 
     void addPathForFurtherProcessing(const OptimalPathResult& pathResult);
+    PathID generateNextPathID();
 
 protected:
     ExchangePathsManager *mExchangePathsManager;
     map<PathID, unique_ptr<OptimalPathResult>> mPathsStats;
     vector<SerializedEquivalent> mExchangeEquivalents;
 
+    CreditUsageExchangeCommand::Shared mCommand;
     TrustLineAmount mAmount;
     CommandUUID mCommandUUID;
     ContractorID mContractorID;
