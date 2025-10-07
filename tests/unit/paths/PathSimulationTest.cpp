@@ -247,9 +247,14 @@ TEST(PathSimulationTest, ForwardSimulateExchangeLimits)
     edgeCapacity[EdgeKey{idA, idX, EQ1}] = 1000.0;
     edgeCapacity[EdgeKey{idX, idB, EQ2}] = 1500.0;
 
-    // Test 2: Above max (600 > 500, capped at 500)
+    // Test 2: Above max (600 > 500) should be rejected
     double output2 = env.pathsManager->forwardSimulatePath(path, 600.0, appliedCommissions, edgeCapacity);
-    EXPECT_NEAR(output2, 750.0, 0.1); // 500 * 1.5 = 750
+    EXPECT_NEAR(output2, 0.0, 0.1);
+    // Edge capacities remain unchanged because the path was rejected
+    const EdgeKey edgeAX{idA, idX, EQ1};
+    const EdgeKey edgeXB{idX, idB, EQ2};
+    EXPECT_NEAR(edgeCapacity[edgeAX], 1000.0, 0.1);
+    EXPECT_NEAR(edgeCapacity[edgeXB], 1500.0, 0.1);
 
     appliedCommissions.clear();
     edgeCapacity.clear();
@@ -434,6 +439,15 @@ TEST(PathSimulationTest, InverseSimulateExchangeLimits)
     // Test 2: Target within range (300 / 1.5 = 200)
     double input2 = env.pathsManager->inverseSimulatePath(path, 300.0, appliedCommissions, edgeCapacity);
     EXPECT_NEAR(input2, 200.0, 0.1);
+
+    appliedCommissions.clear();
+    edgeCapacity.clear();
+    edgeCapacity[EdgeKey{idA, idX, EQ1}] = 1000.0;
+    edgeCapacity[EdgeKey{idX, idB, EQ2}] = 1500.0;
+
+    // Test 3: Target above max (900 / 1.5 = 600 > 500) should be rejected
+    double input3 = env.pathsManager->inverseSimulatePath(path, 900.0, appliedCommissions, edgeCapacity);
+    EXPECT_NEAR(input3, 0.0, 0.1);
 }
 
 // Test 8: Inverse Simulation - Capacity Constraint

@@ -714,7 +714,7 @@ TEST(EstimatePaymentTransactionTest, Topology4_ExchangeLimits)
         EXPECT_NE(serialized.find("412"), string::npos) << "Result: " << serialized;
     }
 
-    // Test 2: Receive 600 in EQ2
+    // Test 2: Receive 600 in EQ2 (requires 400 input, within max 500)
     {
         string cmdStr = env.buildPaymentEstimateCommand(targetAddr, 600, EQ2, EQ1);
         CommandUUID cmdUUID = boost::uuids::random_generator()();

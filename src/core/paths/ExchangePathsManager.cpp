@@ -627,6 +627,14 @@ double ExchangePathsManager::forwardSimulatePath(
 
     double currentAmount = inputAmount;
 
+    // Temporary set for commissions applied on this path only
+    // Will be merged into appliedCommissions only if path succeeds
+    set<pair<ContractorID, SerializedEquivalent>> commissionsOnThisPath;
+
+    // Temporary map for edge capacity changes on this path only
+    // Will be merged into edgeRemainingCapacity only if path succeeds
+    map<EdgeKey, double> capacityChangesOnThisPath;
+
     for (size_t i = 0; i + 1 < path.nodes.size(); ++i) {
         ContractorID fromNode = path.nodes[i];
         ContractorID toNode = path.nodes[i + 1];
@@ -672,13 +680,20 @@ double ExchangePathsManager::forwardSimulatePath(
         // Check and update edge capacity for regular edge
         EdgeKey edgeKey{fromNode, toNode, currentEquiv};
 
-        // Initialize edge capacity if not yet tracked
-        if (edgeRemainingCapacity.find(edgeKey) == edgeRemainingCapacity.end()) {
-            edgeRemainingCapacity[edgeKey] = fetchEdgeCapacity(mRouter, fromNode, toNode, currentEquiv);
+        // Get current available capacity (considering both global state and temporary changes)
+        double availableCapacity;
+        if (capacityChangesOnThisPath.find(edgeKey) != capacityChangesOnThisPath.end()) {
+            // Already modified on this path
+            availableCapacity = capacityChangesOnThisPath[edgeKey];
+        } else if (edgeRemainingCapacity.find(edgeKey) != edgeRemainingCapacity.end()) {
+            // Exists in global state
+            availableCapacity = edgeRemainingCapacity[edgeKey];
+        } else {
+            // Not yet tracked - fetch initial capacity
+            availableCapacity = fetchEdgeCapacity(mRouter, fromNode, toNode, currentEquiv);
         }
 
         // Check if edge has sufficient capacity
-        double availableCapacity = edgeRemainingCapacity[edgeKey];
         if (currentAmount > availableCapacity) {
             // Reduce flow to available capacity
             currentAmount = availableCapacity;
@@ -687,8 +702,8 @@ double ExchangePathsManager::forwardSimulatePath(
             }
         }
 
-        // Update remaining capacity
-        edgeRemainingCapacity[edgeKey] -= currentAmount;
+        // Store capacity change in temporary map
+        capacityChangesOnThisPath[edgeKey] = availableCapacity - currentAmount;
 
         // Apply commission at destination node (if intermediate node)
         if (i + 1 < path.nodes.size() - 1) {
@@ -702,17 +717,18 @@ double ExchangePathsManager::forwardSimulatePath(
                 if (commission) {
                     auto commissionKey = std::make_pair(nodeId, nodeEq);
 
-                    // Check if commission already applied ("charge once" semantics)
+                    // Check if commission already applied globally ("charge once" semantics)
                     if (appliedCommissions.find(commissionKey) == appliedCommissions.end()) {
                         double commissionAmount = static_cast<double>(commission->amount());
                         currentAmount -= commissionAmount;
 
                         if (currentAmount <= 0.0) {
-                            appliedCommissions.insert(commissionKey);
+                            // Path failed - don't add commission or capacity changes
                             return 0.0;
                         }
 
-                        appliedCommissions.insert(commissionKey);
+                        // Add to temporary set - will be merged only if path succeeds
+                        commissionsOnThisPath.insert(commissionKey);
                     }
                 }
             } catch (...) {
@@ -721,7 +737,17 @@ double ExchangePathsManager::forwardSimulatePath(
         }
     }
 
-    return std::max(0.0, currentAmount);
+    double result = std::max(0.0, currentAmount);
+
+    // Only if path succeeded (result > 0), merge temporary changes into global state
+    if (result > 0.0) {
+        appliedCommissions.insert(commissionsOnThisPath.begin(), commissionsOnThisPath.end());
+        for (const auto &entry : capacityChangesOnThisPath) {
+            edgeRemainingCapacity[entry.first] = entry.second;
+        }
+    }
+
+    return result;
 }
 
 double ExchangePathsManager::inverseSimulatePath(
@@ -738,6 +764,14 @@ double ExchangePathsManager::inverseSimulatePath(
     }
 
     double requiredAmount = targetOutputAmount;
+
+    // Temporary set for commissions applied on this path only
+    // Will be merged into appliedCommissions only if path succeeds
+    set<pair<ContractorID, SerializedEquivalent>> commissionsOnThisPath;
+
+    // Temporary map for edge capacity changes on this path only
+    // Will be merged into edgeRemainingCapacity only if path succeeds
+    map<EdgeKey, double> capacityChangesOnThisPath;
 
     // Work backwards through path from receiver to sender
     for (int i = static_cast<int>(path.nodes.size()) - 2; i >= 0; --i) {
@@ -759,11 +793,13 @@ double ExchangePathsManager::inverseSimulatePath(
                 if (commission) {
                     auto commissionKey = std::make_pair(nodeId, nodeEq);
 
-                    // Check if commission already applied ("charge once" semantics)
+                    // Check if commission already applied globally ("charge once" semantics)
                     if (appliedCommissions.find(commissionKey) == appliedCommissions.end()) {
                         double commissionAmount = static_cast<double>(commission->amount());
                         requiredAmount += commissionAmount;
-                        appliedCommissions.insert(commissionKey);
+
+                        // Add to temporary set - will be merged only if path succeeds
+                        commissionsOnThisPath.insert(commissionKey);
                     }
                 }
             } catch (...) {
@@ -786,7 +822,8 @@ double ExchangePathsManager::inverseSimulatePath(
 
                     // Inverse exchange: divide by rate
                     if (effectiveRate <= 0.0) {
-                        return 0.0; // Invalid rate
+                        // Invalid rate - path failed, don't add commissions or capacity changes
+                        return 0.0;
                     }
 
                     double amountAfterInverse = requiredAmount / effectiveRate;
@@ -815,23 +852,40 @@ double ExchangePathsManager::inverseSimulatePath(
         // Check edge capacity for regular edge
         EdgeKey edgeKey{fromNode, toNode, currentEquiv};
 
-        // Initialize edge capacity if not yet tracked
-        if (edgeRemainingCapacity.find(edgeKey) == edgeRemainingCapacity.end()) {
-            edgeRemainingCapacity[edgeKey] = fetchEdgeCapacity(mRouter, fromNode, toNode, currentEquiv);
+        // Get current available capacity (considering both global state and temporary changes)
+        double availableCapacity;
+        if (capacityChangesOnThisPath.find(edgeKey) != capacityChangesOnThisPath.end()) {
+            // Already modified on this path
+            availableCapacity = capacityChangesOnThisPath[edgeKey];
+        } else if (edgeRemainingCapacity.find(edgeKey) != edgeRemainingCapacity.end()) {
+            // Exists in global state
+            availableCapacity = edgeRemainingCapacity[edgeKey];
+        } else {
+            // Not yet tracked - fetch initial capacity
+            availableCapacity = fetchEdgeCapacity(mRouter, fromNode, toNode, currentEquiv);
         }
 
         // Check if edge has sufficient capacity for required amount
-        double availableCapacity = edgeRemainingCapacity[edgeKey];
         if (requiredAmount > availableCapacity) {
             // Path cannot satisfy required amount
             return 0.0;
         }
 
-        // Update remaining capacity
-        edgeRemainingCapacity[edgeKey] -= requiredAmount;
+        // Store capacity change in temporary map
+        capacityChangesOnThisPath[edgeKey] = availableCapacity - requiredAmount;
     }
 
-    return std::max(0.0, requiredAmount);
+    double result = std::max(0.0, requiredAmount);
+
+    // Only if path succeeded (result > 0), merge temporary changes into global state
+    if (result > 0.0) {
+        appliedCommissions.insert(commissionsOnThisPath.begin(), commissionsOnThisPath.end());
+        for (const auto &entry : capacityChangesOnThisPath) {
+            edgeRemainingCapacity[entry.first] = entry.second;
+        }
+    }
+
+    return result;
 }
 
 vector<ExchangePath> ExchangePathsManager::enumerateAllFeasiblePaths(
