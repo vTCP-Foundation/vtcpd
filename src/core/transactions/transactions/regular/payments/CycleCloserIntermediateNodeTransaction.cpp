@@ -635,7 +635,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalP
         auto keyChain = mKeysStore->keychain(
                             mTrustLinesManager->trustLineID(coordinatorID));
         auto coordinatorTotalIncomingReservationAmount = totalReservedIncomingAmountToNode(
-                coordinatorID);
+                coordinatorID, mEquivalent);
         auto serializedIncomingReceiptData = getSerializedReceipt(
                 coordinatorID,
                 mContractorsManager->idOnContractorSide(coordinatorID),
@@ -665,7 +665,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalP
         auto coordinatorID = mContractorsManager->contractorIDByAddress(mCoordinator);
         if (coordinatorID != ContractorsManager::kNotFoundContractorID) {
             auto coordinatorTotalIncomingReservationAmount = totalReservedIncomingAmountToNode(
-                    coordinatorID);
+                    coordinatorID, mEquivalent);
             if (coordinatorTotalIncomingReservationAmount != TrustLine::kZeroAmount()) {
                 removeAllDataFromStorageConcerningTransaction(ioTransaction);
                 sendErrorMessageOnFinalAmountsConfiguration();
@@ -858,7 +858,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalR
             return reject("Sender is not a neighbor. Rejected");
         }
         auto participantTotalIncomingReservationAmount = totalReservedIncomingAmountToNode(
-                senderID);
+                senderID, mEquivalent);
         auto keyChain = mKeysStore->keychain(
                             mTrustLinesManager->trustLineID(senderID));
         auto serializedIncomingReceiptData = getSerializedReceipt(
@@ -890,7 +890,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalR
         auto senderID = mContractorsManager->contractorIDByAddress(senderAddress);
         if (senderID != ContractorsManager::kNotFoundContractorID) {
             auto participantTotalIncomingReservationAmount = totalReservedIncomingAmountToNode(
-                    senderID);
+                    senderID, mEquivalent);
             if (participantTotalIncomingReservationAmount != TrustLine::kZeroAmount()) {
                 removeAllDataFromStorageConcerningTransaction();
                 sendErrorMessageOnFinalAmountsConfiguration();
@@ -998,7 +998,7 @@ const SerializedPathLengthSize CycleCloserIntermediateNodeTransaction::cycleLeng
 TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::approve()
 {
     mCommittedAmount = totalReservedAmount(
-                           AmountReservation::Outgoing);
+                           AmountReservation::Outgoing, mEquivalent);
     return BasePaymentTransaction::approve();
 }
 

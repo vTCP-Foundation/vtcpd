@@ -370,10 +370,12 @@ protected:
 
     /**
      * @param reservationDirection direction (outgoing or incoming) total amount of which will be returned
+     * @param equivalent equivalent for which to calculate total reserved amount
      * @return total reserved amount of current node on specified direction
      */
     const TrustLineAmount totalReservedAmount(
-        AmountReservation::ReservationDirection reservationDirection) const;
+        AmountReservation::ReservationDirection reservationDirection,
+        const SerializedEquivalent equivalent) const;
 
     /**
      * save result of payment transaction on database, implements by all transactions in different ways
@@ -401,7 +403,8 @@ protected:
     bool checkAllPublicKeyHashesProperly();
 
     const TrustLineAmount totalReservedIncomingAmountToNode(
-        ContractorID contractorID);
+        ContractorID contractorID,
+        const SerializedEquivalent equivalent);
 
     bool checkPublicKeysAppropriate();
 

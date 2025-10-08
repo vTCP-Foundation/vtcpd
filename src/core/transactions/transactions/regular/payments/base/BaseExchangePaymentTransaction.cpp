@@ -92,8 +92,203 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     mSignedTransaction(nullptr),
     mIsSuspendedOnFinalAmountsConfirmationStage(false),
     mCntSuspendingOnFinalAmountsConfirmationStage(0),
-    mPayload("")
+    mPayload(""),
+    mCountRecoveryAttempts(0)
 {
+    auto bytesBufferOffset = BaseTransaction::kOffsetToInheritedBytes();
+
+    // Check if this is new format (with magic number) or old format (without)
+    const uint32_t kReservationsFormatMagic = 0x52455356; // "RESV" in ASCII
+    uint32_t possibleMagic;
+    memcpy(
+        &possibleMagic,
+        buffer.get() + bytesBufferOffset,
+        sizeof(uint32_t));
+
+    bool isNewFormat = (possibleMagic == kReservationsFormatMagic);
+
+    SerializedRecordsCount reservationsCount;
+    if (isNewFormat) {
+        // New format: skip magic number and read count
+        bytesBufferOffset += sizeof(uint32_t);
+        memcpy(
+            &reservationsCount,
+            buffer.get() + bytesBufferOffset,
+            sizeof(SerializedRecordsCount));
+        bytesBufferOffset += sizeof(SerializedRecordsCount);
+    } else {
+        // Old format: first 4 bytes are the count (no magic number)
+        // This should not happen for BaseExchangePaymentTransaction as it's a new class,
+        // but we support it for consistency
+        reservationsCount = possibleMagic; // reuse already read value
+        bytesBufferOffset += sizeof(SerializedRecordsCount);
+    }
+
+    // Map values
+    for (auto idx = 0; idx < reservationsCount; idx++) {
+        // Map Key ContractorID
+        ContractorID stepContractorID;
+        memcpy(
+            &stepContractorID,
+            buffer.get() + bytesBufferOffset,
+            sizeof(ContractorID));
+        bytesBufferOffset += sizeof(ContractorID);
+
+        // Map values vector
+        SerializedRecordsCount stepReservationVectorSize;
+        memcpy(
+            &stepReservationVectorSize,
+            buffer.get() + bytesBufferOffset,
+            sizeof(SerializedRecordsCount));
+        bytesBufferOffset += sizeof(SerializedRecordsCount);
+
+        for (auto jdx = 0; jdx < stepReservationVectorSize; jdx++) {
+
+            // PathID
+            PathID stepPathID;
+            memcpy(
+                &stepPathID,
+                buffer.get() + bytesBufferOffset,
+                sizeof(PathID));
+            bytesBufferOffset += sizeof(PathID);
+
+            // Amount
+            TrustLineAmount stepAmount;
+            vector<byte_t> amountBytes(
+                buffer.get() + bytesBufferOffset,
+                buffer.get() + bytesBufferOffset + kTrustLineAmountBytesCount);
+            stepAmount = bytesToTrustLineAmount(amountBytes);
+            bytesBufferOffset += kTrustLineAmountBytesCount;
+
+            // Direction
+            AmountReservation::SerializedReservationDirectionSize stepDirection;
+            memcpy(
+                &stepDirection,
+                buffer.get() + bytesBufferOffset,
+                sizeof(AmountReservation::SerializedReservationDirectionSize));
+            bytesBufferOffset += sizeof(AmountReservation::SerializedReservationDirectionSize);
+            auto stepEnumDirection = static_cast<AmountReservation::ReservationDirection>(stepDirection);
+
+            // Equivalent (critical for multi-equivalent support)
+            SerializedEquivalent stepEquivalent;
+            if (isNewFormat) {
+                // New format: read equivalent from buffer
+                memcpy(
+                    &stepEquivalent,
+                    buffer.get() + bytesBufferOffset,
+                    sizeof(SerializedEquivalent));
+                bytesBufferOffset += sizeof(SerializedEquivalent);
+            } else {
+                // Old format: this shouldn't normally happen for BaseExchangePaymentTransaction,
+                // but if it does, we need a default equivalent. Use the transaction's equivalent.
+                stepEquivalent = mEquivalent;
+                // DO NOT advance bytesBufferOffset - there's no equivalent in old format
+            }
+
+            // Get the appropriate TrustLinesManager for this equivalent
+            auto trustLineManager = mEquivalentsSubsystemsRouter->trustLinesManager(stepEquivalent);
+
+            bool isReserveAmounts = !trustLineManager->isReservationsPresentConsiderTransaction(
+                                        mTransactionUUID);
+
+            if (isReserveAmounts) {
+                if (stepEnumDirection == AmountReservation::ReservationDirection::Incoming) {
+                    if (!reserveIncomingAmount(
+                                stepContractorID,
+                                stepAmount,
+                                stepPathID,
+                                stepEquivalent)) {
+                        // can't create reserve, but this reserve was serialized before node dropping
+                        // we must stop this node and find out the reason
+                        exit(1);
+                    }
+                }
+
+                if (stepEnumDirection == AmountReservation::ReservationDirection::Outgoing) {
+                    if (!reserveOutgoingAmount(
+                                stepContractorID,
+                                stepAmount,
+                                stepPathID,
+                                stepEquivalent)) {
+                        // can't create reserve, but this reserve was serialized before node dropping
+                        // we must stop this node and find out the reason
+                        exit(1);
+                    }
+                }
+            } else {
+                if (!copyReservationFromGlobalReservations(
+                            stepContractorID,
+                            stepAmount,
+                            stepEnumDirection,
+                            stepPathID,
+                            stepEquivalent)) {
+                    // can't get reserve from AmountReservationsHandler, but this reserve must be
+                    // we must stop this node and find out the reason
+                    exit(1);
+                }
+            }
+        }
+    }
+
+    // Participants paymentIDs and public keys Part
+    SerializedRecordsCount kTotalParticipantsCount;
+    memcpy(
+        &kTotalParticipantsCount,
+        buffer.get() + bytesBufferOffset,
+        sizeof(SerializedRecordsCount));
+    bytesBufferOffset += sizeof(SerializedRecordsCount);
+
+    for (SerializedRecordNumber idx = 0; idx < kTotalParticipantsCount; idx++) {
+        // Read PaymentNodeID in an alignment-safe way
+        PaymentNodeID paymentNodeID;
+        memcpy(
+            &paymentNodeID,
+            buffer.get() + bytesBufferOffset,
+            sizeof(PaymentNodeID));
+        bytesBufferOffset += sizeof(PaymentNodeID);
+        //---------------------------------------------------
+        auto participantContractor = make_shared<Contractor>(buffer.get() + bytesBufferOffset);
+        bytesBufferOffset += participantContractor->serializedSize();
+
+        mPaymentParticipants.insert(
+            make_pair(
+                paymentNodeID,
+                participantContractor));
+
+        auto publicKey = make_shared<sphincs::PublicKey>(
+                             buffer.get() + bytesBufferOffset);
+        bytesBufferOffset += sphincs::PublicKey::keySize();
+
+        mParticipantsPublicKeys.insert(
+            make_pair(
+                paymentNodeID,
+                publicKey));
+    }
+
+    memcpy(
+        &mMaximalClaimingBlockNumber,
+        buffer.get() + bytesBufferOffset,
+        sizeof(BlockNumber));
+    bytesBufferOffset += sizeof(BlockNumber);
+
+    // Read payload length safely and always advance offset
+    byte_t payloadLength = 0;
+    memcpy(
+        &payloadLength,
+        buffer.get() + bytesBufferOffset,
+        sizeof(byte_t));
+    bytesBufferOffset += sizeof(byte_t);
+
+    if (payloadLength > 0) {
+        mPayload = string(
+                       buffer.get() + bytesBufferOffset,
+                       buffer.get() + bytesBufferOffset + payloadLength);
+        // bytesBufferOffset += payloadLength; // not used further, so not strictly required
+    } else {
+        mPayload.clear();
+    }
+
+    // Note: Recovery stage setting would be done in derived classes if needed
 }
 
 // Helper methods for accessing equivalent-specific managers
@@ -121,10 +316,146 @@ bool BaseExchangePaymentTransaction::iAmGateway(
     return mEquivalentsSubsystemsRouter->iAmGateway(equivalent);
 }
 
-// Placeholder implementations for methods (to be implemented in subsequent tasks)
+// Serialization implementation for multi-equivalent payment transactions
 pair<BytesShared, size_t> BaseExchangePaymentTransaction::serializeToBytes() const
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::serializeToBytes not yet implemented");
+    const auto parentBytesAndCount = BaseTransaction::serializeToBytes();
+    size_t bytesCount = parentBytesAndCount.second + sizeof(SerializedRecordsCount) + reservationsSizeInBytes() + sizeof(SerializedRecordsCount) + sizeof(BlockNumber) + sizeof(byte_t) + mPayload.length();
+    for (const auto &participant : mPaymentParticipants) {
+        bytesCount += sizeof(PaymentNodeID) + participant.second->serializedSize() + sphincs::PublicKey::keySize();
+    }
+
+    BytesShared dataBytesShared = tryCalloc(bytesCount);
+    size_t dataBytesOffset = 0;
+
+    // Parent part
+    memcpy(
+        dataBytesShared.get(),
+        parentBytesAndCount.first.get(),
+        parentBytesAndCount.second);
+    dataBytesOffset += parentBytesAndCount.second;
+
+    // Reservation Part
+    // Write magic number to indicate new format with equivalents
+    const uint32_t kReservationsFormatMagic = 0x52455356; // "RESV" in ASCII
+    memcpy(
+        dataBytesShared.get() + dataBytesOffset,
+        &kReservationsFormatMagic,
+        sizeof(uint32_t));
+    dataBytesOffset += sizeof(uint32_t);
+
+    auto kmReservationSize = (SerializedRecordsCount)mReservations.size();
+    memcpy(
+        dataBytesShared.get() + dataBytesOffset,
+        &kmReservationSize,
+        sizeof(SerializedRecordsCount));
+    dataBytesOffset += sizeof(SerializedRecordsCount);
+
+    for (const auto &nodeAndReservations : mReservations) {
+        // Map key (ContractorID)
+        memcpy(
+            dataBytesShared.get() + dataBytesOffset,
+            &nodeAndReservations.first,
+            sizeof(ContractorID));
+        dataBytesOffset += sizeof(ContractorID);
+
+        // Size of map value vector
+        auto kReservationsValueSize = (SerializedRecordsCount)nodeAndReservations.second.size();
+        memcpy(
+            dataBytesShared.get() + dataBytesOffset,
+            &kReservationsValueSize,
+            sizeof(SerializedRecordsCount));
+        dataBytesOffset += sizeof(SerializedRecordsCount);
+
+        for (const auto &kReservationValues : nodeAndReservations.second) {
+            // PathID
+            memcpy(
+                dataBytesShared.get() + dataBytesOffset,
+                &kReservationValues.first,
+                sizeof(PathID));
+            dataBytesOffset += sizeof(PathID);
+
+            // AmountReservation - TrustLineAmount
+            vector<byte_t> buffer = trustLineAmountToBytes(
+                                        kReservationValues.second->amount());
+            memcpy(
+                dataBytesShared.get() + dataBytesOffset,
+                buffer.data(),
+                buffer.size());
+            dataBytesOffset += buffer.size();
+
+            // Direction
+            const auto kDirection = kReservationValues.second->direction();
+            memcpy(
+                dataBytesShared.get() + dataBytesOffset,
+                &kDirection,
+                sizeof(AmountReservation::SerializedReservationDirectionSize));
+            dataBytesOffset += sizeof(AmountReservation::SerializedReservationDirectionSize);
+
+            // Equivalent
+            const auto kEquivalent = kReservationValues.second->equivalent();
+            memcpy(
+                dataBytesShared.get() + dataBytesOffset,
+                &kEquivalent,
+                sizeof(SerializedEquivalent));
+            dataBytesOffset += sizeof(SerializedEquivalent);
+        }
+    }
+
+    // Participants paymentIDs and public keys Part
+    auto kTotalParticipantsCount = mPaymentParticipants.size();
+    memcpy(
+        dataBytesShared.get() + dataBytesOffset,
+        &kTotalParticipantsCount,
+        sizeof(SerializedRecordsCount));
+    dataBytesOffset += sizeof(SerializedRecordsCount);
+
+    // NodePaymentIDs and payment contractor
+    for (auto const &paymentNodeIdAndContractor : mPaymentParticipants) {
+        memcpy(
+            dataBytesShared.get() + dataBytesOffset,
+            &paymentNodeIdAndContractor.first,
+            sizeof(PaymentNodeID));
+        dataBytesOffset += sizeof(PaymentNodeID);
+
+        auto contractorSerializedData = paymentNodeIdAndContractor.second->serializeToBytes();
+        memcpy(
+            dataBytesShared.get() + dataBytesOffset,
+            contractorSerializedData.get(),
+            paymentNodeIdAndContractor.second->serializedSize());
+        dataBytesOffset += paymentNodeIdAndContractor.second->serializedSize();
+
+        auto participantPublicKey = mParticipantsPublicKeys.at(paymentNodeIdAndContractor.first);
+        memcpy(
+            dataBytesShared.get() + dataBytesOffset,
+            participantPublicKey->data(),
+            sphincs::PublicKey::keySize());
+        dataBytesOffset += sphincs::PublicKey::keySize();
+    }
+
+    memcpy(
+        dataBytesShared.get() + dataBytesOffset,
+        &mMaximalClaimingBlockNumber,
+        sizeof(BlockNumber));
+    dataBytesOffset += sizeof(BlockNumber);
+
+    auto payloadLength = (byte_t)mPayload.length();
+    memcpy(
+        dataBytesShared.get() + dataBytesOffset,
+        &payloadLength,
+        sizeof(byte_t));
+
+    if (payloadLength > 0) {
+        dataBytesOffset += sizeof(byte_t);
+        memcpy(
+            dataBytesShared.get() + dataBytesOffset,
+            mPayload.c_str(),
+            payloadLength);
+    }
+
+    return make_pair(
+               dataBytesShared,
+               bytesCount);
 }
 
 BaseAddress::Shared BaseExchangePaymentTransaction::coordinatorAddress() const
@@ -389,14 +720,32 @@ PathID BaseExchangePaymentTransaction::updateReservation(
 
 size_t BaseExchangePaymentTransaction::reservationsSizeInBytes() const
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::reservationsSizeInBytes not yet implemented");
+    size_t reservationSizeInBytes = sizeof(uint32_t); // Magic number
+    for (const auto &nodeAndReservations : mReservations) {
+        reservationSizeInBytes += sizeof(ContractorID) + nodeAndReservations.second.size() * (sizeof(PathID) +             // PathID
+                                  kTrustLineAmountBytesCount + // Reservation Amount
+                                  sizeof(AmountReservation::SerializedReservationDirectionSize) + // Reservation Direction
+                                  sizeof(SerializedEquivalent)) + // Reservation Equivalent
+                                  sizeof(SerializedRecordsCount); // Vector Size
+    }
+    reservationSizeInBytes += sizeof(SerializedRecordsCount); // map Size
+    return reservationSizeInBytes;
 }
 
 const TrustLineAmount BaseExchangePaymentTransaction::totalReservedAmount(
     AmountReservation::ReservationDirection reservationDirection,
     const SerializedEquivalent equivalent) const
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::totalReservedAmount not yet implemented");
+    TrustLineAmount totalAmount = 0;
+    for (const auto &nodeIDAndReservations : mReservations) {
+        for (const auto &pathIDAndReservation : nodeIDAndReservations.second) {
+            if (pathIDAndReservation.second->direction() == reservationDirection &&
+                pathIDAndReservation.second->equivalent() == equivalent) {
+                totalAmount += pathIDAndReservation.second->amount();
+            }
+        }
+    }
+    return totalAmount;
 }
 
 pair<BytesShared, size_t> BaseExchangePaymentTransaction::getSerializedReceipt(
@@ -422,7 +771,17 @@ const TrustLineAmount BaseExchangePaymentTransaction::totalReservedIncomingAmoun
     ContractorID contractorID,
     const SerializedEquivalent equivalent) const
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::totalReservedIncomingAmountToNode not yet implemented");
+    auto result = TrustLine::kZeroAmount();
+    if (mReservations.find(contractorID) == mReservations.end()) {
+        return result;
+    }
+    for (const auto &pathIDAndReservation : mReservations.at(contractorID)) {
+        if (pathIDAndReservation.second->direction() == AmountReservation::Incoming &&
+            pathIDAndReservation.second->equivalent() == equivalent) {
+            result += pathIDAndReservation.second->amount();
+        }
+    }
+    return result;
 }
 
 bool BaseExchangePaymentTransaction::checkPublicKeysAppropriate()

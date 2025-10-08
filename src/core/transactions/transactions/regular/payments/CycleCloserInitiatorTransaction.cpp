@@ -1017,7 +1017,7 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runFinalReservat
         return reject("Sender send message without receipt. Rejected");
     }
     auto participantTotalIncomingReservationAmount = totalReservedIncomingAmountToNode(
-            mPreviousNodeID);
+            mPreviousNodeID, mEquivalent);
     info() << "Sender also send receipt";
 
     auto keyChain = mKeysStore->keychain(
@@ -1235,7 +1235,7 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runRollbackByOth
 TransactionResult::SharedConst CycleCloserInitiatorTransaction::approve()
 {
     mCommittedAmount = totalReservedAmount(
-                           AmountReservation::Outgoing);
+                           AmountReservation::Outgoing, mEquivalent);
     BasePaymentTransaction::approve();
     for (const auto &paymentNodeIdAndAddress : mPaymentParticipants) {
         if (paymentNodeIdAndAddress.first == kCoordinatorPaymentNodeID) {

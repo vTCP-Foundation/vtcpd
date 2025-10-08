@@ -454,7 +454,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::tryReserveAmountDi
 
     // Note: try reserve remaining part of command amount
     const auto kRemainingAmountForProcessing =
-        mCommand->amount() - totalReservedAmount(AmountReservation::Outgoing);
+        mCommand->amount() - totalReservedAmount(AmountReservation::Outgoing, mEquivalent);
     // Reserving amount locally.
     const auto kReservationAmount = min(kRemainingAmountForProcessing, *kAvailableOutgoingAmount);
     if (not reserveOutgoingAmount(
@@ -613,7 +613,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::askNeighborToReser
     const auto kAvailableOutgoingAmount = mTrustLinesManager->outgoingTrustAmountConsideringReservations(neighborID);
     // Note: try reserve remaining part of command amount
     const auto kRemainingAmountForProcessing =
-        mCommand->amount() - totalReservedAmount(AmountReservation::Outgoing);
+        mCommand->amount() - totalReservedAmount(AmountReservation::Outgoing, mEquivalent);
 
     const auto kReservationAmount = min(*kAvailableOutgoingAmount, kRemainingAmountForProcessing);
 
@@ -1058,7 +1058,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::processNeighborFur
     if (path->isLastIntermediateNodeProcessed()) {
 
         const auto kTotalAmount = totalReservedAmount(
-                                      AmountReservation::Outgoing);
+                                      AmountReservation::Outgoing, mEquivalent);
 
         debug() << "Current path reservation finished";
         debug() << "Total collected amount by all paths: " << kTotalAmount;
@@ -1323,7 +1323,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::processRemoteNodeR
     if (path->isLastIntermediateNodeProcessed()) {
 
         const auto kTotalAmount = totalReservedAmount(
-                                      AmountReservation::Outgoing);
+                                      AmountReservation::Outgoing, mEquivalent);
 
         debug() << "Current path reservation finished";
         debug() << "Total collected amount by all paths: " << kTotalAmount;
@@ -1741,7 +1741,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::approve()
     }
 
     mCommittedAmount = totalReservedAmount(
-                           AmountReservation::Outgoing);
+                           AmountReservation::Outgoing, mEquivalent);
     BasePaymentTransaction::approve();
 #ifdef TESTS
     mSubsystemsController->testTerminateProcessOnCoordinatorAfterApproveBeforeSendMessage();
@@ -1849,7 +1849,7 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runDirectAmountRes
     }
 
     const auto kTotalAmount = totalReservedAmount(
-                                  AmountReservation::Outgoing);
+                                  AmountReservation::Outgoing, mEquivalent);
     debug() << "Current path reservation finished";
     debug() << "Total collected amount by all paths: " << kTotalAmount;
 

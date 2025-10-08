@@ -110,13 +110,31 @@ BasePaymentTransaction::BasePaymentTransaction(
     mSignedTransaction(nullptr)
 {
     auto bytesBufferOffset = BaseTransaction::kOffsetToInheritedBytes();
-    // mReservations count
-    SerializedRecordsCount reservationsCount;
+
+    // Check if this is new format (with magic number) or old format (without)
+    const uint32_t kReservationsFormatMagic = 0x52455356; // "RESV" in ASCII
+    uint32_t possibleMagic;
     memcpy(
-        &reservationsCount,
+        &possibleMagic,
         buffer.get() + bytesBufferOffset,
-        sizeof(SerializedRecordsCount));
-    bytesBufferOffset += sizeof(SerializedRecordsCount);
+        sizeof(uint32_t));
+
+    bool isNewFormat = (possibleMagic == kReservationsFormatMagic);
+
+    SerializedRecordsCount reservationsCount;
+    if (isNewFormat) {
+        // New format: skip magic number and read count
+        bytesBufferOffset += sizeof(uint32_t);
+        memcpy(
+            &reservationsCount,
+            buffer.get() + bytesBufferOffset,
+            sizeof(SerializedRecordsCount));
+        bytesBufferOffset += sizeof(SerializedRecordsCount);
+    } else {
+        // Old format: first 4 bytes are the count (no magic number)
+        reservationsCount = possibleMagic; // reuse already read value
+        bytesBufferOffset += sizeof(SerializedRecordsCount);
+    }
 
     bool isReserveAmounts = !mTrustLinesManager->isReservationsPresentConsiderTransaction(
                                 mTransactionUUID);
@@ -165,6 +183,23 @@ BasePaymentTransaction::BasePaymentTransaction(
                 sizeof(AmountReservation::SerializedReservationDirectionSize));
             bytesBufferOffset += sizeof(AmountReservation::SerializedReservationDirectionSize);
             auto stepEnumDirection = static_cast<AmountReservation::ReservationDirection>(stepDirection);
+
+            // Equivalent (only in new format)
+            SerializedEquivalent stepEquivalent;
+            if (isNewFormat) {
+                // New format: read equivalent from buffer
+                memcpy(
+                    &stepEquivalent,
+                    buffer.get() + bytesBufferOffset,
+                    sizeof(SerializedEquivalent));
+                bytesBufferOffset += sizeof(SerializedEquivalent);
+            } else {
+                // Old format: use mEquivalent for backward compatibility
+                stepEquivalent = mEquivalent;
+                // DO NOT advance bytesBufferOffset - there's no equivalent in old format
+            }
+            // Note: For old transactions (BasePaymentTransaction), mEquivalent is single equivalent for all reservations.
+            // The reservation methods use mEquivalent internally, so stepEquivalent equals mEquivalent anyway.
 
             if (isReserveAmounts) {
                 if (stepEnumDirection == AmountReservation::ReservationDirection::Incoming) {
@@ -1106,12 +1141,14 @@ TransactionResult::SharedConst BasePaymentTransaction::processNextNodeToCheckVot
 }
 
 const TrustLineAmount BasePaymentTransaction::totalReservedAmount(
-    AmountReservation::ReservationDirection reservationDirection) const
+    AmountReservation::ReservationDirection reservationDirection,
+    const SerializedEquivalent equivalent) const
 {
     TrustLineAmount totalAmount = 0;
     for (const auto &nodeIDAndReservations : mReservations) {
         for (const auto &pathIDAndReservation : nodeIDAndReservations.second) {
-            if (pathIDAndReservation.second->direction() == reservationDirection) {
+            if (pathIDAndReservation.second->direction() == reservationDirection &&
+                pathIDAndReservation.second->equivalent() == equivalent) {
                 totalAmount += pathIDAndReservation.second->amount();
             }
         }
@@ -1260,14 +1297,16 @@ bool BasePaymentTransaction::checkAllPublicKeyHashesProperly()
 }
 
 const TrustLineAmount BasePaymentTransaction::totalReservedIncomingAmountToNode(
-    ContractorID contractorID)
+    ContractorID contractorID,
+    const SerializedEquivalent equivalent)
 {
     auto result = TrustLine::kZeroAmount();
     if (mReservations.find(contractorID) == mReservations.end()) {
         return result;
     }
     for (const auto &pathIDAndReservation : mReservations[contractorID]) {
-        if (pathIDAndReservation.second->direction() == AmountReservation::Incoming) {
+        if (pathIDAndReservation.second->direction() == AmountReservation::Incoming &&
+            pathIDAndReservation.second->equivalent() == equivalent) {
             result += pathIDAndReservation.second->amount();
         }
     }
@@ -1376,6 +1415,14 @@ pair<BytesShared, size_t> BasePaymentTransaction::serializeToBytes() const
     dataBytesOffset += parentBytesAndCount.second;
 
     // Reservation Part
+    // Write magic number to indicate new format with equivalents
+    const uint32_t kReservationsFormatMagic = 0x52455356; // "RESV" in ASCII
+    memcpy(
+        dataBytesShared.get() + dataBytesOffset,
+        &kReservationsFormatMagic,
+        sizeof(uint32_t));
+    dataBytesOffset += sizeof(uint32_t);
+
     auto kmReservationSize = (SerializedRecordsCount)mReservations.size();
     memcpy(
         dataBytesShared.get() + dataBytesOffset,
@@ -1423,6 +1470,14 @@ pair<BytesShared, size_t> BasePaymentTransaction::serializeToBytes() const
                 &kDirection,
                 sizeof(AmountReservation::SerializedReservationDirectionSize));
             dataBytesOffset += sizeof(AmountReservation::SerializedReservationDirectionSize);
+
+            // Equivalent
+            const auto kEquivalent = kReservationValues.second->equivalent();
+            memcpy(
+                dataBytesShared.get() + dataBytesOffset,
+                &kEquivalent,
+                sizeof(SerializedEquivalent));
+            dataBytesOffset += sizeof(SerializedEquivalent);
         }
     }
 
@@ -1484,12 +1539,12 @@ pair<BytesShared, size_t> BasePaymentTransaction::serializeToBytes() const
 
 size_t BasePaymentTransaction::reservationsSizeInBytes() const
 {
-    size_t reservationSizeInBytes = 0;
+    size_t reservationSizeInBytes = sizeof(uint32_t); // Magic number
     for (const auto &nodeAndReservations : mReservations) {
         reservationSizeInBytes += sizeof(ContractorID) + nodeAndReservations.second.size() * (sizeof(PathID) +             // PathID
                                   kTrustLineAmountBytesCount + // Reservation Amount
-                                  // Reservation Direction
-                                  sizeof(AmountReservation::SerializedReservationDirectionSize)) +
+                                  sizeof(AmountReservation::SerializedReservationDirectionSize) + // Reservation Direction
+                                  sizeof(SerializedEquivalent)) + // Reservation Equivalent
                                   sizeof(SerializedRecordsCount); // Vector Size
     }
     reservationSizeInBytes += sizeof(SerializedRecordsCount); // map Size

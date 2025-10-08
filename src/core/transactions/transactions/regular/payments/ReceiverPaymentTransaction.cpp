@@ -358,7 +358,8 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runAmountReservationS
     }
 
     const auto kTotalReserved = totalReservedAmount(
-                                    AmountReservation::Incoming);
+                                    AmountReservation::Incoming,
+                                    mEquivalent);
     if (kTotalReserved > mTransactionAmount) {
         warning() << "Reserved amount is greater than requested. It indicates protocol or realisation error.";
         mTransactionShouldBeRejected = true;
@@ -520,7 +521,8 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsC
             return reject("Coordinator is not a neighbor. Rejected");
         }
         auto coordinatorTotalIncomingReservationAmount = totalReservedIncomingAmountToNode(
-                coordinatorID);
+                coordinatorID,
+                mEquivalent);
         auto keyChain = mKeysStore->keychain(
                             mTrustLinesManager->trustLineID(coordinatorID));
         auto serializedIncomingReceiptData = getSerializedReceipt(
@@ -552,7 +554,8 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsC
         auto coordinatorID = mContractorsManager->contractorIDByAddress(kMessage->senderAddresses.at(0));
         if (coordinatorID != ContractorsManager::kNotFoundContractorID) {
             auto coordinatorTotalIncomingReservationAmount = totalReservedIncomingAmountToNode(
-                    coordinatorID);
+                    coordinatorID,
+                    mEquivalent);
             if (coordinatorTotalIncomingReservationAmount != TrustLine::kZeroAmount()) {
                 removeAllDataFromStorageConcerningTransaction(ioTransaction);
                 sendErrorMessageOnFinalAmountsConfiguration();
@@ -679,7 +682,8 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsN
             return reject("Sender is not a neighbor. Rejected");
         }
         auto participantTotalIncomingReservationAmount = totalReservedIncomingAmountToNode(
-                senderID);
+                senderID,
+                mEquivalent);
         auto keyChain = mKeysStore->keychain(
                             mTrustLinesManager->trustLineID(senderID));
         auto serializedIncomingReceiptData = getSerializedReceipt(
@@ -711,7 +715,8 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsN
         auto senderID = mContractorsManager->contractorIDByAddress(senderAddress);
         if (senderID != ContractorsManager::kNotFoundContractorID) {
             auto participantTotalIncomingReservationAmount = totalReservedIncomingAmountToNode(
-                    senderID);
+                    senderID,
+                    mEquivalent);
             if (participantTotalIncomingReservationAmount != TrustLine::kZeroAmount()) {
                 removeAllDataFromStorageConcerningTransaction(ioTransaction);
                 sendErrorMessageOnFinalAmountsConfiguration();
@@ -823,7 +828,8 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runVotesStageWithCoor
 TransactionResult::SharedConst ReceiverPaymentTransaction::approve()
 {
     mCommittedAmount = totalReservedAmount(
-                           AmountReservation::Incoming);
+                           AmountReservation::Incoming,
+                           mEquivalent);
     BasePaymentTransaction::approve();
 
     try {
