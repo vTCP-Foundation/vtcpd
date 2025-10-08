@@ -1,11 +1,12 @@
 #include "RequestMessageWithReservations.h"
 #include "../../../../common/serialization/BytesDeserializer.h"
 
+// NEW: Constructor with equivalents
 RequestMessageWithReservations::RequestMessageWithReservations(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> &senderAddresses,
     const TransactionUUID &transactionUUID,
-    const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig) :
+    const vector<PathReservation> &finalAmountsConfig) :
 
     TransactionMessage(
         equivalent,
@@ -20,7 +21,7 @@ RequestMessageWithReservations::RequestMessageWithReservations(
     const SerializedEquivalent equivalent,
     ContractorID contractorID,
     const TransactionUUID &transactionUUID,
-    const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig) :
+    const vector<PathReservation> &finalAmountsConfig) :
 
     TransactionMessage(
         equivalent,
@@ -29,6 +30,43 @@ RequestMessageWithReservations::RequestMessageWithReservations(
 
     mFinalAmountsConfiguration(finalAmountsConfig)
 {
+}
+
+// DEPRECATED: Constructor without equivalents (converts to PathReservation using mEquivalent)
+RequestMessageWithReservations::RequestMessageWithReservations(
+    const SerializedEquivalent equivalent,
+    vector<BaseAddress::Shared> &senderAddresses,
+    const TransactionUUID &transactionUUID,
+    const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig) :
+
+    TransactionMessage(
+        equivalent,
+        senderAddresses,
+        transactionUUID)
+{
+    // Convert pair vector to PathReservation vector using mEquivalent
+    mFinalAmountsConfiguration.reserve(finalAmountsConfig.size());
+    for (const auto& [pathID, amount] : finalAmountsConfig) {
+        mFinalAmountsConfiguration.emplace_back(pathID, amount, equivalent);
+    }
+}
+
+RequestMessageWithReservations::RequestMessageWithReservations(
+    const SerializedEquivalent equivalent,
+    ContractorID contractorID,
+    const TransactionUUID &transactionUUID,
+    const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig) :
+
+    TransactionMessage(
+        equivalent,
+        contractorID,
+        transactionUUID)
+{
+    // Convert pair vector to PathReservation vector using mEquivalent
+    mFinalAmountsConfiguration.reserve(finalAmountsConfig.size());
+    for (const auto& [pathID, amount] : finalAmountsConfig) {
+        mFinalAmountsConfiguration.emplace_back(pathID, amount, equivalent);
+    }
 }
 
 RequestMessageWithReservations::RequestMessageWithReservations(
@@ -50,14 +88,27 @@ RequestMessageWithReservations::RequestMessageWithReservations(
         TrustLineAmount trustLineAmount;
         deserializer.copyInto(&trustLineAmount);
 
+        SerializedEquivalent equivalent;
+        deserializer.copyInto(&equivalent);
+
         mFinalAmountsConfiguration.emplace_back(
             pathID,
-            make_shared<const TrustLineAmount>(trustLineAmount));
+            make_shared<const TrustLineAmount>(trustLineAmount),
+            equivalent);
     }
 }
 
-const vector<pair<PathID, ConstSharedTrustLineAmount>> &RequestMessageWithReservations::finalAmountsConfiguration() const {
+const vector<PathReservation> &RequestMessageWithReservations::finalAmountsConfiguration() const {
     return mFinalAmountsConfiguration;
+}
+
+vector<pair<PathID, ConstSharedTrustLineAmount>> RequestMessageWithReservations::finalAmountsConfigurationDeprecated() const {
+    vector<pair<PathID, ConstSharedTrustLineAmount>> result;
+    result.reserve(mFinalAmountsConfiguration.size());
+    for (const auto& reservation : mFinalAmountsConfiguration) {
+        result.emplace_back(reservation.pathID, reservation.amount);
+    }
+    return result;
 }
 
 pair<BytesShared, size_t> RequestMessageWithReservations::serializeToBytes() const
@@ -73,9 +124,10 @@ pair<BytesShared, size_t> RequestMessageWithReservations::serializeToBytes() con
     auto finalAmountsConfigurationCount = (SerializedRecordsCount)mFinalAmountsConfiguration.size();
     serializer.copy(finalAmountsConfigurationCount);
 
-    for (auto const &it : mFinalAmountsConfiguration) {
-        serializer.copy(it.first);
-        serializer.copy(*it.second.get());
+    for (auto const &reservation : mFinalAmountsConfiguration) {
+        serializer.copy(reservation.pathID);
+        serializer.copy(*reservation.amount.get());
+        serializer.copy(reservation.equivalent);
     }
 
     return serializer.collect();
@@ -86,7 +138,10 @@ const size_t RequestMessageWithReservations::kOffsetToInheritedBytes() const
     auto kOffset =
         TransactionMessage::kOffsetToInheritedBytes() +
         BytesSerializer::kSerializedRecordsCountSize +
-        finalAmountsConfiguration().size() * (BytesSerializer::kSerializedPathIDSize + BytesSerializer::kSerializedTrustLineAmountSize);
+        finalAmountsConfiguration().size() * (
+            BytesSerializer::kSerializedPathIDSize +
+            BytesSerializer::kSerializedTrustLineAmountSize +
+            sizeof(SerializedEquivalent));
 
     return kOffset;
 }

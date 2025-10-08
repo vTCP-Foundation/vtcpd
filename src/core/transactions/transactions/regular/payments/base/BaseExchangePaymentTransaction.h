@@ -204,11 +204,11 @@ protected:
     void runThreeNodesCyclesTransactions();
     void runFourNodesCyclesTransactions();
 
-    bool updateReservations(const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmounts);
+    bool updateReservations(const vector<PathReservation> &finalAmounts);
     PathID updateReservation(
         ContractorID contractorID,
         pair<PathID, AmountReservation::ConstShared> &pathIDAndReservation,
-        const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmounts);
+        const vector<PathReservation> &finalAmounts);
 
     size_t reservationsSizeInBytes() const;
     const TrustLineAmount totalReservedAmount(

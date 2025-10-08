@@ -69,10 +69,11 @@ TEST(IntermediateNodeReservationRequestMessageTest, SerializeDeserializeRoundTri
 	const auto &parsedCfg = parsed.finalAmountsConfiguration();
 	ASSERT_EQ(parsedCfg.size(), finalCfg.size());
 	for (size_t i = 0; i < finalCfg.size(); ++i) {
-		EXPECT_EQ(parsedCfg[i].first, finalCfg[i].first);
+		EXPECT_EQ(parsedCfg[i].pathID, finalCfg[i].first);
 		ASSERT_NE(finalCfg[i].second, nullptr);
-		ASSERT_NE(parsedCfg[i].second, nullptr);
-		EXPECT_EQ(*parsedCfg[i].second.get(), *finalCfg[i].second.get());
+		ASSERT_NE(parsedCfg[i].amount, nullptr);
+		EXPECT_EQ(*parsedCfg[i].amount.get(), *finalCfg[i].second.get());
+		EXPECT_EQ(parsedCfg[i].equivalent, equivalent);
 	}
 }
 
@@ -180,10 +181,11 @@ TEST_P(IntermediateNodeReservationRequestMessageParamTest, SerializeDeserializeR
 	const auto &parsedCfg = parsed.finalAmountsConfiguration();
 	ASSERT_EQ(parsedCfg.size(), finalCfg.size());
 	for (size_t i = 0; i < finalCfg.size(); ++i) {
-		EXPECT_EQ(parsedCfg[i].first, finalCfg[i].first);
+		EXPECT_EQ(parsedCfg[i].pathID, finalCfg[i].first);
 		ASSERT_NE(finalCfg[i].second, nullptr);
-		ASSERT_NE(parsedCfg[i].second, nullptr);
-		EXPECT_EQ(*parsedCfg[i].second.get(), *finalCfg[i].second.get());
+		ASSERT_NE(parsedCfg[i].amount, nullptr);
+		EXPECT_EQ(*parsedCfg[i].amount.get(), *finalCfg[i].second.get());
+		EXPECT_EQ(parsedCfg[i].equivalent, equivalent);
 	}
 }
 

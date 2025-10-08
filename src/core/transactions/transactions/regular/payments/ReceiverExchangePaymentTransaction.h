@@ -3,6 +3,8 @@
 
 #include "base/BaseExchangePaymentTransaction.h"
 #include "../../../common/exceptions/RuntimeError.h"
+#include "../../../rates/manager/ExchangeRatesManager.h"
+#include "../../../rates/manager/CommissionsManager.h"
 
 class ReceiverExchangePaymentTransaction : public BaseExchangePaymentTransaction
 {
@@ -16,6 +18,8 @@ public:
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         StorageHandler *storageHandler,
         ResourcesManager *resourcesManager,
+        ExchangeRatesManager *exchangeRatesManager,
+        CommissionsManager *commissionsManager,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -26,6 +30,8 @@ public:
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         StorageHandler *storageHandler,
         ResourcesManager *resourcesManager,
+        ExchangeRatesManager *exchangeRatesManager,
+        CommissionsManager *commissionsManager,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -38,7 +44,15 @@ protected:
     TransactionResult::SharedConst runVotesConsistencyCheckingStage() override;
 
     void savePaymentOperationIntoHistory(IOTransaction::Shared ioTransaction) override;
+    bool updateReservations(const vector<PathReservation> &finalAmounts);
     bool checkReservationsDirections() const override;
+
+private:
+    ExchangeRatesManager *mExchangeRatesManager;
+    CommissionsManager *mCommissionsManager;
+
+    // Mapping PathID -> SerializedEquivalent for validation
+    map<PathID, SerializedEquivalent> mPathEquivalents;
 };
 
 #endif //VTCPD_RECEIVEREXCHANGEPAYMENTTRANSACTION_H

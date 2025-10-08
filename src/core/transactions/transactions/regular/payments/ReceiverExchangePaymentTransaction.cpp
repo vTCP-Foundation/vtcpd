@@ -5,6 +5,8 @@ ReceiverExchangePaymentTransaction::ReceiverExchangePaymentTransaction(
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
+    ExchangeRatesManager *exchangeRatesManager,
+    CommissionsManager *commissionsManager,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -18,7 +20,9 @@ ReceiverExchangePaymentTransaction::ReceiverExchangePaymentTransaction(
         resourcesManager,
         keystore,
         log,
-        subsystemsController)
+        subsystemsController),
+    mExchangeRatesManager(exchangeRatesManager),
+    mCommissionsManager(commissionsManager)
 {
 }
 
@@ -28,6 +32,8 @@ ReceiverExchangePaymentTransaction::ReceiverExchangePaymentTransaction(
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
+    ExchangeRatesManager *exchangeRatesManager,
+    CommissionsManager *commissionsManager,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -40,7 +46,9 @@ ReceiverExchangePaymentTransaction::ReceiverExchangePaymentTransaction(
         resourcesManager,
         keystore,
         log,
-        subsystemsController)
+        subsystemsController),
+    mExchangeRatesManager(exchangeRatesManager),
+    mCommissionsManager(commissionsManager)
 {
 }
 
@@ -70,7 +78,74 @@ void ReceiverExchangePaymentTransaction::savePaymentOperationIntoHistory(
     throw RuntimeError("ReceiverExchangePaymentTransaction::savePaymentOperationIntoHistory not yet implemented");
 }
 
+bool ReceiverExchangePaymentTransaction::updateReservations(
+    const vector<PathReservation> &finalAmounts)
+{
+    debug() << "updateReservations";
+
+    // TODO: After task 06-05 (AmountReservation with equivalent):
+    // - Use reservation->equivalent() to validate equivalent matches
+    // - Return false if PathID matches but equivalent differs
+    // For now: simple PathID + amount validation without equivalent check
+
+    unordered_set<PathID> updatedPaths;
+    const auto reservationsCopy = mReservations;
+
+    for (const auto &nodeAndReservations : reservationsCopy) {
+        for (auto pathIDAndReservation : nodeAndReservations.second) {
+            bool found = false;
+            PathID matchedPathID = std::numeric_limits<PathID>::max();
+
+            // Find matching final amount by pathID
+            for (const auto &finalAmount : finalAmounts) {
+                if (finalAmount.pathID == pathIDAndReservation.first) {
+                    // Found matching pathID
+                    if (*finalAmount.amount.get() != pathIDAndReservation.second->amount()) {
+                        shortageReservation(
+                            nodeAndReservations.first,
+                            pathIDAndReservation.second,
+                            *finalAmount.amount.get(),
+                            finalAmount.pathID,
+                            finalAmount.equivalent);
+                    }
+                    matchedPathID = finalAmount.pathID;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found) {
+                updatedPaths.insert(matchedPathID);
+            } else {
+                // Reservation with pathID not in finalAmounts - drop it
+                dropNodeReservationsOnPath(pathIDAndReservation.first);
+            }
+        }
+    }
+
+    return updatedPaths.size() == finalAmounts.size();
+}
+
 bool ReceiverExchangePaymentTransaction::checkReservationsDirections() const
 {
-    throw RuntimeError("ReceiverExchangePaymentTransaction::checkReservationsDirections not yet implemented");
+    debug() << "checkReservationsDirections";
+
+    // TODO: After task 06-05 (AmountReservation with equivalent):
+    // - Validate all incoming reservations are in mEquivalent using reservation->equivalent()
+    // For now: simple validation that incoming reservations exist
+
+    TrustLineAmount totalIncoming = TrustLineAmount(0);
+    bool hasIncoming = false;
+
+    for (const auto& [contractorID, reservations] : mReservations) {
+        for (const auto& [pathID, reservation] : reservations) {
+            if (reservation->direction() == AmountReservation::Incoming) {
+                totalIncoming = totalIncoming + reservation->amount();
+                hasIncoming = true;
+            }
+        }
+    }
+
+    // Validate we have incoming reservations
+    return hasIncoming && totalIncoming > TrustLineAmount(0);
 }

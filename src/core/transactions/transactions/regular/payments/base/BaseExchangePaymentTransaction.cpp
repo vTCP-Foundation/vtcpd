@@ -328,7 +328,7 @@ void BaseExchangePaymentTransaction::runFourNodesCyclesTransactions()
 }
 
 bool BaseExchangePaymentTransaction::updateReservations(
-    const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmounts)
+    const vector<PathReservation> &finalAmounts)
 {
     throw RuntimeError("BaseExchangePaymentTransaction::updateReservations not yet implemented");
 }
@@ -336,7 +336,7 @@ bool BaseExchangePaymentTransaction::updateReservations(
 PathID BaseExchangePaymentTransaction::updateReservation(
     ContractorID contractorID,
     pair<PathID, AmountReservation::ConstShared> &pathIDAndReservation,
-    const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmounts)
+    const vector<PathReservation> &finalAmounts)
 {
     throw RuntimeError("BaseExchangePaymentTransaction::updateReservation not yet implemented");
 }

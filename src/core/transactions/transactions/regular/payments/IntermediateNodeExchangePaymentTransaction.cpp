@@ -5,6 +5,8 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
+    ExchangeRatesManager *exchangeRatesManager,
+    CommissionsManager *commissionsManager,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -18,7 +20,9 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
         resourcesManager,
         keystore,
         log,
-        subsystemsController)
+        subsystemsController),
+    mExchangeRatesManager(exchangeRatesManager),
+    mCommissionsManager(commissionsManager)
 {
 }
 
@@ -28,6 +32,8 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
+    ExchangeRatesManager *exchangeRatesManager,
+    CommissionsManager *commissionsManager,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -40,7 +46,9 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
         resourcesManager,
         keystore,
         log,
-        subsystemsController)
+        subsystemsController),
+    mExchangeRatesManager(exchangeRatesManager),
+    mCommissionsManager(commissionsManager)
 {
 }
 
@@ -80,7 +88,80 @@ void IntermediateNodeExchangePaymentTransaction::savePaymentOperationIntoHistory
     throw RuntimeError("IntermediateNodeExchangePaymentTransaction::savePaymentOperationIntoHistory not yet implemented");
 }
 
+bool IntermediateNodeExchangePaymentTransaction::updateReservations(
+    const vector<PathReservation> &finalAmounts)
+{
+    debug() << "updateReservations";
+
+    // TODO: After task 06-05 (AmountReservation with equivalent):
+    // - Use reservation->equivalent() to validate equivalent matches
+    // - Return false if PathID matches but equivalent differs
+    // For now: simple PathID + amount validation without equivalent check
+
+    unordered_set<PathID> updatedPaths;
+    const auto reservationsCopy = mReservations;
+
+    for (const auto &nodeAndReservations : reservationsCopy) {
+        for (auto pathIDAndReservation : nodeAndReservations.second) {
+            bool found = false;
+            PathID matchedPathID = std::numeric_limits<PathID>::max();
+
+            // Find matching final amount by pathID
+            for (const auto &finalAmount : finalAmounts) {
+                if (finalAmount.pathID == pathIDAndReservation.first) {
+                    // Found matching pathID
+                    if (*finalAmount.amount.get() != pathIDAndReservation.second->amount()) {
+                        shortageReservation(
+                            nodeAndReservations.first,
+                            pathIDAndReservation.second,
+                            *finalAmount.amount.get(),
+                            finalAmount.pathID,
+                            finalAmount.equivalent);
+                    }
+                    matchedPathID = finalAmount.pathID;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found) {
+                updatedPaths.insert(matchedPathID);
+            } else {
+                // Reservation with pathID not in finalAmounts - drop it
+                dropNodeReservationsOnPath(pathIDAndReservation.first);
+            }
+        }
+    }
+
+    return updatedPaths.size() == finalAmounts.size();
+}
+
 bool IntermediateNodeExchangePaymentTransaction::checkReservationsDirections() const
 {
-    throw RuntimeError("IntermediateNodeExchangePaymentTransaction::checkReservationsDirections not yet implemented");
+    debug() << "checkReservationsDirections";
+
+    // TODO: After task 06-05 (AmountReservation with equivalent):
+    // - Determine single outgoing equivalent using reservation->equivalent()
+    // - Convert incoming amounts to outgoing equivalent using ExchangeRatesManager
+    // - Deduct commissions for same-equivalent transit using CommissionsManager
+    // - Validate total incoming (converted + commission-adjusted) == total outgoing
+    // For now: simple validation that both incoming and outgoing exist
+
+    TrustLineAmount totalIncoming = TrustLineAmount(0);
+    TrustLineAmount totalOutgoing = TrustLineAmount(0);
+
+    for (const auto& [contractorID, reservations] : mReservations) {
+        for (const auto& [pathID, reservation] : reservations) {
+            if (reservation->direction() == AmountReservation::Incoming) {
+                totalIncoming = totalIncoming + reservation->amount();
+            } else if (reservation->direction() == AmountReservation::Outgoing) {
+                totalOutgoing = totalOutgoing + reservation->amount();
+            }
+        }
+    }
+
+    debug() << "Total incoming: " << totalIncoming << ", total outgoing: " << totalOutgoing;
+
+    // Return true if we have both incoming and outgoing
+    return totalIncoming > TrustLineAmount(0) && totalOutgoing > TrustLineAmount(0);
 }

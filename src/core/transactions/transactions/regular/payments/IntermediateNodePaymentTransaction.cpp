@@ -124,7 +124,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runPreviousNe
     const auto kNeighbor = mContractorsManager->contractorAddresses(mMessage->idOnReceiverSide).at(0);
     debug() << "Init. intermediate payment operation from node (" << kNeighbor->fullAddress() << ")";
 
-    if (mMessage->finalAmountsConfiguration().empty()) {
+    if (mMessage->finalAmountsConfigurationDeprecated().empty()) {
         warning() << "Not received reservation";
         return sendErrorMessageOnPreviousNodeRequest(
                    kNeighbor,
@@ -132,9 +132,9 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runPreviousNe
                    ResponseMessage::Closed);
     }
 
-    const auto kReservation = mMessage->finalAmountsConfiguration()[0];
+    const auto kReservation = mMessage->finalAmountsConfigurationDeprecated()[0];
     debug() << "Requested amount reservation: " << *kReservation.second.get() << " on path " << kReservation.first;
-    debug() << "Received reservations size: " << mMessage->finalAmountsConfiguration().size();
+    debug() << "Received reservations size: " << mMessage->finalAmountsConfigurationDeprecated().size();
 
     auto senderID = mContractorsManager->contractorIDByAddress(kNeighbor);
     if (senderID == ContractorsManager::kNotFoundContractorID) {
@@ -189,11 +189,11 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runPreviousNe
 
     // update local reservations during amounts from coordinator
     if (!updateReservations(vector<pair<PathID, ConstSharedTrustLineAmount>>(
-                                mMessage->finalAmountsConfiguration().begin() + 1,
-                                mMessage->finalAmountsConfiguration().end()))) {
+                                mMessage->finalAmountsConfigurationDeprecated().begin() + 1,
+                                mMessage->finalAmountsConfigurationDeprecated().end()))) {
         warning() << "Previous node send path configuration, which is absent on current node";
         // next loop is only logger info
-        for (const auto &reservation : mMessage->finalAmountsConfiguration()) {
+        for (const auto &reservation : mMessage->finalAmountsConfigurationDeprecated()) {
             debug() << "path: " << reservation.first << " amount: " << *reservation.second.get();
         }
         return sendErrorMessageOnPreviousNodeRequest(
@@ -275,19 +275,19 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
     mCoordinator = make_shared<Contractor>(kMessage->senderAddresses);
     // todo : on this stage node should know coordinator and check sender
     const auto kNextNode = kMessage->nextNodeInPath();
-    if (kMessage->finalAmountsConfiguration().empty()) {
+    if (kMessage->finalAmountsConfigurationDeprecated().empty()) {
         warning() << "Not received reservation";
         return sendErrorMessageOnCoordinatorRequest(
                    ResponseMessage::Closed);
     }
 
-    const auto kReservation = kMessage->finalAmountsConfiguration()[0];
+    const auto kReservation = kMessage->finalAmountsConfigurationDeprecated()[0];
     mLastProcessedPath = kReservation.first;
     // TODO : add check for mLastProcessedPath
 
     debug() << "requested reservation amount is " << *kReservation.second.get() << " on path " << kReservation.first;
     debug() << "Next node is " << kNextNode->fullAddress();
-    debug() << "Received reservations size: " << kMessage->finalAmountsConfiguration().size();
+    debug() << "Received reservations size: " << kMessage->finalAmountsConfigurationDeprecated().size();
     auto nextNodeID = mContractorsManager->contractorIDByAddress(kNextNode);
     if (nextNodeID == ContractorsManager::kNotFoundContractorID) {
         warning() << "Next node is not neighbor";
@@ -357,12 +357,12 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
         kReservation.first,
         make_shared<const TrustLineAmount>(reservationAmount));
 
-    if (kMessage->finalAmountsConfiguration().size() > 1) {
+    if (kMessage->finalAmountsConfigurationDeprecated().size() > 1) {
         // add actual reservations for next node
         reservations.insert(
             reservations.end(),
-            kMessage->finalAmountsConfiguration().begin() + 1,
-            kMessage->finalAmountsConfiguration().end());
+            kMessage->finalAmountsConfigurationDeprecated().begin() + 1,
+            kMessage->finalAmountsConfigurationDeprecated().end());
     }
     debug() << "Prepared for sending reservations size: " << reservations.size();
 
@@ -680,7 +680,7 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runFinalReser
 
     // todo : check coordinator
     if (!updateReservations(
-                kMessage->finalAmountsConfiguration())) {
+                kMessage->finalAmountsConfigurationDeprecated())) {
         sendErrorMessageOnFinalAmountsConfiguration();
         removeAllDataFromStorageConcerningTransaction();
         return reject("There are some final amounts, reservations for which are absent. Rejected");

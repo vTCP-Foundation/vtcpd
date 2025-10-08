@@ -216,7 +216,7 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runAmountReservationS
     const auto kMessage = popNextMessage<IntermediateNodeReservationRequestMessage>();
 
     const auto kNeighbor = mContractorsManager->contractorAddresses(kMessage->idOnReceiverSide).at(0);
-    if (kMessage->finalAmountsConfiguration().empty()) {
+    if (kMessage->finalAmountsConfigurationDeprecated().empty()) {
         warning() << "Reservation vector is empty";
         return sendErrorMessageOnPreviousNodeRequest(
                    kNeighbor,
@@ -224,10 +224,10 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runAmountReservationS
                    ResponseMessage::Closed);
     }
 
-    const auto kReservation = kMessage->finalAmountsConfiguration()[0];
+    const auto kReservation = kMessage->finalAmountsConfigurationDeprecated()[0];
     debug() << "Amount reservation for " << *kReservation.second.get() << " request received from "
             << kNeighbor->fullAddress() << " [" << kReservation.first << "]";
-    debug() << "Received reservations size: " << kMessage->finalAmountsConfiguration().size();
+    debug() << "Received reservations size: " << kMessage->finalAmountsConfigurationDeprecated().size();
 
     auto neighborID = mContractorsManager->contractorIDByAddress(kNeighbor);
     if (neighborID == ContractorsManager::kNotFoundContractorID) {
@@ -282,11 +282,11 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runAmountReservationS
 
     // update local reservations during amounts from coordinator
     if (!updateReservations(vector<pair<PathID, ConstSharedTrustLineAmount>>(
-                                kMessage->finalAmountsConfiguration().begin() + 1,
-                                kMessage->finalAmountsConfiguration().end()))) {
+                                kMessage->finalAmountsConfigurationDeprecated().begin() + 1,
+                                kMessage->finalAmountsConfigurationDeprecated().end()))) {
         warning() << "Previous node send path configuration, which is absent on current node";
         // next loop is only logger info
-        for (const auto &reservation : kMessage->finalAmountsConfiguration()) {
+        for (const auto &reservation : kMessage->finalAmountsConfigurationDeprecated()) {
             debug() << "path: " << reservation.first << " amount: " << *reservation.second.get();
         }
         mTransactionShouldBeRejected = true;
@@ -474,7 +474,7 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsC
     debug() << "maximal claiming block number: " << mMaximalClaimingBlockNumber;
 
     if (!updateReservations(
-                kMessage->finalAmountsConfiguration())) {
+                kMessage->finalAmountsConfigurationDeprecated())) {
         removeAllDataFromStorageConcerningTransaction();
         sendErrorMessageOnFinalAmountsConfiguration();
         // todo : discuss if receiver can reject TA on this stage or should wait

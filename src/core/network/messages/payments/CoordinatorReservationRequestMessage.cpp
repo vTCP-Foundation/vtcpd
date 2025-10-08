@@ -2,6 +2,23 @@
 #include "../../../common/serialization/BytesDeserializer.h"
 
 
+// NEW: Constructor with equivalents
+CoordinatorReservationRequestMessage::CoordinatorReservationRequestMessage(
+    const SerializedEquivalent equivalent,
+    vector<BaseAddress::Shared> senderAddresses,
+    const TransactionUUID& transactionUUID,
+    const vector<PathReservation> &finalAmountsConfig,
+    BaseAddress::Shared nextNodeInThePath) :
+
+    RequestMessageWithReservations(
+        equivalent,
+        senderAddresses,
+        transactionUUID,
+        finalAmountsConfig),
+    mNextPathNode(nextNodeInThePath)
+{}
+
+// DEPRECATED: Constructor without equivalents
 CoordinatorReservationRequestMessage::CoordinatorReservationRequestMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> senderAddresses,
