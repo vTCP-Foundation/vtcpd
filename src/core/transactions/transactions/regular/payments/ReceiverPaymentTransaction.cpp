@@ -281,12 +281,13 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runAmountReservationS
     }
 
     // update local reservations during amounts from coordinator
+    const auto kFinalAmounts = kMessage->finalAmountsConfigurationDeprecated();
     if (!updateReservations(vector<pair<PathID, ConstSharedTrustLineAmount>>(
-                                kMessage->finalAmountsConfigurationDeprecated().begin() + 1,
-                                kMessage->finalAmountsConfigurationDeprecated().end()))) {
+                                kFinalAmounts.begin() + 1,
+                                kFinalAmounts.end()))) {
         warning() << "Previous node send path configuration, which is absent on current node";
         // next loop is only logger info
-        for (const auto &reservation : kMessage->finalAmountsConfigurationDeprecated()) {
+        for (const auto &reservation : kFinalAmounts) {
             debug() << "path: " << reservation.first << " amount: " << *reservation.second.get();
         }
         mTransactionShouldBeRejected = true;

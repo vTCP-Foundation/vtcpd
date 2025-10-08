@@ -16,20 +16,24 @@ public:
         ContractorID trustLineContractor,
         const TransactionUUID &transactionUUID,
         const TrustLineAmount &amount,
-        const AmountReservation::ReservationDirection direction);
+        const AmountReservation::ReservationDirection direction,
+        const SerializedEquivalent equivalent);
 
     AmountReservation::ConstShared updateReservation(
         ContractorID trustLineContractor,
         const AmountReservation::ConstShared reservation,
-        const TrustLineAmount &newAmount);
+        const TrustLineAmount &newAmount,
+        const SerializedEquivalent equivalent);
 
     void free(
         ContractorID trustLineContractor,
-        const AmountReservation::ConstShared reservation);
+        const AmountReservation::ConstShared reservation,
+        const SerializedEquivalent equivalent);
 
     ConstSharedTrustLineAmount totalReserved(
         ContractorID trustLineContractor,
         const AmountReservation::ReservationDirection direction,
+        const SerializedEquivalent equivalent,
         const TransactionUUID *transactionUUID = nullptr) const;
 
     bool isReservationsPresentWithContractor(
@@ -46,7 +50,8 @@ public:
         ContractorID trustLineContractor,
         const TransactionUUID &transactionUUID,
         const TrustLineAmount &amount,
-        const AmountReservation::ReservationDirection direction);
+        const AmountReservation::ReservationDirection direction,
+        const SerializedEquivalent equivalent);
 
 protected:
     // One trust line may hold several amount reservations,

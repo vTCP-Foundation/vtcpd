@@ -189,7 +189,53 @@ const bool BaseExchangePaymentTransaction::shortageReservation(
     const PathID &pathID,
     const SerializedEquivalent equivalent)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::shortageReservation not yet implemented");
+    debug() << "shortageReservation on path " << pathID << " for equivalent " << equivalent;
+    if (kNewAmount > kReservation->amount()) {
+        throw ValueError(
+            "BaseExchangePaymentTransaction::shortageReservation: "
+            "new amount can't be greater than already reserved one.");
+    }
+
+    // Validate equivalent matches
+    if (kReservation->equivalent() != equivalent) {
+        warning() << "shortageReservation: Equivalent mismatch. Expected: "
+                  << kReservation->equivalent() << ", got: " << equivalent;
+        return false;
+    }
+
+    try {
+        // this field used only for debug output
+        const auto kPreviousAmount = kReservation->amount();
+
+        auto trustLineManager = mEquivalentsSubsystemsRouter->trustLinesManager(equivalent);
+        auto updatedReservation = trustLineManager->updateAmountReservation(
+                                      kContractor,
+                                      kReservation,
+                                      kNewAmount);
+
+        for (auto it = mReservations[kContractor].begin(); it != mReservations[kContractor].end(); it++) {
+            if ((*it).second.get() == kReservation.get() && (*it).first == pathID) {
+                mReservations[kContractor].erase(it);
+                break;
+            }
+        }
+        mReservations[kContractor].emplace_back(
+            pathID,
+            updatedReservation);
+
+        if (kReservation->direction() == AmountReservation::Incoming)
+            debug() << "Reservation for (" << kContractor << ") [" << pathID << "] shortened "
+                    << "from " << kPreviousAmount << " to " << kNewAmount << " [<=]";
+        else
+            debug() << "Reservation for (" << kContractor << ") [" << pathID << "] shortened "
+                    << "from " << kPreviousAmount << " to " << kNewAmount << " [=>]";
+
+        return true;
+    } catch (NotFoundError &) {
+        warning() << "shortageReservation: Reservation not found for update";
+    }
+
+    return false;
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runVotesCheckingStage()

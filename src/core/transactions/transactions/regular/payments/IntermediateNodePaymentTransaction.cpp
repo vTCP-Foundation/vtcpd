@@ -188,12 +188,13 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runPreviousNe
     }
 
     // update local reservations during amounts from coordinator
+    const auto finalAmounts = mMessage->finalAmountsConfigurationDeprecated();
     if (!updateReservations(vector<pair<PathID, ConstSharedTrustLineAmount>>(
-                                mMessage->finalAmountsConfigurationDeprecated().begin() + 1,
-                                mMessage->finalAmountsConfigurationDeprecated().end()))) {
+                                finalAmounts.begin() + 1,
+                                finalAmounts.end()))) {
         warning() << "Previous node send path configuration, which is absent on current node";
         // next loop is only logger info
-        for (const auto &reservation : mMessage->finalAmountsConfigurationDeprecated()) {
+        for (const auto &reservation : finalAmounts) {
             debug() << "path: " << reservation.first << " amount: " << *reservation.second.get();
         }
         return sendErrorMessageOnPreviousNodeRequest(
@@ -357,12 +358,13 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCoordinato
         kReservation.first,
         make_shared<const TrustLineAmount>(reservationAmount));
 
-    if (kMessage->finalAmountsConfigurationDeprecated().size() > 1) {
+    const auto kFinalAmounts = kMessage->finalAmountsConfigurationDeprecated();
+    if (kFinalAmounts.size() > 1) {
         // add actual reservations for next node
         reservations.insert(
             reservations.end(),
-            kMessage->finalAmountsConfigurationDeprecated().begin() + 1,
-            kMessage->finalAmountsConfigurationDeprecated().end());
+            kFinalAmounts.begin() + 1,
+            kFinalAmounts.end());
     }
     debug() << "Prepared for sending reservations size: " << reservations.size();
 

@@ -17,7 +17,8 @@ AmountReservation::ConstShared AmountReservationsHandler::reserve(
     ContractorID trustLineContractor,
     const TransactionUUID &transactionUUID,
     const TrustLineAmount &amount,
-    const AmountReservation::ReservationDirection direction)
+    const AmountReservation::ReservationDirection direction,
+    const SerializedEquivalent equivalent)
 {
     if (0 == amount)
         throw ValueError(
@@ -26,7 +27,8 @@ AmountReservation::ConstShared AmountReservationsHandler::reserve(
     const auto kReservation = make_shared<AmountReservation>(
                                   transactionUUID,
                                   amount,
-                                  direction);
+                                  direction,
+                                  equivalent);
 
     auto iterator = mReservations.find(trustLineContractor);
     if (iterator != mReservations.end()) {
@@ -63,7 +65,8 @@ AmountReservation::ConstShared AmountReservationsHandler::reserve(
 AmountReservation::ConstShared AmountReservationsHandler::updateReservation(
     ContractorID trustLineContractor,
     const AmountReservation::ConstShared reservation,
-    const TrustLineAmount &newAmount)
+    const TrustLineAmount &newAmount,
+    const SerializedEquivalent equivalent)
 {
 #ifdef INTERNAL_ARGUMENTS_VALIDATION
     assert(reservation != nullptr);
@@ -82,7 +85,8 @@ AmountReservation::ConstShared AmountReservationsHandler::updateReservation(
     const auto kNewReservation = make_shared<const AmountReservation>(
                                      reservation->transactionUUID(),
                                      newAmount,
-                                     reservation->direction());
+                                     reservation->direction(),
+                                     equivalent);
 
     auto reservations = mReservations.find(trustLineContractor)->second.get();
     for (auto it=reservations->begin(); it!=reservations->end(); ++it) {
@@ -99,7 +103,8 @@ AmountReservation::ConstShared AmountReservationsHandler::updateReservation(
 
 void AmountReservationsHandler::free(
     ContractorID trustLineContractor,
-    const AmountReservation::ConstShared reservation)
+    const AmountReservation::ConstShared reservation,
+    const SerializedEquivalent equivalent)
 {
     try {
         auto iterator = mReservations.find(trustLineContractor);
@@ -111,7 +116,10 @@ void AmountReservationsHandler::free(
 
         auto reservations = (*iterator).second.get();
         for (auto it=reservations->cbegin(); it!=reservations->cend(); ++it) {
-            if (*it == reservation) {
+            if ((*it)->transactionUUID() == reservation->transactionUUID() &&
+                (*it)->amount() == reservation->amount() &&
+                (*it)->direction() == reservation->direction() &&
+                (*it)->equivalent() == equivalent) {
                 reservations->erase(it);
                 if (reservations->empty()) {
                     mReservations.erase(iterator);
@@ -138,13 +146,15 @@ void AmountReservationsHandler::free(
 ConstSharedTrustLineAmount AmountReservationsHandler::totalReserved(
     ContractorID trustLineContractor,
     const AmountReservation::ReservationDirection direction,
+    const SerializedEquivalent equivalent,
     const TransactionUUID *transactionUUID) const
 {
     SharedTrustLineAmount amount(new TrustLineAmount(0));
 
     auto reservationsVector = reservations(trustLineContractor, transactionUUID);
     for (auto &lock : reservationsVector) {
-        if (lock->direction() == direction)
+        if (lock->direction() == direction &&
+            lock->equivalent() == equivalent)
             (*amount) += (*lock).amount();
     }
     return amount;
@@ -235,7 +245,8 @@ AmountReservation::ConstShared AmountReservationsHandler::getReservation(
     ContractorID trustLineContractor,
     const TransactionUUID &transactionUUID,
     const TrustLineAmount &amount,
-    const AmountReservation::ReservationDirection direction)
+    const AmountReservation::ReservationDirection direction,
+    const SerializedEquivalent equivalent)
 {
     auto iterator = mReservations.find(trustLineContractor);
     if (iterator == mReservations.end()) {
@@ -244,7 +255,8 @@ AmountReservation::ConstShared AmountReservationsHandler::getReservation(
     for (const auto &reservation : *iterator->second) {
         if (reservation->transactionUUID() == transactionUUID and
                 reservation->amount() == amount and
-                reservation->direction() == direction) {
+                reservation->direction() == direction and
+                reservation->equivalent() == equivalent) {
             return reservation;
         }
     }

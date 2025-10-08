@@ -28,11 +28,13 @@ public:
     AmountReservation(
         const TransactionUUID &transactionUUID,
         const TrustLineAmount &amount,
-        const ReservationDirection direction);
+        const ReservationDirection direction,
+        const SerializedEquivalent equivalent);
 
     const TrustLineAmount& amount() const;
     const TransactionUUID& transactionUUID() const;
     const ReservationDirection direction() const;
+    const SerializedEquivalent& equivalent() const;
 
     void operator= (const AmountReservation &rhs);
     bool operator==(const AmountReservation &rhs) const;
@@ -42,6 +44,7 @@ protected:
     TrustLineAmount mBlockedAmount;
     TransactionUUID mTransactionUUID;
     ReservationDirection mDirection;
+    SerializedEquivalent mEquivalent;
 };
 
 

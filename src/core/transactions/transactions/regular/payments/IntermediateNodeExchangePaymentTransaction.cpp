@@ -93,11 +93,6 @@ bool IntermediateNodeExchangePaymentTransaction::updateReservations(
 {
     debug() << "updateReservations";
 
-    // TODO: After task 06-05 (AmountReservation with equivalent):
-    // - Use reservation->equivalent() to validate equivalent matches
-    // - Return false if PathID matches but equivalent differs
-    // For now: simple PathID + amount validation without equivalent check
-
     unordered_set<PathID> updatedPaths;
     const auto reservationsCopy = mReservations;
 
@@ -106,10 +101,19 @@ bool IntermediateNodeExchangePaymentTransaction::updateReservations(
             bool found = false;
             PathID matchedPathID = std::numeric_limits<PathID>::max();
 
-            // Find matching final amount by pathID
+            // Find matching final amount by pathID AND equivalent
             for (const auto &finalAmount : finalAmounts) {
                 if (finalAmount.pathID == pathIDAndReservation.first) {
-                    // Found matching pathID
+                    // Validate equivalent matches
+                    if (finalAmount.equivalent != pathIDAndReservation.second->equivalent()) {
+                        warning() << "updateReservations: PathID " << finalAmount.pathID
+                                  << " equivalent mismatch. Expected: "
+                                  << pathIDAndReservation.second->equivalent()
+                                  << ", got: " << finalAmount.equivalent;
+                        return false;
+                    }
+
+                    // Found matching pathID with correct equivalent
                     if (*finalAmount.amount.get() != pathIDAndReservation.second->amount()) {
                         shortageReservation(
                             nodeAndReservations.first,
@@ -140,28 +144,90 @@ bool IntermediateNodeExchangePaymentTransaction::checkReservationsDirections() c
 {
     debug() << "checkReservationsDirections";
 
-    // TODO: After task 06-05 (AmountReservation with equivalent):
-    // - Determine single outgoing equivalent using reservation->equivalent()
-    // - Convert incoming amounts to outgoing equivalent using ExchangeRatesManager
-    // - Deduct commissions for same-equivalent transit using CommissionsManager
-    // - Validate total incoming (converted + commission-adjusted) == total outgoing
-    // For now: simple validation that both incoming and outgoing exist
-
-    TrustLineAmount totalIncoming = TrustLineAmount(0);
+    // Step 1: Determine outgoing equivalent and validate uniformity
+    SerializedEquivalent outgoingEquivalent;
+    bool outgoingEquivalentSet = false;
     TrustLineAmount totalOutgoing = TrustLineAmount(0);
 
     for (const auto& [contractorID, reservations] : mReservations) {
         for (const auto& [pathID, reservation] : reservations) {
-            if (reservation->direction() == AmountReservation::Incoming) {
-                totalIncoming = totalIncoming + reservation->amount();
-            } else if (reservation->direction() == AmountReservation::Outgoing) {
+            if (reservation->direction() == AmountReservation::Outgoing) {
+                if (!outgoingEquivalentSet) {
+                    outgoingEquivalent = reservation->equivalent();
+                    outgoingEquivalentSet = true;
+                } else if (outgoingEquivalent != reservation->equivalent()) {
+                    // All outgoing must be in same equivalent
+                    warning() << "checkReservationsDirections: Multiple outgoing equivalents detected. "
+                              << "First: " << outgoingEquivalent << ", found: " << reservation->equivalent();
+                    return false;
+                }
                 totalOutgoing = totalOutgoing + reservation->amount();
             }
         }
     }
 
-    debug() << "Total incoming: " << totalIncoming << ", total outgoing: " << totalOutgoing;
+    if (!outgoingEquivalentSet) {
+        // No outgoing reservations - invalid for intermediate node
+        warning() << "checkReservationsDirections: No outgoing reservations found";
+        return false;
+    }
 
-    // Return true if we have both incoming and outgoing
-    return totalIncoming > TrustLineAmount(0) && totalOutgoing > TrustLineAmount(0);
+    // Step 2: Calculate total incoming converted to outgoing equivalent
+    TrustLineAmount totalIncomingConverted = TrustLineAmount(0);
+    set<SerializedEquivalent> processedIncomingEquivalents;
+
+    for (const auto& [contractorID, reservations] : mReservations) {
+        for (const auto& [pathID, reservation] : reservations) {
+            if (reservation->direction() == AmountReservation::Incoming) {
+                SerializedEquivalent incomingEquiv = reservation->equivalent();
+                TrustLineAmount incomingAmount = reservation->amount();
+
+                if (incomingEquiv == outgoingEquivalent) {
+                    // Same equivalent - direct add
+                    totalIncomingConverted = totalIncomingConverted + incomingAmount;
+
+                    // Step 3: Deduct commission once per incoming equivalent (transit only)
+                    if (processedIncomingEquivalents.find(incomingEquiv) == processedIncomingEquivalents.end()) {
+                        auto commission = mCommissionsManager->getCommission(incomingEquiv);
+                        if (commission) {
+                            TrustLineAmount commissionAmount(commission->amount());
+                            totalIncomingConverted = totalIncomingConverted - commissionAmount;
+                            debug() << "Deducted commission for equivalent " << incomingEquiv
+                                    << ": " << commissionAmount;
+                        }
+                        processedIncomingEquivalents.insert(incomingEquiv);
+                    }
+                } else {
+                    // Different equivalent - convert
+                    auto rate = mExchangeRatesManager->get(incomingEquiv, outgoingEquivalent);
+                    if (!rate) {
+                        // No exchange rate found
+                        warning() << "checkReservationsDirections: No exchange rate found for "
+                                  << incomingEquiv << " -> " << outgoingEquivalent;
+                        return false;
+                    }
+
+                    try {
+                        TrustLineAmount converted = mExchangeRatesManager->calculateConvertedAmount(
+                            incomingEquiv, outgoingEquivalent, incomingAmount);
+                        totalIncomingConverted = totalIncomingConverted + converted;
+                        debug() << "Converted " << incomingAmount << " from equiv " << incomingEquiv
+                                << " to " << converted << " in equiv " << outgoingEquivalent;
+                    } catch (const Exception& e) {
+                        // Conversion failed (overflow or other error)
+                        warning() << "checkReservationsDirections: Conversion failed: " << e.what();
+                        return false;
+                    }
+
+                    // No commission for exchange operations
+                }
+            }
+        }
+    }
+
+    // Step 4: Compare totals
+    debug() << "Total incoming (converted): " << totalIncomingConverted
+            << ", total outgoing: " << totalOutgoing;
+
+    return totalIncomingConverted == totalOutgoing;
 }

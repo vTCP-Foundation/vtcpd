@@ -83,11 +83,6 @@ bool ReceiverExchangePaymentTransaction::updateReservations(
 {
     debug() << "updateReservations";
 
-    // TODO: After task 06-05 (AmountReservation with equivalent):
-    // - Use reservation->equivalent() to validate equivalent matches
-    // - Return false if PathID matches but equivalent differs
-    // For now: simple PathID + amount validation without equivalent check
-
     unordered_set<PathID> updatedPaths;
     const auto reservationsCopy = mReservations;
 
@@ -96,10 +91,19 @@ bool ReceiverExchangePaymentTransaction::updateReservations(
             bool found = false;
             PathID matchedPathID = std::numeric_limits<PathID>::max();
 
-            // Find matching final amount by pathID
+            // Find matching final amount by pathID AND equivalent
             for (const auto &finalAmount : finalAmounts) {
                 if (finalAmount.pathID == pathIDAndReservation.first) {
-                    // Found matching pathID
+                    // Validate equivalent matches
+                    if (finalAmount.equivalent != pathIDAndReservation.second->equivalent()) {
+                        warning() << "updateReservations: PathID " << finalAmount.pathID
+                                  << " equivalent mismatch. Expected: "
+                                  << pathIDAndReservation.second->equivalent()
+                                  << ", got: " << finalAmount.equivalent;
+                        return false;
+                    }
+
+                    // Found matching pathID with correct equivalent
                     if (*finalAmount.amount.get() != pathIDAndReservation.second->amount()) {
                         shortageReservation(
                             nodeAndReservations.first,
@@ -130,16 +134,18 @@ bool ReceiverExchangePaymentTransaction::checkReservationsDirections() const
 {
     debug() << "checkReservationsDirections";
 
-    // TODO: After task 06-05 (AmountReservation with equivalent):
-    // - Validate all incoming reservations are in mEquivalent using reservation->equivalent()
-    // For now: simple validation that incoming reservations exist
-
     TrustLineAmount totalIncoming = TrustLineAmount(0);
     bool hasIncoming = false;
 
     for (const auto& [contractorID, reservations] : mReservations) {
         for (const auto& [pathID, reservation] : reservations) {
             if (reservation->direction() == AmountReservation::Incoming) {
+                // Validate all incoming reservations are in receiver's equivalent (mEquivalent)
+                if (reservation->equivalent() != mEquivalent) {
+                    warning() << "checkReservationsDirections: Incoming reservation in wrong equivalent. "
+                              << "Expected: " << mEquivalent << ", got: " << reservation->equivalent();
+                    return false;
+                }
                 totalIncoming = totalIncoming + reservation->amount();
                 hasIncoming = true;
             }
