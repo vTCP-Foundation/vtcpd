@@ -15,6 +15,7 @@ public:
     typedef shared_ptr<FinalAmountsConfigurationMessage> Shared;
 
 public:
+    // Constructor without receipts
     FinalAmountsConfigurationMessage(
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> senderAddresses,
@@ -23,7 +24,17 @@ public:
         const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
         const BlockNumber maximalClaimingBlockNumber);
 
-    // if coordinator has reservation with current node it also send receipt
+    // NEW: Constructor with multiple receipts (for new transactions)
+    FinalAmountsConfigurationMessage(
+        const SerializedEquivalent equivalent,
+        vector<BaseAddress::Shared> senderAddresses,
+        const TransactionUUID &transactionUUID,
+        const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig,
+        const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
+        const BlockNumber maximalClaimingBlockNumber,
+        const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures);
+
+    // DEPRECATED: Constructor with single receipt (for old transactions backward compatibility)
     FinalAmountsConfigurationMessage(
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> senderAddresses,
@@ -44,15 +55,14 @@ public:
 
     bool isReceiptContains() const;
 
-    const sphincs::Signature::Shared signature() const;
+    const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>>& signatures() const;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
 private:
     map<PaymentNodeID, Contractor::Shared> mPaymentParticipants;
     BlockNumber mMaximalClaimingBlockNumber;
-    bool mIsReceiptContains;
-    sphincs::Signature::Shared mSignature;
+    vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> mSignatures;
 };
 
 

@@ -534,7 +534,7 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsC
                     ioTransaction,
                     serializedIncomingReceiptData.first,
                     serializedIncomingReceiptData.second,
-                    kMessage->signature())) {
+                    kMessage->signatures()[0].second)) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Coordinator send invalid receipt signature. Rejected");
@@ -544,7 +544,7 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsC
                     mTrustLinesManager->auditNumber(coordinatorID),
                     mTransactionUUID,
                     coordinatorTotalIncomingReservationAmount,
-                    kMessage->signature())) {
+                    kMessage->signatures()[0].second)) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Can't save coordinator receipt. Rejected.");
@@ -695,7 +695,7 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsN
                     ioTransaction,
                     serializedIncomingReceiptData.first,
                     serializedIncomingReceiptData.second,
-                    kMessage->signature())) {
+                    kMessage->signatures()[0].second)) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Sender send invalid receipt signature. Rejected");
@@ -705,7 +705,7 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsN
                     mTrustLinesManager->auditNumber(senderID),
                     mTransactionUUID,
                     participantTotalIncomingReservationAmount,
-                    kMessage->signature())) {
+                    kMessage->signatures()[0].second)) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Can't save participant receipt. Rejected.");

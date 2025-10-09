@@ -2,6 +2,7 @@
 #include "../../../common/serialization/BytesDeserializer.h"
 #include "../../../common/serialization/BytesSerializer.h"
 
+// Constructor without receipts
 FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> senderAddresses,
@@ -16,11 +17,33 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
         transactionUUID,
         finalAmountsConfig),
     mPaymentParticipants(paymentParticipants),
-    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
-    mIsReceiptContains(false)
+    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber)
+    // mSignatures empty
 {
 }
 
+// NEW: Constructor with multiple receipts
+FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
+    const SerializedEquivalent equivalent,
+    vector<BaseAddress::Shared> senderAddresses,
+    const TransactionUUID &transactionUUID,
+    const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig,
+    const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
+    const BlockNumber maximalClaimingBlockNumber,
+    const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures) :
+
+    RequestMessageWithReservations(
+        equivalent,
+        senderAddresses,
+        transactionUUID,
+        finalAmountsConfig),
+    mPaymentParticipants(paymentParticipants),
+    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
+    mSignatures(signatures)
+{
+}
+
+// DEPRECATED: Constructor with single receipt (backward compatibility)
 FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> senderAddresses,
@@ -36,10 +59,13 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
         transactionUUID,
         finalAmountsConfig),
     mPaymentParticipants(paymentParticipants),
-    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
-    mIsReceiptContains(true),
-    mSignature(signature)
+    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber)
 {
+    // Create single-element vector with mEquivalent and signature
+    if (signature) {
+        mSignatures.emplace_back(equivalent, signature);
+    }
+    // If signature is null, mSignatures remains empty
 }
 
 FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
@@ -64,12 +90,25 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     }
 
     deserializer.copyInto(&mMaximalClaimingBlockNumber);
-    deserializer.copyInto(&mIsReceiptContains);
 
-    if (mIsReceiptContains) {
+    // Deserialize signatures count
+    SerializedRecordsCount signaturesCount;
+    deserializer.copyInto(&signaturesCount);
+
+    mSignatures.reserve(signaturesCount);
+
+    // Deserialize each (equivalent, signature) pair
+    for (SerializedRecordNumber idx = 0; idx < signaturesCount; idx++) {
+        // Deserialize equivalent
+        SerializedEquivalent equivalent;
+        deserializer.copyInto(&equivalent);
+
+        // Deserialize signature
         auto signature = make_shared<sphincs::Signature>(
             buffer.get() + deserializer.getCurrentOffset());
-        mSignature = signature;
+        deserializer.skipBytes(signature->signatureSize());
+
+        mSignatures.emplace_back(equivalent, signature);
     }
 }
 
@@ -90,12 +129,13 @@ const BlockNumber FinalAmountsConfigurationMessage::maximalClaimingBlockNumber()
 
 bool FinalAmountsConfigurationMessage::isReceiptContains() const
 {
-    return mIsReceiptContains;
+    return !mSignatures.empty();
 }
 
-const sphincs::Signature::Shared FinalAmountsConfigurationMessage::signature() const
+const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>>&
+FinalAmountsConfigurationMessage::signatures() const
 {
-    return mSignature;
+    return mSignatures;
 }
 
 pair<BytesShared, size_t> FinalAmountsConfigurationMessage::serializeToBytes() const
@@ -113,12 +153,19 @@ pair<BytesShared, size_t> FinalAmountsConfigurationMessage::serializeToBytes() c
     }
 
     serializer.copy(mMaximalClaimingBlockNumber);
-    serializer.copy(static_cast<byte_t>(mIsReceiptContains));
 
-    if (mIsReceiptContains) {
+    // Serialize signatures count
+    serializer.copy(static_cast<SerializedRecordsCount>(mSignatures.size()));
+
+    // Serialize each (equivalent, signature) pair
+    for (const auto& [equivalent, signature] : mSignatures) {
+        // Serialize equivalent
+        serializer.copy(equivalent);
+
+        // Serialize signature
         serializer.copy(
-            mSignature->data(),
-            mSignature->signatureSize());
+            signature->data(),
+            signature->signatureSize());
     }
 
     return serializer.collect();

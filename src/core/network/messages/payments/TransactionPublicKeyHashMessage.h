@@ -13,6 +13,7 @@ public:
     typedef shared_ptr<TransactionPublicKeyHashMessage> Shared;
 
 public:
+    // Constructor without receipts
     TransactionPublicKeyHashMessage(
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> &senderAddresses,
@@ -20,6 +21,16 @@ public:
         const PaymentNodeID paymentNodeID,
         const sphincs::KeyHash::Shared transactionPublicKeyHash);
 
+    // NEW: Constructor with multiple receipts (for new transactions)
+    TransactionPublicKeyHashMessage(
+        const SerializedEquivalent equivalent,
+        vector<BaseAddress::Shared> &senderAddresses,
+        const TransactionUUID &transactionUUID,
+        const PaymentNodeID paymentNodeID,
+        const sphincs::KeyHash::Shared transactionPublicKeyHash,
+        const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures);
+
+    // DEPRECATED: Constructor with single receipt (for old transactions backward compatibility)
     TransactionPublicKeyHashMessage(
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> &senderAddresses,
@@ -39,15 +50,14 @@ public:
 
     bool isReceiptContains() const;
 
-    const sphincs::Signature::Shared signature() const;
+    const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>>& signatures() const;
 
     pair<BytesShared, size_t> serializeToBytes() const override;
 
 private:
     PaymentNodeID mPaymentNodeID;
     sphincs::KeyHash::Shared mTransactionPublicKeyHash;
-    bool mIsReceiptContains;
-    sphincs::Signature::Shared mSignature;
+    vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> mSignatures;
 };
 
 

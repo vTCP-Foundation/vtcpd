@@ -1,6 +1,7 @@
 #include "TransactionPublicKeyHashMessage.h"
 #include "../../../common/serialization/BytesDeserializer.h"
 
+// Constructor without receipts
 TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> &senderAddresses,
@@ -13,11 +14,31 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
         senderAddresses,
         transactionUUID),
     mPaymentNodeID(paymentNodeID),
-    mTransactionPublicKeyHash(transactionPublicKeyHash),
-    mIsReceiptContains(false)
+    mTransactionPublicKeyHash(transactionPublicKeyHash)
+    // mSignatures empty
 {
 }
 
+// NEW: Constructor with multiple receipts
+TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
+    const SerializedEquivalent equivalent,
+    vector<BaseAddress::Shared> &senderAddresses,
+    const TransactionUUID &transactionUUID,
+    const PaymentNodeID paymentNodeID,
+    const sphincs::KeyHash::Shared transactionPublicKeyHash,
+    const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures) :
+
+    TransactionMessage(
+        equivalent,
+        senderAddresses,
+        transactionUUID),
+    mPaymentNodeID(paymentNodeID),
+    mTransactionPublicKeyHash(transactionPublicKeyHash),
+    mSignatures(signatures)
+{
+}
+
+// DEPRECATED: Constructor with single receipt (backward compatibility)
 TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     const SerializedEquivalent equivalent,
     vector<BaseAddress::Shared> &senderAddresses,
@@ -31,10 +52,13 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
         senderAddresses,
         transactionUUID),
     mPaymentNodeID(paymentNodeID),
-    mTransactionPublicKeyHash(transactionPublicKeyHash),
-    mIsReceiptContains(true),
-    mSignature(signature)
+    mTransactionPublicKeyHash(transactionPublicKeyHash)
 {
+    // Create single-element vector with mEquivalent and signature
+    if (signature) {
+        mSignatures.emplace_back(equivalent, signature);
+    }
+    // If signature is null, mSignatures remains empty
 }
 
 TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
@@ -50,13 +74,24 @@ TransactionPublicKeyHashMessage::TransactionPublicKeyHashMessage(
     mTransactionPublicKeyHash = make_shared<sphincs::KeyHash>(buffer.get() + currentOffset);
     deserializer.skipBytes(sphincs::KeyHash::kBytesSize);
 
-    deserializer.copyInto(&mIsReceiptContains);
+    // Deserialize signatures count
+    SerializedRecordsCount signaturesCount;
+    deserializer.copyInto(&signaturesCount);
 
-    if (mIsReceiptContains) {
-        // Get current offset for signature creation
+    mSignatures.reserve(signaturesCount);
+
+    // Deserialize each (equivalent, signature) pair
+    for (SerializedRecordNumber idx = 0; idx < signaturesCount; idx++) {
+        // Deserialize equivalent
+        SerializedEquivalent equivalent;
+        deserializer.copyInto(&equivalent);
+
+        // Deserialize signature
         currentOffset = deserializer.getCurrentOffset();
         auto signature = make_shared<sphincs::Signature>(buffer.get() + currentOffset);
-        mSignature = signature;
+        deserializer.skipBytes(signature->signatureSize());
+
+        mSignatures.emplace_back(equivalent, signature);
     }
 }
 
@@ -77,12 +112,13 @@ const sphincs::KeyHash::Shared TransactionPublicKeyHashMessage::transactionPubli
 
 bool TransactionPublicKeyHashMessage::isReceiptContains() const
 {
-    return mIsReceiptContains;
+    return !mSignatures.empty();
 }
 
-const sphincs::Signature::Shared TransactionPublicKeyHashMessage::signature() const
+const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>>&
+TransactionPublicKeyHashMessage::signatures() const
 {
-    return mSignature;
+    return mSignatures;
 }
 
 pair<BytesShared, size_t> TransactionPublicKeyHashMessage::serializeToBytes() const
@@ -93,21 +129,22 @@ pair<BytesShared, size_t> TransactionPublicKeyHashMessage::serializeToBytes() co
     // Consider passing serializer down inheritance chain to avoid redundant allocation/copy
     const auto parentBytesAndCount = TransactionMessage::serializeToBytes();
 
-    auto kBufferSize =
-        parentBytesAndCount.second + sizeof(PaymentNodeID) + sphincs::KeyHash::kBytesSize + sizeof(byte_t);
-    if (mIsReceiptContains) {
-        kBufferSize += sphincs::Signature::signatureSize();
-    }
-
     // Use BytesSerializer for consistent serialization
     BytesSerializer serializer;
     serializer.enqueue(parentBytesAndCount);
     serializer.copy(mPaymentNodeID);
     serializer.copy(mTransactionPublicKeyHash->data(), sphincs::KeyHash::kBytesSize);
-    serializer.copy(mIsReceiptContains);
 
-    if (mIsReceiptContains) {
-        serializer.copy(mSignature->data(), mSignature->signatureSize());
+    // Serialize signatures count
+    serializer.copy(static_cast<SerializedRecordsCount>(mSignatures.size()));
+
+    // Serialize each (equivalent, signature) pair
+    for (const auto& [equivalent, signature] : mSignatures) {
+        // Serialize equivalent
+        serializer.copy(equivalent);
+
+        // Serialize signature
+        serializer.copy(signature->data(), signature->signatureSize());
     }
 
     return serializer.collect();

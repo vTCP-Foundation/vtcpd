@@ -870,7 +870,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalR
                     ioTransaction,
                     serializedIncomingReceiptData.first,
                     serializedIncomingReceiptData.second,
-                    kMessage->signature())) {
+                    kMessage->signatures()[0].second)) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Sender send invalid receipt signature. Rejected");
@@ -880,7 +880,7 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalR
                     mTrustLinesManager->auditNumber(senderID),
                     mTransactionUUID,
                     participantTotalIncomingReservationAmount,
-                    kMessage->signature())) {
+                    kMessage->signatures()[0].second)) {
             removeAllDataFromStorageConcerningTransaction(ioTransaction);
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Can't save participant receipt. Rejected.");
