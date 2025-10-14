@@ -46,7 +46,12 @@ add_executable(unit_tests
     transactions/InitiateMaxFlowExchangeCalculationMixedCommissionTest.cpp
     paths/ExchangePathsManagerTest.cpp
     paths/PathSimulationTest.cpp
+    paths/TestOptimalPathResult.cpp
+    paths/TestExchangePath.cpp
+    transactions/TestPathReservation.cpp
     transactions/EstimationTransactionsTest.cpp
+    payments/TestAmountReservation.cpp
+    payments/TestAmountReservationsHandler.cpp
     core/CoreORToolsStartupTest.cpp
 )
 
