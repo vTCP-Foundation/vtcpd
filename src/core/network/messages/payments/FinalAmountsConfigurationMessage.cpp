@@ -22,6 +22,72 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
 {
 }
 
+// NEW: Constructor with PathReservation vector (no receipts)
+FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
+    const SerializedEquivalent equivalent,
+    vector<BaseAddress::Shared> senderAddresses,
+    const TransactionUUID &transactionUUID,
+    const vector<PathReservation> &finalAmountsConfig,
+    const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
+    const BlockNumber maximalClaimingBlockNumber) :
+
+    RequestMessageWithReservations(
+        equivalent,
+        senderAddresses,
+        transactionUUID,
+        finalAmountsConfig),
+    mPaymentParticipants(paymentParticipants),
+    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber)
+    // mSignatures empty
+{
+}
+
+// NEW: Constructor with PathReservation vector and multiple receipts
+FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
+    const SerializedEquivalent equivalent,
+    vector<BaseAddress::Shared> senderAddresses,
+    const TransactionUUID &transactionUUID,
+    const vector<PathReservation> &finalAmountsConfig,
+    const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
+    const BlockNumber maximalClaimingBlockNumber,
+    const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures) :
+
+    RequestMessageWithReservations(
+        equivalent,
+        senderAddresses,
+        transactionUUID,
+        finalAmountsConfig),
+    mPaymentParticipants(paymentParticipants),
+    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
+    mSignatures(signatures)
+{
+}
+
+// NEW: Constructor with PathReservation vector and single receipt
+FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
+    const SerializedEquivalent equivalent,
+    vector<BaseAddress::Shared> senderAddresses,
+    const TransactionUUID &transactionUUID,
+    const vector<PathReservation> &finalAmountsConfig,
+    const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
+    const BlockNumber maximalClaimingBlockNumber,
+    const sphincs::Signature::Shared signature) :
+
+    RequestMessageWithReservations(
+        equivalent,
+        senderAddresses,
+        transactionUUID,
+        finalAmountsConfig),
+    mPaymentParticipants(paymentParticipants),
+    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber)
+{
+    // Create single-element vector with mEquivalent and signature
+    if (signature) {
+        mSignatures.emplace_back(equivalent, signature);
+    }
+    // If signature is null, mSignatures remains empty
+}
+
 // NEW: Constructor with multiple receipts
 FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const SerializedEquivalent equivalent,

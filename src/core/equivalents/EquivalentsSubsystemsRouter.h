@@ -167,6 +167,16 @@ public:
         ContractorID contractorID) const;
 
     /**
+     * Returns BaseAddress for given ContractorID.
+     *
+     * @param contractorID ContractorID to lookup
+     * @return BaseAddress for the contractor
+     * @throws NotFoundError if ContractorID not found in participants
+     */
+    BaseAddress::Shared getParticipantAddress(
+        ContractorID contractorID) const;
+
+    /**
      * Finds ContractorID for given address without creating new entry.
      *
      * @param address Base address to lookup

@@ -49,8 +49,11 @@
 #include "../transactions/cycles/FiveAndSixNodes/CyclesSixNodesReceiverTransaction.h"
 
 #include "../transactions/regular/payments/CoordinatorPaymentTransaction.h"
+#include "../transactions/regular/payments/CoordinatorExchangePaymentTransaction.h"
 #include "../transactions/regular/payments/ReceiverPaymentTransaction.h"
+#include "../transactions/regular/payments/ReceiverExchangePaymentTransaction.h"
 #include "../transactions/regular/payments/IntermediateNodePaymentTransaction.h"
+#include "../transactions/regular/payments/IntermediateNodeExchangePaymentTransaction.h"
 #include "../transactions/regular/payments/VotesStatusResponsePaymentTransaction.h"
 #include "../transactions/regular/payments/CycleCloserInitiatorTransaction.h"
 #include "../transactions/regular/payments/CycleCloserIntermediateNodeTransaction.h"
@@ -303,7 +306,13 @@ protected: // Transactions
     void launchReceiverPaymentTransaction(
         ReceiverInitPaymentRequestMessage::Shared message);
 
+    void launchReceiverExchangePaymentTransaction(
+        ReceiverInitPaymentRequestMessage::Shared message);
+
     void launchIntermediateNodePaymentTransaction(
+        IntermediateNodeReservationRequestMessage::Shared message);
+
+    void launchIntermediateNodeExchangePaymentTransaction(
         IntermediateNodeReservationRequestMessage::Shared message);
 
     void launchCycleCloserIntermediateNodeTransaction(
@@ -446,6 +455,9 @@ protected:
 
     void subscribeForObserving(
         BasePaymentTransaction::Shared transaction);
+
+    void subscribeForObserving(
+        BaseExchangePaymentTransaction::Shared transaction);
 
     void subscribeForCommandResult(
         TransactionsScheduler::CommandResultSignal &signal);

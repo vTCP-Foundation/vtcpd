@@ -34,8 +34,11 @@ private:
     TransactionResult::SharedConst resultOK(
         const TrustLineAmount &paymentAmount) const;
 
-    TransactionResult::SharedConst resultError(
-        uint16_t errorCode) const;
+    TransactionResult::SharedConst resultNoRoutes() const;
+
+    TransactionResult::SharedConst resultInsufficientFunds() const;
+
+    TransactionResult::SharedConst resultUnexpectedError() const;
 
 private:
     EstimatePaymentForReceiveAmountCommand::Shared mCommand;

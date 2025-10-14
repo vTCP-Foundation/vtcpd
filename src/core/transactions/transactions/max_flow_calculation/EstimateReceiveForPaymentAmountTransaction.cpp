@@ -43,17 +43,17 @@ TransactionResult::SharedConst EstimateReceiveForPaymentAmountTransaction::run()
         string errorMsg = e.what();
         if (errorMsg.find("error 462") != string::npos) {
             warning() << "EstimateReceiveForPaymentAmount: " << errorMsg;
-            return resultError(462);
+            return resultNoRoutes();
         } else if (errorMsg.find("error 412") != string::npos) {
             warning() << "EstimateReceiveForPaymentAmount: " << errorMsg;
-            return resultError(412);
+            return resultInsufficientFunds();
         } else {
             error() << "EstimateReceiveForPaymentAmount: Unexpected error: " << errorMsg;
-            return resultError(401);
+            return resultUnexpectedError();
         }
     } catch (const exception &e) {
         error() << "EstimateReceiveForPaymentAmount: Unexpected error: " << e.what();
-        return resultError(401);
+        return resultUnexpectedError();
     }
 }
 
@@ -132,14 +132,22 @@ TransactionResult::SharedConst EstimateReceiveForPaymentAmountTransaction::resul
         mCommand->responseOk(ss.str()));
 }
 
-TransactionResult::SharedConst EstimateReceiveForPaymentAmountTransaction::resultError(
-    uint16_t errorCode) const
+TransactionResult::SharedConst EstimateReceiveForPaymentAmountTransaction::resultNoRoutes() const
 {
-    auto commandResult = make_shared<CommandResult>(
-        mCommand->identifier(),
-        mCommand->UUID(),
-        errorCode);
-    return make_shared<TransactionResult>(commandResult);
+    return transactionResultFromCommand(
+        mCommand->responseNoRoutes());
+}
+
+TransactionResult::SharedConst EstimateReceiveForPaymentAmountTransaction::resultInsufficientFunds() const
+{
+    return transactionResultFromCommand(
+        mCommand->responseInsufficientFunds());
+}
+
+TransactionResult::SharedConst EstimateReceiveForPaymentAmountTransaction::resultUnexpectedError() const
+{
+    return transactionResultFromCommand(
+        mCommand->responseUnexpectedError());
 }
 
 const string EstimateReceiveForPaymentAmountTransaction::logHeader() const

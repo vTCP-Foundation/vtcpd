@@ -108,6 +108,40 @@ const pair<BaseAddress::Shared, SerializedPositionInPath> OptimalPathResult::nex
         "no unprocessed nodes are left.");
 }
 
+const SerializedEquivalent OptimalPathResult::currentPathEquivalent() const
+{
+    for (SerializedPositionInPath idx = 0; idx < mIntermediateNodesStates.size(); ++idx)
+        if (mIntermediateNodesStates[idx] != OptimalPathResult::ReservationApproved &&
+                mIntermediateNodesStates[idx] != OptimalPathResult::ReservationRejected)
+            return mPath.equivalents[idx];
+
+    throw NotFoundError(
+        "OptimalPathResult::currentPathEquivalent: "
+        "no unprocessed nodes are left.");
+}
+
+const pair<TrustLineAmount, SerializedEquivalent> OptimalPathResult::currentPathFlow() const
+{
+    for (SerializedPositionInPath idx = 0; idx < mIntermediateNodesStates.size(); ++idx)
+        if (mIntermediateNodesStates[idx] != OptimalPathResult::ReservationApproved &&
+                mIntermediateNodesStates[idx] != OptimalPathResult::ReservationRejected)
+            return flows[idx+1];
+
+    throw NotFoundError(
+        "OptimalPathResult::currentPathFlow: "
+        "no unprocessed nodes are left.");
+}
+
+const pair<TrustLineAmount, SerializedEquivalent> OptimalPathResult::previousPathFlow() const
+{
+    for (SerializedPositionInPath idx = 0; idx < mIntermediateNodesStates.size(); ++idx)
+        if (mIntermediateNodesStates[idx] != OptimalPathResult::ReservationApproved &&
+                mIntermediateNodesStates[idx] != OptimalPathResult::ReservationRejected)
+            return flows[idx];
+
+    return flows[mIntermediateNodesStates.size()];
+}
+
 const bool OptimalPathResult::reservationRequestSentToAllNodes() const
 {
     return mIntermediateNodesStates.at(
@@ -181,4 +215,84 @@ void OptimalPathResult::setUnusable()
 {
     mIsValid = false;
     mMaxPathFlow = 0;
+}
+
+/**
+ * Calculates flow amounts between each pair of nodes along the path
+ * for a given payment amount, taking into account exchange rates.
+ *
+ * @param paymentAmount - input payment amount in the first equivalent
+ * @throws ValueError if paymentAmount > optimal_flow or if path structure is invalid
+ */
+void OptimalPathResult::calculateFlows(const TrustLineAmount& paymentAmount)
+{
+    // Step 1: Validate paymentAmount <= optimal_flow
+    if (paymentAmount > optimal_flow) {
+        throw ValueError(
+            "OptimalPathResult::calculateFlows: "
+            "Payment amount exceeds optimal flow");
+    }
+
+    // Step 2: Clear and initialize
+    flows.clear();
+    paymentFlow = paymentAmount;
+
+    // Step 3: Validate path structure
+    if (mPath.ids.empty() || mPath.ids.size() != mPath.equivalents.size()) {
+        throw ValueError(
+            "OptimalPathResult::calculateFlows: "
+            "Invalid path structure");
+    }
+
+    // Step 4: Start simulation with paymentAmount
+    double currentAmount = paymentAmount.convert_to<double>();
+
+    // Step 5: Process each step in path
+    for (size_t k = 0; k + 1 < mPath.ids.size(); ++k) {
+        ContractorID fromNode = mPath.ids[k];
+        ContractorID toNode = mPath.ids[k + 1];
+        SerializedEquivalent currentEquiv = mPath.equivalents[k];
+        SerializedEquivalent nextEquiv = mPath.equivalents[k + 1];
+
+        // Step 5a: Check if this is an exchange step
+        if (fromNode == toNode && currentEquiv != nextEquiv) {
+            // Apply exchange rate
+            for (const auto& ex : mPath.exchangeSteps) {
+                if (ex.nodeID == fromNode &&
+                    ex.fromEquivalent == currentEquiv &&
+                    ex.toEquivalent == nextEquiv) {
+
+                    // Calculate effective rate with shift
+                    double rate = ex.exchangeRate.convert_to<double>();
+                    int16_t shift = ex.exchangeRateShift;
+                    double effectiveRate = rate * std::pow(10.0, shift);
+
+                    // Validate exchange limits before exchange
+                    if (ex.minExchangeAmount > TrustLineAmount(0)) {
+                        if (currentAmount < ex.minExchangeAmount.convert_to<double>()) {
+                            throw ValueError(
+                                "OptimalPathResult::calculateFlows: "
+                                "Amount below minimum exchange limit");
+                        }
+                    }
+                    if (ex.maxExchangeAmount > TrustLineAmount(0)) {
+                        if (currentAmount > ex.maxExchangeAmount.convert_to<double>()) {
+                            throw ValueError(
+                                "OptimalPathResult::calculateFlows: "
+                                "Amount exceeds maximum exchange limit");
+                        }
+                    }
+
+                    // Apply exchange
+                    currentAmount *= effectiveRate;
+                    break;
+                }
+            }
+            continue;
+        }
+
+        // Step 5b: Regular edge - record flow (without commission for now)
+        TrustLineAmount flowAmount(static_cast<uint64_t>(currentAmount));
+        flows.push_back(make_pair(flowAmount, currentEquiv));
+    }
 }

@@ -497,19 +497,20 @@ void TransactionsManager::processMessage(
          * Payments
          */
     } else if (message->typeID() == Message::Payments_ReceiverInitPaymentRequest) {
-        launchReceiverPaymentTransaction(
+        launchReceiverExchangePaymentTransaction(
             static_pointer_cast<ReceiverInitPaymentRequestMessage>(message));
 
     } else if (message->typeID() == Message::Payments_IntermediateNodeReservationRequest) {
         // It is possible, that transaction was already initialised
-        // by the ReceiverInitPaymentRequest.
+        // by the IntermediateNodeReservationRequest.
         // In this case - message must be simply attached to it,
         // no new transaction must be launched.
         try {
             mScheduler->tryAttachMessageToTransaction(message);
 
         } catch (NotFoundError &) {
-            launchIntermediateNodePaymentTransaction(
+            info() << "Launching IntermediateNodeExchangePaymentTransaction";
+            launchIntermediateNodeExchangePaymentTransaction(
                 static_pointer_cast<IntermediateNodeReservationRequestMessage>(message));
         }
 
@@ -1456,9 +1457,41 @@ void TransactionsManager::launchCoordinatorPaymentTransaction(
 void TransactionsManager::launchCoordinatorExchangePaymentTransaction(
     CreditUsageExchangeCommand::Shared command)
 {
-    warning() << "CoordinatorExchangePaymentTransaction is not implemented yet";
-    onCommandResultReady(
-        command->responseForbiddenRunTransaction());
+    try {
+        auto transaction = make_shared<CoordinatorExchangePaymentTransaction>(
+                               command,
+                               mContractorsManager,
+                               mEquivalentsSubsystemsRouter,
+                               mStorageHandler,
+                               mResourcesManager,
+                               mExchangePathsManager,
+                               mKeysStore,
+                               isPaymentTransactionsAllowedDueToObserving,
+                               mEventsInterfaceManager,
+                               mLog,
+                               mSubsystemsController);
+        subscribeForBuildCyclesThreeNodesTransaction(
+            transaction->mBuildCycleThreeNodesSignal);
+        subscribeForBuildCyclesFourNodesTransaction(
+            transaction->mBuildCycleFourNodesSignal);
+        subscribeForTrustLineActionSignal(
+            transaction->trustLineActionSignal);
+        subscribeForKeysSharingSignal(
+            transaction->publicKeysSharingSignal);
+        subscribeForObserving(
+            transaction);
+        prepareAndSchedule(transaction, true, false, true);
+    } catch (NotFoundError &e) {
+        error() << "There are no subsystems for CoordinatorPaymentTransaction "
+                   "with equivalent " << command->equivalent() << " Details are: " << e.what();
+        prepareAndSchedule(
+            make_shared<NoEquivalentTransaction>(
+                command,
+                mLog),
+            false,
+            false,
+            false);
+    }
 }
 
 void TransactionsManager::launchReceiverPaymentTransaction(
@@ -1507,6 +1540,51 @@ void TransactionsManager::launchReceiverPaymentTransaction(
     }
 }
 
+void TransactionsManager::launchReceiverExchangePaymentTransaction(
+    ReceiverInitPaymentRequestMessage::Shared message)
+{
+    if (!isPaymentTransactionsAllowedDueToObserving) {
+        warning() << "It is forbid to run payment transactions due to observing";
+        // todo : inform about fail by message
+        return;
+    }
+    try {
+        auto transaction = make_shared<ReceiverExchangePaymentTransaction>(
+                               message,
+                               mContractorsManager,
+                               mEquivalentsSubsystemsRouter,
+                               mStorageHandler,
+                               mResourcesManager,
+                               mExchangeRatesManager,
+                               mCommissionsManager,
+                               mKeysStore,
+                               mEventsInterfaceManager,
+                               mLog,
+                               mSubsystemsController);
+        subscribeForBuildCyclesThreeNodesTransaction(
+            transaction->mBuildCycleThreeNodesSignal);
+        subscribeForBuildCyclesFourNodesTransaction(
+            transaction->mBuildCycleFourNodesSignal);
+        subscribeForTrustLineActionSignal(
+            transaction->trustLineActionSignal);
+        subscribeForKeysSharingSignal(
+            transaction->publicKeysSharingSignal);
+        subscribeForObserving(
+            transaction);
+        prepareAndSchedule(transaction, false, false, true);
+    } catch (NotFoundError &e) {
+        error() << "There are no subsystems for ReceiverExchangePaymentTransaction "
+                   "with equivalent " << message->equivalent() << " Details are: " << e.what();
+        prepareAndSchedule(
+            make_shared<NoEquivalentTransaction>(
+                message,
+                mLog),
+            false,
+            false,
+            true);
+    }
+}
+
 void TransactionsManager::launchIntermediateNodePaymentTransaction(
     IntermediateNodeReservationRequestMessage::Shared message)
 {
@@ -1541,6 +1619,50 @@ void TransactionsManager::launchIntermediateNodePaymentTransaction(
         prepareAndSchedule(transaction, false, false, true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for IntermediateNodePaymentTransaction "
+                   "with equivalent " << message->equivalent() << " Details are: " << e.what();
+        prepareAndSchedule(
+            make_shared<NoEquivalentTransaction>(
+                message,
+                mLog),
+            false,
+            false,
+            true);
+    }
+}
+
+void TransactionsManager::launchIntermediateNodeExchangePaymentTransaction(
+    IntermediateNodeReservationRequestMessage::Shared message)
+{
+    if (!isPaymentTransactionsAllowedDueToObserving) {
+        warning() << "It is forbid to run payment transactions due to observing";
+        // todo : inform about fail by message
+        return;
+    }
+    try {
+        auto transaction = make_shared<IntermediateNodeExchangePaymentTransaction>(
+                               message,
+                               mContractorsManager,
+                               mEquivalentsSubsystemsRouter,
+                               mStorageHandler,
+                               mResourcesManager,
+                               mExchangeRatesManager,
+                               mCommissionsManager,
+                               mKeysStore,
+                               mLog,
+                               mSubsystemsController);
+        subscribeForBuildCyclesThreeNodesTransaction(
+            transaction->mBuildCycleThreeNodesSignal);
+        subscribeForBuildCyclesFourNodesTransaction(
+            transaction->mBuildCycleFourNodesSignal);
+        subscribeForTrustLineActionSignal(
+            transaction->trustLineActionSignal);
+        subscribeForKeysSharingSignal(
+            transaction->publicKeysSharingSignal);
+        subscribeForObserving(
+            transaction);
+        prepareAndSchedule(transaction, false, false, true);
+    } catch (NotFoundError &e) {
+        error() << "There are no subsystems for IntermediateNodeExchangePaymentTransaction "
                    "with equivalent " << message->equivalent() << " Details are: " << e.what();
         prepareAndSchedule(
             make_shared<NoEquivalentTransaction>(
@@ -2506,6 +2628,24 @@ void TransactionsManager::subscribeForOutgoingMessagesWithCaching(
 
 void TransactionsManager::subscribeForObserving(
     BasePaymentTransaction::Shared transaction)
+{
+    transaction->observingClaimSignal.connect(
+        boost::bind(
+            &TransactionsManager::onObservingClaimReady,
+            this,
+            _1));
+
+
+    transaction->mTransactionCommittedObservingSignal.connect(
+        boost::bind(
+            &TransactionsManager::onObservingTransactionCommitted,
+            this,
+            _1,
+            _2));
+}
+
+void TransactionsManager::subscribeForObserving(
+    BaseExchangePaymentTransaction::Shared transaction)
 {
     transaction->observingClaimSignal.connect(
         boost::bind(

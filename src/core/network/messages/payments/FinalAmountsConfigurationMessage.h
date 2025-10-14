@@ -24,6 +24,35 @@ public:
         const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
         const BlockNumber maximalClaimingBlockNumber);
 
+    // NEW: Constructor with PathReservation vector (no receipts)
+    FinalAmountsConfigurationMessage(
+        const SerializedEquivalent equivalent,
+        vector<BaseAddress::Shared> senderAddresses,
+        const TransactionUUID &transactionUUID,
+        const vector<PathReservation> &finalAmountsConfig,
+        const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
+        const BlockNumber maximalClaimingBlockNumber);
+
+    // NEW: Constructor with PathReservation vector and multiple receipts
+    FinalAmountsConfigurationMessage(
+        const SerializedEquivalent equivalent,
+        vector<BaseAddress::Shared> senderAddresses,
+        const TransactionUUID &transactionUUID,
+        const vector<PathReservation> &finalAmountsConfig,
+        const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
+        const BlockNumber maximalClaimingBlockNumber,
+        const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures);
+
+    // NEW: Constructor with PathReservation vector and single receipt
+    FinalAmountsConfigurationMessage(
+        const SerializedEquivalent equivalent,
+        vector<BaseAddress::Shared> senderAddresses,
+        const TransactionUUID &transactionUUID,
+        const vector<PathReservation> &finalAmountsConfig,
+        const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
+        const BlockNumber maximalClaimingBlockNumber,
+        const sphincs::Signature::Shared signature);
+
     // NEW: Constructor with multiple receipts (for new transactions)
     FinalAmountsConfigurationMessage(
         const SerializedEquivalent equivalent,

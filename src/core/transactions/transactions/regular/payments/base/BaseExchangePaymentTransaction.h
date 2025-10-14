@@ -222,7 +222,8 @@ protected:
         ContractorID source,
         ContractorID target,
         const TrustLineAmount &amount,
-        bool isSource);
+        bool isSource,
+        const SerializedEquivalent equivalent);
 
     bool checkAllNeighborsWithReservationsAreInFinalParticipantsList();
     bool checkAllPublicKeyHashesProperly();

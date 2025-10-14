@@ -424,6 +424,19 @@ BaseAddress::Shared EquivalentsSubsystemsRouter::resolveParticipantAddress(
     return nullptr;
 }
 
+BaseAddress::Shared EquivalentsSubsystemsRouter::getParticipantAddress(
+    ContractorID contractorID) const
+{
+    for (const auto &participant : mParticipantsAddresses) {
+        if (participant.second == contractorID) {
+            return participant.first;
+        }
+    }
+    throw NotFoundError(
+        "EquivalentsSubsystemsRouter::getParticipantAddress: Participant not found. ContractorID=" + 
+        to_string(contractorID));
+}
+
 optional<ContractorID> EquivalentsSubsystemsRouter::resolveParticipantID(
     const BaseAddress::Shared &address) const
 {

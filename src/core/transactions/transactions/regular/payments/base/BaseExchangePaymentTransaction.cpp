@@ -491,7 +491,26 @@ const bool BaseExchangePaymentTransaction::reserveOutgoingAmount(
     const PathID &pathID,
     const SerializedEquivalent equivalent)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::reserveOutgoingAmount not yet implemented");
+    try {
+        auto trustLineManager = trustLinesManager(equivalent);
+        const auto kReservation = trustLineManager->reserveOutgoingAmount(
+                                      neighborNode,
+                                      currentTransactionUUID(),
+                                      amount);
+
+#ifdef DEBUG
+        // todo: uncomment me, when problem with recoverin transaction and reservation after restarting node will be fixed
+        // debug() << "Reserved " << amount << " for (" << neighborNode << ") [" << pathID << "] [Outgoing amount reservation] [equiv: " << equivalent << "].";
+#endif
+
+        mReservations[neighborNode].emplace_back(
+            pathID,
+            kReservation);
+        return true;
+    } catch (Exception &) {
+    }
+
+    return false;
 }
 
 const bool BaseExchangePaymentTransaction::reserveIncomingAmount(
@@ -500,7 +519,26 @@ const bool BaseExchangePaymentTransaction::reserveIncomingAmount(
     const PathID &pathID,
     const SerializedEquivalent equivalent)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::reserveIncomingAmount not yet implemented");
+    try {
+        auto trustLineManager = trustLinesManager(equivalent);
+        const auto kReservation = trustLineManager->reserveIncomingAmount(
+                                      neighborNode,
+                                      currentTransactionUUID(),
+                                      amount);
+
+#ifdef DEBUG
+        // todo: uncomment me, when problem with recoverin transaction and reservation after restarting node will be fixed
+        // debug() << "Reserved " << amount << " for (" << neighborNode << ") [" << pathID << "] [Incoming amount reservation] [equiv: " << equivalent << "].";
+#endif
+
+        mReservations[neighborNode].emplace_back(
+            pathID,
+            kReservation);
+        return true;
+    } catch (Exception &) {
+    }
+
+    return false;
 }
 
 const bool BaseExchangePaymentTransaction::copyReservationFromGlobalReservations(
@@ -510,7 +548,21 @@ const bool BaseExchangePaymentTransaction::copyReservationFromGlobalReservations
     const PathID &pathID,
     const SerializedEquivalent equivalent)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::copyReservationFromGlobalReservations not yet implemented");
+    try {
+        auto trustLineManager = trustLinesManager(equivalent);
+        auto reservation = trustLineManager->getAmountReservation(
+                               neighborNode,
+                               mTransactionUUID,
+                               amount,
+                               reservationDirection);
+        mReservations[neighborNode].emplace_back(
+            pathID,
+            reservation);
+        return true;
+    } catch (NotFoundError &e) {
+        warning() << "copyReservationFromGlobalReservations " << e.what();
+        return false;
+    }
 }
 
 const bool BaseExchangePaymentTransaction::shortageReservation(
@@ -571,104 +623,646 @@ const bool BaseExchangePaymentTransaction::shortageReservation(
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runVotesCheckingStage()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runVotesCheckingStage not yet implemented");
+    debug() << "runVotesCheckingStage";
+    // todo add new stage and remove mTransactionIsVoted
+    if (mTransactionIsVoted) {
+        return runVotesConsistencyCheckingStage();
+    }
+
+    if (!contextIsValid(Message::Payments_ParticipantsPublicKeys)) {
+        removeAllDataFromStorageConcerningTransaction();
+        return reject("No participants public keys received. Canceling.");
+    }
+
+    auto participantsPublicKeyMessage = popNextMessage<ParticipantsPublicKeysMessage>();
+    auto coordinator = make_shared<Contractor>(participantsPublicKeyMessage->senderAddresses);
+    debug() << "Votes message received from " << coordinator->mainAddress()->fullAddress();
+    if (coordinator != mPaymentParticipants[kCoordinatorPaymentNodeID]) {
+        warning() << "Wrong coordinator. Continue previous state";
+        return resultContinuePreviousState();
+    }
+
+    mParticipantsPublicKeys = participantsPublicKeyMessage->publicKeys();
+
+    // todo : check if received own public key is the same as local
+
+    if (!checkPublicKeysAppropriate()) {
+        removeAllDataFromStorageConcerningTransaction();
+        sendMessage<ParticipantVoteMessage>(
+            coordinator->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID());
+        return reject("Public keys are not appropriate. Reject.");
+    }
+
+    try {
+        debug() << "Serializing transaction";
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        auto bytesAndCount = serializeToBytes();
+        debug() << "Transaction serialized";
+        ioTransaction->transactionHandler()->saveRecord(
+            currentTransactionUUID(),
+            bytesAndCount.first,
+            bytesAndCount.second);
+        debug() << "Transaction saved";
+
+        auto serializedOwnVotesData = getSerializedParticipantsVotesData(
+                                          make_shared<Contractor>(
+                                              mContractorsManager->ownAddresses()));
+        debug() << "Data prepared for signing";
+
+        auto signature = mKeysStore->signPaymentTransaction(
+                             ioTransaction,
+                             serializedOwnVotesData.first,
+                             serializedOwnVotesData.second);
+        if (!signature.has_value()) {
+            removeAllDataFromStorageConcerningTransaction();
+            return reject("Can't sign the transaction. See logs for the details.");
+        }
+
+        mSignedTransaction = signature.value();
+        debug() << "Voted +";
+        mTransactionIsVoted = true;
+
+        ioTransaction->paymentTransactionsHandler()->saveRecord(
+            mTransactionUUID,
+            mMaximalClaimingBlockNumber);
+    } catch (IOError &e) {
+        error() << "Can't sign the transaction. See logs for the details.";
+        removeAllDataFromStorageConcerningTransaction();
+        sendMessage<ParticipantVoteMessage>(
+            coordinator->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID());
+        return reject("Canceling.");
+    }
+
+#ifdef TESTS
+    mSubsystemsController->testThrowExceptionOnVoteStage();
+    mSubsystemsController->testTerminateProcessOnVoteStage();
+    mSubsystemsController->testForbidSendMessageOnVoteConsistencyStage();
+    // coordinator wait for this message maxNetworkDelay(6)
+    mSubsystemsController->testSleepOnVoteConsistencyStage(
+        maxNetworkDelay(8));
+#endif
+
+    debug() << "Signed transaction transferred to coordinator";
+    sendMessage<ParticipantVoteMessage>(
+        coordinator->mainAddress(),
+        mEquivalent,
+        mContractorsManager->ownAddresses(),
+        currentTransactionUUID(),
+        mSignedTransaction);
+
+    mStep = Stages::Common_VotesChecking;
+    return resultWaitForMessageTypes(
+               {Message::Payments_ParticipantsVotes},
+               maxNetworkDelay(6));
 }
 
+/*
+ * Handles votes list message receiving or it's absence in case,
+ * if current node already voted for the operation.
+ * In this case transaction can't be simply cancelled,
+ * it must be recovered through recover mechanism to keep data integrity.
+ */
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runVotesConsistencyCheckingStage()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runVotesConsistencyCheckingStage not yet implemented");
+    debug() << "runVotesConsistencyCheckingStage";
+
+    if (contextIsValid(Message::Payments_ParticipantsPublicKeys, false)) {
+        warning() << "Receive ParticipantsPublicKeys again";
+        auto participantsPublicKeyMessage = popNextMessage<ParticipantsPublicKeysMessage>();
+        auto coordinator = make_shared<Contractor>(participantsPublicKeyMessage->senderAddresses);
+        debug() << "Votes message received from " << coordinator->mainAddress()->fullAddress();
+        if (coordinator != mPaymentParticipants[kCoordinatorPaymentNodeID]) {
+            warning() << "Wrong coordinator. Continue previous state";
+            return resultContinuePreviousState();
+        }
+
+        if (mSignedTransaction == nullptr) {
+            warning() << "There are no signed transaction for sending to coordinator";
+            return resultContinuePreviousState();
+        }
+
+        debug() << "Signed transaction transferred to coordinator";
+        sendMessage<ParticipantVoteMessage>(
+            coordinator->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID(),
+            mSignedTransaction);
+
+        return resultWaitForMessageTypes( {
+                   Message::Payments_ParticipantsVotes,
+                   Message::Payments_ParticipantsPublicKeys},
+               maxNetworkDelay(9));
+    }
+
+    if (! contextIsValid(Message::Payments_ParticipantsVotes)) {
+        // In case if no votes are present - transaction can't be simply cancelled.
+        // It must go through recovery stage to avoid inconsistency.
+        return recover("No participants votes received.");
+    }
+
+#ifdef TESTS
+    mSubsystemsController->testThrowExceptionOnVoteConsistencyStage();
+    mSubsystemsController->testTerminateProcessOnVoteConsistencyStage();
+#endif
+
+    mParticipantsVotesMessage = popNextMessage<ParticipantsVotesMessage>();
+    // todo : check if message from coordinator
+    debug() << "Participants votes message received.";
+    mParticipantsSignatures = mParticipantsVotesMessage->participantsSignatures();
+
+    return processParticipantsVotesMessage();
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::processParticipantsVotesMessage()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::processParticipantsVotesMessage not yet implemented");
+    debug() << "processParticipantsVotesMessage";
+    if (!checkSignaturesAppropriate()) {
+        return recover("Participants signatures map is incorrect. Rolling back.");
+    }
+    info() << "All signatures are appropriate";
+    auto coordinatorSignature = mParticipantsSignatures[kCoordinatorPaymentNodeID];
+    auto coordinatorPublicKey = mParticipantsPublicKeys[kCoordinatorPaymentNodeID];
+    auto coordinatorSerializedVotesData = getSerializedParticipantsVotesData(
+                                              mPaymentParticipants[kCoordinatorPaymentNodeID]);
+    if (!coordinatorSignature->verify(
+                *coordinatorPublicKey,
+                coordinatorSerializedVotesData.first.get(),
+                coordinatorSerializedVotesData.second)) {
+
+        recover("Final coordinator signature is wrong");
+    }
+    for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
+        if (paymentNodeIdAndContractor.second == mContractorsManager->selfContractor()) {
+            // todo discuss if need check own sign
+            continue;
+        }
+        if (paymentNodeIdAndContractor.first == kCoordinatorPaymentNodeID) {
+            // coordinator already checked
+            continue;
+        }
+        auto participantPublicKey = mParticipantsPublicKeys[paymentNodeIdAndContractor.first];
+        auto participantSignature = mParticipantsSignatures[paymentNodeIdAndContractor.first];
+        auto participantSerializedVotesData = getSerializedParticipantsVotesData(
+                                                  paymentNodeIdAndContractor.second);
+        if (!participantSignature->verify(
+                    *participantPublicKey,
+                    participantSerializedVotesData.first.get(),
+                    participantSerializedVotesData.second)) {
+            warning() << "Node " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress() << " signature is wrong";
+            // todo : can be recursive
+            return recover("Consensus not achieved.");
+        }
+    }
+
+    debug() << "Votes list correct. Consensus achieved.";
+    return approve();
 }
 
+/*
+ * Shortcut method for approving transaction.
+ * Base class realisation contains logic for approving (and committing)
+ * transaction on the nodes where it was launched by the message (and not by the command).
+ *
+ * Writes success record to the transactions log.
+ *
+ * WARN:
+ * This method must be overloaded on the coordinator side.
+ */
 TransactionResult::SharedConst BaseExchangePaymentTransaction::approve()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::approve not yet implemented");
+    debug() << "Transaction approved. Committing.";
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    commit(ioTransaction);
+    savePaymentOperationIntoHistory(ioTransaction);
+    return resultDone();
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::recover(const char* message)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::recover not yet implemented");
+    debug() << "recover";
+    if (message != nullptr) {
+        warning() << message;
+    }
+
+    // todo: expand this condition including observing stage
+    if (mTransactionIsVoted) {
+        mStep = Stages::Common_Recovery;
+        mVotesRecoveryStep = VotesRecoveryStages::Common_PrepareNodesListToCheckVotes;
+        clearContext();
+        mCountRecoveryAttempts = 0;
+        return runVotesRecoveryParentStage();
+    } else {
+        warning() << "Transaction doesn't sent/receive participants votes message and will be closed";
+        rollBack();
+        return resultDone();
+    }
 }
 
+/* Shortcut method for rejecting transaction.
+ * Base class realisation contains logic for rejecting (and rolling back)
+ * transaction on the nodes where it was launched by the message (and not by the command).
+ *
+ * Writes error record to the transactions log.
+ *
+ * WARN:
+ * This method must be overloaded on the coordinator side.
+ */
 TransactionResult::SharedConst BaseExchangePaymentTransaction::reject(const char* message)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::reject not yet implemented");
+    if (message) {
+        warning() << message;
+    }
+
+    rollBack();
+    debug() << "Transaction successfully rolled back.";
+
+    return resultDone();
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runVotesRecoveryParentStage()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runVotesRecoveryParentStage not yet implemented");
+    debug() << "runVotesRecoveryParentStage";
+    switch (mVotesRecoveryStep) {
+    case VotesRecoveryStages ::Common_PrepareNodesListToCheckVotes:
+        return runPrepareListNodesToCheckNodes();
+    case VotesRecoveryStages ::Common_CheckCoordinatorVotesStage:
+        return runCheckCoordinatorVotesStage();
+    case VotesRecoveryStages ::Common_CheckIntermediateNodeVotesStage:
+        return runCheckIntermediateNodeVotesStage();
+
+    default:
+        throw RuntimeError(
+            "runVotesRecoveryParentStage::run(): "
+            "invalid transaction step.");
+    }
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::sendVotesRequestMessageAndWaitForResponse(
     Contractor::Shared contractor)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::sendVotesRequestMessageAndWaitForResponse not yet implemented");
+    debug() << "sendVotesRequestMessageAndWaitForResponse";
+    sendMessage<VotesStatusRequestMessage>(
+        contractor->mainAddress(),
+        mEquivalent,
+        mContractorsManager->ownAddresses(),
+        currentTransactionUUID());
+
+    debug() << "Send VotesStatusRequestMessage to " << contractor->mainAddress()->fullAddress();
+    return resultWaitForMessageTypes(
+               {Message::Payments_ParticipantsVotes},
+               maxNetworkDelay(2));
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::processNextNodeToCheckVotes()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::processNextNodeToCheckVotes not yet implemented");
+    debug() << "processNextNodeToCheckVotes";
+    if (mNodesToCheckVotes.empty()) {
+        debug() << "No nodes left to be asked";
+        mCountRecoveryAttempts++;
+        if (mCountRecoveryAttempts >= kMaxRecoveryAttempts) {
+            debug() << "Max count recovery attempts";
+            mVotesRecoveryStep = VotesRecoveryStages::Common_PrepareNodesListToCheckVotes;
+            mCountRecoveryAttempts = 0;
+            return resultAwakeAfterMilliseconds(
+                       kWaitMillisecondsToTryInitialRecoverAgain);
+        }
+        debug() << "Sleep and try again later";
+        mVotesRecoveryStep = VotesRecoveryStages::Common_PrepareNodesListToCheckVotes;
+        return resultAwakeAfterMilliseconds(
+                   kWaitMillisecondsToTryRecoverAgain);
+    }
+    debug() << "Ask another node from payment transaction";
+    mVotesRecoveryStep = VotesRecoveryStages::Common_CheckIntermediateNodeVotesStage;
+    mCurrentNodeToCheckVotes = mNodesToCheckVotes.back();
+    mNodesToCheckVotes.pop_back();
+    return sendVotesRequestMessageAndWaitForResponse(
+               mCurrentNodeToCheckVotes);
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runPrepareListNodesToCheckNodes()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runPrepareListNodesToCheckNodes not yet implemented");
+    debug() << "runPrepareListNodesToCheckNodes";
+    // Add all nodes that could be asked for Votes Status.
+    // Ignore self and Coordinator Node. Coordinator will be asked first
+    Contractor::Shared coordinator = nullptr;
+    for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
+        if (paymentNodeIdAndContractor.second == mContractorsManager->selfContractor()) {
+            continue;
+        }
+        if (paymentNodeIdAndContractor.first == kCoordinatorPaymentNodeID) {
+            coordinator = paymentNodeIdAndContractor.second;
+            continue;
+        }
+        mNodesToCheckVotes.push_back(
+            paymentNodeIdAndContractor.second);
+    }
+    mVotesRecoveryStep = VotesRecoveryStages::Common_CheckCoordinatorVotesStage;
+    if (coordinator == nullptr) {
+        warning() << "Participants list does not contain coordinator";
+        return processNextNodeToCheckVotes();
+    }
+    return sendVotesRequestMessageAndWaitForResponse(coordinator);
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runCheckCoordinatorVotesStage()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runCheckCoordinatorVotesStage not yet implemented");
+    debug() << "runCheckCoordinatorVotesStage";
+    if (!contextIsValid(Message::Payments_ParticipantsVotes, false)) {
+        if (mContext.empty()) {
+            debug() << "Coordinator didn't send response";
+            return processNextNodeToCheckVotes();
+        }
+        warning() << "receive message with invalid type, ignore it";
+        clearContext();
+        return resultContinuePreviousState();
+    }
+
+    const auto kMessage = popNextMessage<ParticipantsVotesMessage>();
+    auto coordinator = make_shared<Contractor>(kMessage->senderAddresses);
+    if (coordinator != mPaymentParticipants[kCoordinatorPaymentNodeID]) {
+        warning() << "Sender " << coordinator->mainAddress()->fullAddress()
+                  << " is not coordinator. Ignore this message";
+        return resultContinuePreviousState();
+    }
+    if (kMessage->participantsSignatures().empty()) {
+        debug() << "Coordinator don't know result of this transaction yet.";
+        // todo : this is only for centralized model
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        debug() << "rollback";
+        removeAllDataFromStorageConcerningTransaction(ioTransaction);
+        rollBack();
+        return resultDone();
+        //return processNextNodeToCheckVotes();
+    }
+
+    mParticipantsVotesMessage = kMessage;
+    mParticipantsSignatures = mParticipantsVotesMessage->participantsSignatures();
+
+    return processParticipantsVotesMessage();
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runCheckIntermediateNodeVotesStage()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runCheckIntermediateNodeVotesStage not yet implemented");
+    debug() << "runCheckIntermediateNodeVotesStage";
+    if (!contextIsValid(Message::Payments_ParticipantsVotes, false)) {
+        if (mContext.empty()) {
+            debug() << "Intermediate node didn't sent response";
+            return processNextNodeToCheckVotes();
+        }
+        warning() << "receive message with invalid type, ignore it";
+        clearContext();
+        return resultContinuePreviousState();
+    }
+
+    const auto kMessage = popNextMessage<ParticipantsVotesMessage>();
+    auto sender = make_shared<Contractor>(kMessage->senderAddresses);
+    info() << "Node " << sender->mainAddress()->fullAddress() << " sent response";
+
+    if (sender != mCurrentNodeToCheckVotes) {
+        warning() << "Sender is not current checking node";
+        return resultContinuePreviousState();
+    }
+
+    if (kMessage->participantsSignatures().empty()) {
+        debug() << "Intermediate node didn't know about this transaction";
+        return processNextNodeToCheckVotes();
+    }
+
+    mParticipantsVotesMessage = kMessage;
+    mParticipantsSignatures = mParticipantsVotesMessage->participantsSignatures();
+
+    return processParticipantsVotesMessage();
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingStage()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runObservingStage not yet implemented");
+    info() << "runObservingStage";
+    observingClaimSignal(
+        make_shared<ObservingClaimAppendRequestMessage>(
+            mTransactionUUID,
+            mMaximalClaimingBlockNumber,
+            mParticipantsPublicKeys));
+
+    debug() << "Serializing transaction";
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    auto bytesAndCount = serializeToBytes();
+    debug() << "Transaction serialized";
+    ioTransaction->transactionHandler()->saveRecord(
+        currentTransactionUUID(),
+        bytesAndCount.first,
+        bytesAndCount.second);
+    debug() << "Transaction saved";
+    // After that control of this transaction will be under ObservingCommunicator
+    return resultDone();
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingResultStage()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runObservingResultStage not yet implemented");
+    info() << "runObservingResultStage";
+    if (mParticipantsSignatures.empty()) {
+        info() << "Close and wait for claiming result";
+        observingClaimSignal(
+            make_shared<ObservingClaimAppendRequestMessage>(
+                mTransactionUUID,
+                mMaximalClaimingBlockNumber,
+                mParticipantsPublicKeys));
+        return resultDone();
+    }
+    info() << "Participants signatures receive";
+    return processParticipantsVotesMessage();
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingRejectTransaction()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runObservingRejectTransaction not yet implemented");
+    info() << "runObservingRejectTransaction";
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    removeAllDataFromStorageConcerningTransaction(ioTransaction);
+    // todo : change transaction history status
+    info() << "Reject by expiring claiming time";
+    rollBack();
+    return resultDone();
 }
 
 void BaseExchangePaymentTransaction::saveVotes(IOTransaction::Shared ioTransaction)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::saveVotes not yet implemented");
+    debug() << "saveVotes";
+    for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
+        ioTransaction->paymentParticipantsVotesHandler()->saveRecord(
+            mTransactionUUID,
+            paymentNodeIdAndContractor.second,
+            paymentNodeIdAndContractor.first,
+            mParticipantsPublicKeys[paymentNodeIdAndContractor.first],
+            mParticipantsSignatures[paymentNodeIdAndContractor.first]);
+    }
 }
 
 void BaseExchangePaymentTransaction::commit(IOTransaction::Shared ioTransaction)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::commit not yet implemented");
+    debug() << "Transaction committing...";
+
+    for (const auto &kNodeIDAndReservations : mReservations) {
+        AmountReservation::ReservationDirection reservationDirection;
+        for (const auto &kPathIDAndReservation : kNodeIDAndReservations.second) {
+            // Get the appropriate TrustLinesManager for this reservation's equivalent
+            auto trustLineManager = trustLinesManager(kPathIDAndReservation.second->equivalent());
+            trustLineManager->useReservation(kNodeIDAndReservations.first, kPathIDAndReservation.second);
+
+            if (kPathIDAndReservation.second->direction() == AmountReservation::Outgoing) {
+                debug() << "Committed reservation: [ => ] " << kPathIDAndReservation.second->amount()
+                        << " for (" << kNodeIDAndReservations.first << ", "
+                        << mContractorsManager->contractorMainAddress(kNodeIDAndReservations.first)->fullAddress()
+                        << ") [" << kPathIDAndReservation.first << "] [equiv: " << kPathIDAndReservation.second->equivalent() << "]";
+                mContractorsForCycles.insert(
+                    kNodeIDAndReservations.first);
+                mOutgoingTransfers.emplace_back(
+                    kNodeIDAndReservations.first,
+                    kPathIDAndReservation.second->amount());
+            } else if (kPathIDAndReservation.second->direction() == AmountReservation::Incoming) {
+                debug() << "Committed reservation: [ <= ] " << kPathIDAndReservation.second->amount()
+                        << " for (" << kNodeIDAndReservations.first << ", "
+                        << mContractorsManager->contractorMainAddress(kNodeIDAndReservations.first)->fullAddress()
+                        << ") [" << kPathIDAndReservation.first << "] [equiv: " << kPathIDAndReservation.second->equivalent() << "]";
+                // For exchange transactions, check if iAmGateway for the specific equivalent
+                if (iAmGateway(kPathIDAndReservation.second->equivalent())) {
+                    // gateway try build cycles on both directions, because it don't shared by own routing tables
+                    mContractorsForCycles.insert(
+                        kNodeIDAndReservations.first);
+                }
+                mIncomingTransfers.emplace_back(
+                    kNodeIDAndReservations.first,
+                    kPathIDAndReservation.second->amount());
+            }
+
+            reservationDirection = kPathIDAndReservation.second->direction();
+            trustLineManager->dropAmountReservation(
+                kNodeIDAndReservations.first,
+                kPathIDAndReservation.second);
+        }
+        trustLineActionSignal(
+            kNodeIDAndReservations.first,
+            mEquivalent,
+            reservationDirection == AmountReservation::Outgoing);
+    }
+
+    // delete transaction references on dropped reservations
+    mReservations.clear();
+
+    // reset initiator cache, because after changing balances
+    // we need updated information on max flow calculation transaction
+    // For exchange transactions, we need to reset cache for all equivalents involved
+    for (const auto &kNodeIDAndReservations : mReservations) {
+        for (const auto &kPathIDAndReservation : kNodeIDAndReservations.second) {
+            auto equiv = kPathIDAndReservation.second->equivalent();
+            topologyCacheManager(equiv)->resetInitiatorCache();
+            maxFlowCacheManager(equiv)->clearCashes();
+        }
+    }
+    // Also reset for transaction's main equivalent
+    topologyCacheManager(mEquivalent)->resetInitiatorCache();
+    maxFlowCacheManager(mEquivalent)->clearCashes();
+
+    debug() << "Transaction committed.";
+    saveVotes(ioTransaction);
+    debug() << "Votes saved.";
+
+    // delete this transaction from storage
+    ioTransaction->transactionHandler()->deleteRecordIfExists(
+        currentTransactionUUID());
+
+    // todo : don't send signal if transaction committed after observing
+    mTransactionCommittedObservingSignal(
+        mTransactionUUID,
+        mMaximalClaimingBlockNumber);
 }
 
 void BaseExchangePaymentTransaction::rollBack()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::rollBack not yet implemented");
+    debug() << "rollback";
+    // drop reservations in AmountReservationHandler
+    for (const auto &kNodeIDAndReservations : mReservations) {
+        for (const auto &kPathIDAndReservation : kNodeIDAndReservations.second) {
+            // Get the appropriate TrustLinesManager for this reservation's equivalent
+            auto trustLineManager = trustLinesManager(kPathIDAndReservation.second->equivalent());
+            trustLineManager->dropAmountReservation(
+                kNodeIDAndReservations.first,
+                kPathIDAndReservation.second);
+
+            if (kPathIDAndReservation.second->direction() == AmountReservation::Outgoing)
+                debug() << "Dropping reservation: [ => ] " << kPathIDAndReservation.second->amount()
+                        << " for (" << kNodeIDAndReservations.first << ") [" << kPathIDAndReservation.first
+                        << "] [equiv: " << kPathIDAndReservation.second->equivalent() << "]";
+
+            else if (kPathIDAndReservation.second->direction() == AmountReservation::Incoming)
+                debug() << "Dropping reservation: [ <= ] " << kPathIDAndReservation.second->amount()
+                        << " for (" << kNodeIDAndReservations.first << ") [" << kPathIDAndReservation.first
+                        << "] [equiv: " << kPathIDAndReservation.second->equivalent() << "]";
+        }
+    }
+
+    // delete transaction references on dropped reservations
+    mReservations.clear();
 }
 
 void BaseExchangePaymentTransaction::rollBack(const PathID &pathID)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::rollBack(pathID) not yet implemented");
+    debug() << "rollback on path";
+
+    auto itNodeIDAndReservations = mReservations.begin();
+    while (itNodeIDAndReservations != mReservations.end()) {
+        auto itPathIDAndReservation = itNodeIDAndReservations->second.begin();
+        while (itPathIDAndReservation != itNodeIDAndReservations->second.end()) {
+            if (itPathIDAndReservation->first == pathID) {
+
+                // Get the appropriate TrustLinesManager for this reservation's equivalent
+                auto trustLineManager = trustLinesManager(itPathIDAndReservation->second->equivalent());
+                trustLineManager->dropAmountReservation(
+                    itNodeIDAndReservations->first,
+                    itPathIDAndReservation->second);
+
+                if (itPathIDAndReservation->second->direction() == AmountReservation::Outgoing)
+                    debug() << "Dropping reservation: [ => ] " << itPathIDAndReservation->second->amount()
+                            << " for (" << itNodeIDAndReservations->first << ") [" << itPathIDAndReservation->first
+                            << "] [equiv: " << itPathIDAndReservation->second->equivalent() << "]";
+
+                else if (itPathIDAndReservation->second->direction() == AmountReservation::Incoming)
+                    debug() << "Dropping reservation: [ <= ] " << itPathIDAndReservation->second->amount()
+                            << " for (" << itNodeIDAndReservations->first << ") [" << itPathIDAndReservation->first
+                            << "] [equiv: " << itPathIDAndReservation->second->equivalent() << "]";
+
+                itPathIDAndReservation = itNodeIDAndReservations->second.erase(itPathIDAndReservation);
+            } else {
+                itPathIDAndReservation++;
+            }
+        }
+        if (itNodeIDAndReservations->second.empty()) {
+            itNodeIDAndReservations = mReservations.erase(itNodeIDAndReservations);
+        } else {
+            itNodeIDAndReservations++;
+        }
+    }
 }
 
 void BaseExchangePaymentTransaction::removeAllDataFromStorageConcerningTransaction(
     IOTransaction::Shared ioTransaction)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::removeAllDataFromStorageConcerningTransaction not yet implemented");
+    if (ioTransaction == nullptr) {
+        ioTransaction = mStorageHandler->beginTransaction();
+    }
+    ioTransaction->outgoingPaymentReceiptHandler()->deleteRecords(
+        mTransactionUUID);
+    ioTransaction->incomingPaymentReceiptHandler()->deleteRecords(
+        mTransactionUUID);
+    ioTransaction->paymentParticipantsVotesHandler()->deleteRecords(
+        mTransactionUUID);
+    ioTransaction->transactionHandler()->deleteRecordIfExists(
+        mTransactionUUID);
 }
 
 uint32_t BaseExchangePaymentTransaction::maxNetworkDelay(const uint16_t totalHopsCount) const
@@ -680,34 +1274,166 @@ const bool BaseExchangePaymentTransaction::contextIsValid(
     Message::MessageType messageType,
     bool showErrorMessage) const
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::contextIsValid not yet implemented");
+    if (mContext.empty()) {
+        if (showErrorMessage) {
+            warning() << "contextIsValid::context is empty";
+        }
+        return false;
+    }
+
+    if (mContext.size() > 1) {
+        if (showErrorMessage) {
+            stringstream stream;
+            stream << "contextIsValid::context has " << mContext.size() << " messages: ";
+            for (auto const &message : mContext) {
+                stream << message->typeID() << " ";
+            }
+            warning() << stream.str();
+        }
+        return false;
+    }
+
+    if (mContext.at(0)->typeID() != messageType) {
+        if (showErrorMessage) {
+            warning() << "Unexpected message received. (ID " << mContext.at(0)->typeID()
+                      << ") It seems that remote node doesn't follows the protocol. Canceling.";
+        }
+
+        return false;
+    }
+
+    return true;
 }
 
 const bool BaseExchangePaymentTransaction::resourceIsValid(
     BaseResource::ResourceType resourceType) const
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::resourceIsValid not yet implemented");
+    if (mResources.empty()) {
+        warning() << "resources are empty";
+        return false;
+    }
+    if (mResources.at(0)->type() != resourceType) {
+        warning() << "Unexpected resource received. (ID " << mResources.at(0)->type() << ") Canceling.";
+        return false;
+    }
+
+    return true;
 }
 
 void BaseExchangePaymentTransaction::dropNodeReservationsOnPath(PathID pathID)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::dropNodeReservationsOnPath not yet implemented");
+    debug() << "dropNodeReservationsOnPath: " << pathID;
+
+    auto itNodeReservations = mReservations.begin();
+    while (itNodeReservations != mReservations.end()) {
+        auto itPathIDAndReservation = itNodeReservations->second.begin();
+        while (itPathIDAndReservation != itNodeReservations->second.end()) {
+            if (itPathIDAndReservation->first == pathID) {
+
+                // Get the appropriate TrustLinesManager for this reservation's equivalent
+                auto trustLineManager = trustLinesManager(itPathIDAndReservation->second->equivalent());
+                trustLineManager->dropAmountReservation(
+                    itNodeReservations->first,
+                    itPathIDAndReservation->second);
+
+                if (itPathIDAndReservation->second->direction() == AmountReservation::Outgoing)
+                    debug() << "Dropping reservation: [ => ] " << itPathIDAndReservation->second->amount()
+                            << " for (" << itNodeReservations->first << ") [" << itPathIDAndReservation->first
+                            << "] [equiv: " << itPathIDAndReservation->second->equivalent() << "]";
+
+                else if (itPathIDAndReservation->second->direction() == AmountReservation::Incoming)
+                    debug() << "Dropping reservation: [ <= ] " << itPathIDAndReservation->second->amount()
+                            << " for (" << itNodeReservations->first << ") [" << itPathIDAndReservation->first
+                            << "] [equiv: " << itPathIDAndReservation->second->equivalent() << "]";
+
+                itPathIDAndReservation = itNodeReservations->second.erase(itPathIDAndReservation);
+            } else {
+                itPathIDAndReservation++;
+            }
+        }
+        if (itNodeReservations->second.empty()) {
+            itNodeReservations = mReservations.erase(itNodeReservations);
+        } else {
+            itNodeReservations++;
+        }
+    }
 }
 
 void BaseExchangePaymentTransaction::runThreeNodesCyclesTransactions()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runThreeNodesCyclesTransactions not yet implemented");
+    mBuildCycleThreeNodesSignal(
+        mContractorsForCycles,
+        mEquivalent);
 }
 
 void BaseExchangePaymentTransaction::runFourNodesCyclesTransactions()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::runFourNodesCyclesTransactions not yet implemented");
+    mBuildCycleFourNodesSignal(
+        mContractorsForCycles,
+        mEquivalent);
 }
 
 bool BaseExchangePaymentTransaction::updateReservations(
     const vector<PathReservation> &finalAmounts)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::updateReservations not yet implemented");
+    debug() << "updateReservations";
+
+    // Track which finalAmounts entries were matched
+    unordered_set<size_t> matchedFinalAmounts;
+    const auto reservationsCopy = mReservations;
+
+    for (const auto &nodeAndReservations : reservationsCopy) {
+        for (auto pathIDAndReservation : nodeAndReservations.second) {
+            bool found = false;
+
+            // Find matching final amount by BOTH pathID AND equivalent
+            // This allows exchange nodes to have multiple reservations with same pathID but different equivalents
+            for (size_t i = 0; i < finalAmounts.size(); ++i) {
+                const auto &finalAmount = finalAmounts[i];
+
+                // Match requires BOTH pathID and equivalent to be equal
+                if (finalAmount.pathID == pathIDAndReservation.first &&
+                    finalAmount.equivalent == pathIDAndReservation.second->equivalent()) {
+
+                    // Found exact match by (pathID, equivalent) pair
+                    debug() << "updateReservations: Found match for PathID " << finalAmount.pathID
+                            << ", equivalent " << finalAmount.equivalent
+                            << ", amount " << *finalAmount.amount.get();
+
+                    if (*finalAmount.amount.get() != pathIDAndReservation.second->amount()) {
+                        shortageReservation(
+                            nodeAndReservations.first,
+                            pathIDAndReservation.second,
+                            *finalAmount.amount.get(),
+                            finalAmount.pathID,
+                            finalAmount.equivalent);
+                    }
+
+                    matchedFinalAmounts.insert(i);
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                // Reservation with (pathID, equivalent) not in finalAmounts - drop it
+                warning() << "updateReservations: No match found for reservation PathID "
+                          << pathIDAndReservation.first
+                          << ", equivalent " << pathIDAndReservation.second->equivalent()
+                          << " - dropping";
+                dropNodeReservationsOnPath(pathIDAndReservation.first);
+            }
+        }
+    }
+
+    // Verify all finalAmounts were matched to existing reservations
+    if (matchedFinalAmounts.size() != finalAmounts.size()) {
+        warning() << "updateReservations: Not all finalAmounts were matched. Expected: "
+                  << finalAmounts.size() << ", matched: " << matchedFinalAmounts.size();
+        return false;
+    }
+
+    return true;
 }
 
 PathID BaseExchangePaymentTransaction::updateReservation(
@@ -715,7 +1441,22 @@ PathID BaseExchangePaymentTransaction::updateReservation(
     pair<PathID, AmountReservation::ConstShared> &pathIDAndReservation,
     const vector<PathReservation> &finalAmounts)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::updateReservation not yet implemented");
+    for (auto &pathReservation : finalAmounts) {
+        if (pathReservation.pathID == pathIDAndReservation.first) {
+            if (*pathReservation.amount.get() != pathIDAndReservation.second->amount()) {
+                shortageReservation(
+                    contractorID,
+                    pathIDAndReservation.second,
+                    *pathReservation.amount.get(),
+                    pathReservation.pathID,
+                    pathReservation.equivalent);
+            }
+            return pathReservation.pathID;
+        }
+    }
+    dropNodeReservationsOnPath(
+        pathIDAndReservation.first);
+    return std::numeric_limits<PathID>::max();
 }
 
 size_t BaseExchangePaymentTransaction::reservationsSizeInBytes() const
@@ -752,19 +1493,93 @@ pair<BytesShared, size_t> BaseExchangePaymentTransaction::getSerializedReceipt(
     ContractorID source,
     ContractorID target,
     const TrustLineAmount &amount,
-    bool isSource)
+    bool isSource,
+    const SerializedEquivalent equivalent)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::getSerializedReceipt not yet implemented");
+    size_t serializedDataSize = sizeof(ContractorID) + sizeof(ContractorID) + sizeof(BlockNumber) + TransactionUUID::kBytesSize + kTrustLineAmountBytesCount + sizeof(AuditNumber);
+    BytesShared serializedData = tryMalloc(serializedDataSize);
+
+    size_t bytesBufferOffset = 0;
+    memcpy(
+        serializedData.get() + bytesBufferOffset,
+        &source,
+        sizeof(ContractorID));
+    bytesBufferOffset += sizeof(ContractorID);
+
+    memcpy(
+        serializedData.get() + bytesBufferOffset,
+        &target,
+        sizeof(ContractorID));
+    bytesBufferOffset += sizeof(ContractorID);
+
+    memcpy(
+        serializedData.get() + bytesBufferOffset,
+        &mMaximalClaimingBlockNumber,
+        sizeof(BlockNumber));
+    bytesBufferOffset += sizeof(BlockNumber);
+
+    memcpy(
+        serializedData.get() + bytesBufferOffset,
+        mTransactionUUID.data,
+        TransactionUUID::kBytesSize);
+    bytesBufferOffset += TransactionUUID::kBytesSize;
+
+    auto serializedAmount = trustLineAmountToBytes(amount);
+    memcpy(
+        serializedData.get() + bytesBufferOffset,
+        serializedAmount.data(),
+        kTrustLineAmountBytesCount);
+    bytesBufferOffset += kTrustLineAmountBytesCount;
+
+    AuditNumber currentAuditNumber;
+    auto trustLineManager = trustLinesManager(equivalent);
+    if (isSource) {
+        currentAuditNumber = trustLineManager->auditNumber(target);
+    } else {
+        currentAuditNumber = trustLineManager->auditNumber(source);
+    }
+    memcpy(
+        serializedData.get() + bytesBufferOffset,
+        &currentAuditNumber,
+        sizeof(AuditNumber));
+
+    debug() << "Receipt " << source << " " << target << " " << amount << " "
+            << mMaximalClaimingBlockNumber << " " << currentAuditNumber << " [equiv: " << equivalent << "]";
+
+    return make_pair(
+               serializedData,
+               serializedDataSize);
 }
 
 bool BaseExchangePaymentTransaction::checkAllNeighborsWithReservationsAreInFinalParticipantsList()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::checkAllNeighborsWithReservationsAreInFinalParticipantsList not yet implemented");
+    for (const auto &nodeAndReservations : mReservations) {
+        auto contractorAddress = mContractorsManager->contractorMainAddress(nodeAndReservations.first);
+        if (mPaymentNodesIds.find(contractorAddress->fullAddress()) == mPaymentNodesIds.end()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool BaseExchangePaymentTransaction::checkAllPublicKeyHashesProperly()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::checkAllPublicKeyHashesProperly not yet implemented");
+    for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
+        if (paymentNodeIdAndContractor.first == kCoordinatorPaymentNodeID) {
+            continue;
+        }
+        if (mParticipantsPublicKeysHashes.find(paymentNodeIdAndContractor.second->mainAddress()->fullAddress()) ==
+                mParticipantsPublicKeysHashes.end()) {
+            warning() << "Public key hash of " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress() << " is absent";
+            return false;
+        }
+        if (mParticipantsPublicKeysHashes[paymentNodeIdAndContractor.second->mainAddress()->fullAddress()].first !=
+                paymentNodeIdAndContractor.first) {
+            warning() << "Invalid Payment node ID of " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress();
+            return false;
+        }
+    }
+    return true;
 }
 
 const TrustLineAmount BaseExchangePaymentTransaction::totalReservedIncomingAmountToNode(
@@ -786,22 +1601,83 @@ const TrustLineAmount BaseExchangePaymentTransaction::totalReservedIncomingAmoun
 
 bool BaseExchangePaymentTransaction::checkPublicKeysAppropriate()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::checkPublicKeysAppropriate not yet implemented");
+    // coordinator don't send own hash, because it send own public key directly
+    if (mParticipantsPublicKeys.size() != mParticipantsPublicKeysHashes.size() + 1) {
+        warning() << "different numbers of public keys and public keys hashes";
+        return false;
+    }
+    for (const auto &nodeAndPaymentNodeID : mParticipantsPublicKeysHashes) {
+        if (mParticipantsPublicKeys.find(nodeAndPaymentNodeID.second.first) == mParticipantsPublicKeys.end()) {
+            warning() << "public key from node " << nodeAndPaymentNodeID.first << " ["
+                      << nodeAndPaymentNodeID.second.first << "] is absent";
+            return false;
+        }
+        // In SPHINCS+ single-key architecture, no hash verification needed
+    }
+    return true;
 }
 
 pair<BytesShared, size_t> BaseExchangePaymentTransaction::getSerializedParticipantsVotesData(
     Contractor::Shared contractor)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::getSerializedParticipantsVotesData not yet implemented");
+    size_t serializedDataSize = sizeof(BlockNumber) + TransactionUUID::kBytesSize + sizeof(SerializedRecordsCount) + mPaymentParticipants.size() * sizeof(PaymentNodeID);
+    BytesShared serializedData = tryMalloc(serializedDataSize);
+
+    size_t bytesBufferOffset = 0;
+    memcpy(
+        serializedData.get() + bytesBufferOffset,
+        &mMaximalClaimingBlockNumber,
+        sizeof(BlockNumber));
+    bytesBufferOffset += sizeof(BlockNumber);
+
+    memcpy(
+        serializedData.get() + bytesBufferOffset,
+        mTransactionUUID.data,
+        TransactionUUID::kBytesSize);
+    bytesBufferOffset += TransactionUUID::kBytesSize;
+
+    auto participantsCount = mPaymentParticipants.size();
+    memcpy(
+        serializedData.get() + bytesBufferOffset,
+        &participantsCount,
+        sizeof(SerializedRecordsCount));
+    bytesBufferOffset += sizeof(SerializedRecordsCount);
+
+    for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
+        memcpy(
+            serializedData.get() + bytesBufferOffset,
+            &paymentNodeIdAndContractor.first,
+            sizeof(PaymentNodeID));
+        bytesBufferOffset += sizeof(PaymentNodeID);
+    }
+
+    return make_pair(
+               serializedData,
+               serializedDataSize);
 }
 
 bool BaseExchangePaymentTransaction::checkSignaturesAppropriate()
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::checkSignaturesAppropriate not yet implemented");
+    if (mParticipantsSignatures.size() != mParticipantsPublicKeys.size()) {
+        warning() << "different numbers of signatures and participants";
+        return false;
+    }
+    for (const auto &paymentNodeIdAndPubKey : mParticipantsPublicKeys) {
+        if (mParticipantsSignatures.find(paymentNodeIdAndPubKey.first) == mParticipantsSignatures.end()) {
+            warning() << "there are no signature from participant " << paymentNodeIdAndPubKey.first;
+        }
+    }
+    return true;
 }
 
 bool BaseExchangePaymentTransaction::checkMaxClaimingBlockNumber(
     BlockNumber maxClaimingBlockNumberOnOwnSide)
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::checkMaxClaimingBlockNumber not yet implemented");
+    if (mMaximalClaimingBlockNumber > maxClaimingBlockNumberOnOwnSide) {
+        return mMaximalClaimingBlockNumber - maxClaimingBlockNumberOnOwnSide <= kAllowableBlockNumberDifference;
+    }
+    if (mMaximalClaimingBlockNumber < maxClaimingBlockNumberOnOwnSide) {
+        return maxClaimingBlockNumberOnOwnSide - mMaximalClaimingBlockNumber <= kAllowableBlockNumberDifference;
+    }
+    return true;
 }

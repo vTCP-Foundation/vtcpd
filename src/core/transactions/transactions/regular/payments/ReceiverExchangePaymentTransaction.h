@@ -5,6 +5,8 @@
 #include "../../../common/exceptions/RuntimeError.h"
 #include "../../../rates/manager/ExchangeRatesManager.h"
 #include "../../../rates/manager/CommissionsManager.h"
+#include "../../../interface/events_interface/interface/EventsInterfaceManager.h"
+#include "../../../contractors/Contractor.h"
 
 class ReceiverExchangePaymentTransaction : public BaseExchangePaymentTransaction
 {
@@ -14,6 +16,7 @@ public:
 
 public:
     ReceiverExchangePaymentTransaction(
+        ReceiverInitPaymentRequestMessage::ConstShared message,
         ContractorsManager *contractorsManager,
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         StorageHandler *storageHandler,
@@ -21,6 +24,7 @@ public:
         ExchangeRatesManager *exchangeRatesManager,
         CommissionsManager *commissionsManager,
         Keystore *keystore,
+        EventsInterfaceManager *eventsInterfaceManager,
         Logger &log,
         SubsystemsController *subsystemsController);
 
@@ -33,26 +37,47 @@ public:
         ExchangeRatesManager *exchangeRatesManager,
         CommissionsManager *commissionsManager,
         Keystore *keystore,
+        EventsInterfaceManager *eventsInterfaceManager,
         Logger &log,
         SubsystemsController *subsystemsController);
 
     TransactionResult::SharedConst run() override;
 
-protected:
-    TransactionResult::SharedConst runApproveCoordinatorRequestStage();
-    TransactionResult::SharedConst runAmountReservationStage();
-    TransactionResult::SharedConst runVotesConsistencyCheckingStage() override;
+    BaseAddress::Shared coordinatorAddress() const override;
 
+    const string logHeader() const override;
+
+protected:
+    TransactionResult::SharedConst runInitializationStage();
+    TransactionResult::SharedConst runAmountReservationStage();
+    TransactionResult::SharedConst runFinalAmountsConfigurationConfirmation();
+    TransactionResult::SharedConst runFinalReservationsCoordinatorConfirmation();
+    TransactionResult::SharedConst runFinalReservationsNeighborConfirmation();
+    TransactionResult::SharedConst runCheckObservingBlockNumber();
+    TransactionResult::SharedConst runVotesStageWithCoordinatorClarification();
+
+    TransactionResult::SharedConst approve() override;
     void savePaymentOperationIntoHistory(IOTransaction::Shared ioTransaction) override;
-    bool updateReservations(const vector<PathReservation> &finalAmounts);
     bool checkReservationsDirections() const override;
+
+    TransactionResult::SharedConst sendErrorMessageOnPreviousNodeRequest(
+        BaseAddress::Shared previousNode,
+        PathID pathID,
+        ResponseMessage::OperationState errorState);
+
+    void sendErrorMessageOnFinalAmountsConfiguration();
 
 private:
     ExchangeRatesManager *mExchangeRatesManager;
     CommissionsManager *mCommissionsManager;
 
-    // Mapping PathID -> SerializedEquivalent for validation
-    map<PathID, SerializedEquivalent> mPathEquivalents;
+    EventsInterfaceManager *mEventsInterfaceManager;
+    Contractor::Shared mCoordinator;
+
+    TrustLineAmount mTransactionAmount;
+
+    // this field indicates that transaction should be rejected on voting stage
+    bool mTransactionShouldBeRejected;
 };
 
 #endif //VTCPD_RECEIVEREXCHANGEPAYMENTTRANSACTION_H
