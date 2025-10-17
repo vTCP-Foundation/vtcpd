@@ -1145,6 +1145,7 @@ void BaseExchangePaymentTransaction::commit(IOTransaction::Shared ioTransaction)
                 kNodeIDAndReservations.first,
                 kPathIDAndReservation.second);
         }
+        // TODO : need to send signal in all equivalents involved
         trustLineActionSignal(
             kNodeIDAndReservations.first,
             mEquivalent,
@@ -1164,9 +1165,6 @@ void BaseExchangePaymentTransaction::commit(IOTransaction::Shared ioTransaction)
             maxFlowCacheManager(equiv)->clearCashes();
         }
     }
-    // Also reset for transaction's main equivalent
-    topologyCacheManager(mEquivalent)->resetInitiatorCache();
-    maxFlowCacheManager(mEquivalent)->clearCashes();
 
     debug() << "Transaction committed.";
     saveVotes(ioTransaction);
@@ -1393,12 +1391,14 @@ bool BaseExchangePaymentTransaction::updateReservations(
 
                 // Match requires BOTH pathID and equivalent to be equal
                 if (finalAmount.pathID == pathIDAndReservation.first &&
-                    finalAmount.equivalent == pathIDAndReservation.second->equivalent()) {
+                    finalAmount.equivalent == pathIDAndReservation.second->equivalent() &&
+                    finalAmount.direction == pathIDAndReservation.second->direction()) {
 
                     // Found exact match by (pathID, equivalent) pair
                     debug() << "updateReservations: Found match for PathID " << finalAmount.pathID
                             << ", equivalent " << finalAmount.equivalent
-                            << ", amount " << *finalAmount.amount.get();
+                            << ", amount " << *finalAmount.amount.get()
+                            << ", direction " << finalAmount.direction;
 
                     if (*finalAmount.amount.get() != pathIDAndReservation.second->amount()) {
                         shortageReservation(

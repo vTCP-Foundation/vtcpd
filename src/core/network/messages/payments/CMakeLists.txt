@@ -38,6 +38,8 @@ add_library(messages__payments
     FinalPathConfigurationMessage.h
     FinalPathCycleConfigurationMessage.h
     FinalPathCycleConfigurationMessage.cpp
+    FinalPathExchangeConfigurationMessage.h
+    FinalPathExchangeConfigurationMessage.cpp
     TTLProlongationRequestMessage.h
     TTLProlongationRequestMessage.cpp
     FinalAmountsConfigurationMessage.h

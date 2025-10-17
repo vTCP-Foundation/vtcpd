@@ -67,8 +67,9 @@ struct ExchangePath {
     // length as 'ids'.
     vector<SerializedEquivalent> equivalents;
 
-    // Explicit list of exchange steps (rate, limits) that occur where
-    // ids[i] == ids[i+1] and equivalents differ.
+    // Explicit list of exchange steps (rate, limits) and commissions.
+    // Exchange steps: occur where ids[i] == ids[i+1] and fromEquivalent != toEquivalent
+    // Commission steps: occur where ids[i] == ids[i+1] and fromEquivalent == toEquivalent
     vector<ExchangeStep> exchangeSteps;
 
     // Path capacity on the source side (sender equivalent): the maximum

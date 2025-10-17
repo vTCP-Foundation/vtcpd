@@ -404,7 +404,11 @@ set<ContractorID> ExchangePathsManager::collectExchangeNodes(const vector<Exchan
     set<ContractorID> exchangeNodes;
     for (const auto& path : paths) {
         for (const auto& exchange : path.exchangeSteps) {
-            exchangeNodes.insert(exchange.nodeID);
+            // Only add actual exchange nodes (fromEquivalent != toEquivalent)
+            // Skip commission entries (fromEquivalent == toEquivalent)
+            if (exchange.fromEquivalent != exchange.toEquivalent) {
+                exchangeNodes.insert(exchange.nodeID);
+            }
         }
     }
     return exchangeNodes;
@@ -1105,6 +1109,38 @@ void ExchangePathsManager::dfsEnumeratePaths(
             }
         }
         completePath.totalCommissions = sumComm;
+
+        // Add commissions as ExchangeStep entries (fromEquivalent == toEquivalent)
+        // for use in calculateFlows() method
+        for (size_t i = 1; i < currentPath.size() - 1; ++i) { // Skip first (sender) and last (receiver) nodes
+            ContractorID nodeID = currentPath[i];
+            SerializedEquivalent nodeEquiv = currentEquivPath[i];
+
+            // Skip exchange nodes (they don't charge transit commissions)
+            if (exchangeNodesInPath.find(nodeID) != exchangeNodesInPath.end()) {
+                continue;
+            }
+
+            try {
+                auto tlm = mRouter->topologyTrustLineManager(nodeEquiv);
+                auto c = tlm->getCommission(nodeID, nodeEquiv);
+                if (c && c->amount() > TrustLineAmount(0)) {
+                    ExchangeStep commissionStep;
+                    commissionStep.nodeID = nodeID;
+                    commissionStep.fromEquivalent = nodeEquiv;
+                    commissionStep.toEquivalent = nodeEquiv;  // Same equivalent - marks this as commission
+                    commissionStep.exchangeRate = TrustLineAmount(0);
+                    commissionStep.exchangeRateShift = 0;
+                    commissionStep.minExchangeAmount = TrustLineAmount(0);
+                    commissionStep.maxExchangeAmount = TrustLineAmount(0);
+                    commissionStep.commission = c->amount();
+
+                    completePath.exchangeSteps.push_back(commissionStep);
+                }
+            } catch (...) {
+                // ignore commission lookup errors
+            }
+        }
 
         if (completePath.isValid()) {
             debug() << "DFS: Valid path added with capacity " << completePath.minCapacity;

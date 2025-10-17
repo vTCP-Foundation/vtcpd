@@ -45,6 +45,7 @@
 #include "../../../messages/payments/IntermediateNodeCycleReservationResponseMessage.h"
 #include "../../../messages/payments/ParticipantsVotesMessage.h"
 #include "../../../messages/payments/FinalPathConfigurationMessage.h"
+#include "../../../messages/payments/FinalPathExchangeConfigurationMessage.h"
 #include "../../../messages/payments/FinalPathCycleConfigurationMessage.h"
 #include "../../../messages/payments/TTLProlongationRequestMessage.h"
 #include "../../../messages/payments/TTLProlongationResponseMessage.h"

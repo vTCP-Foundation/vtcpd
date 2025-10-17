@@ -68,6 +68,8 @@ public:
         Payments_FinalAmountsConfigurationResponse = 212,
 
         Payments_FinalPathConfiguration = 213,
+        // todo : change to 213 after Payments_FinalPathConfiguration is removed
+        Payments_FinalPathExchangeConfiguration = 222,
         Payments_FinalPathCycleConfiguration = 214,
 
         Payments_TTLProlongationRequest = 215,

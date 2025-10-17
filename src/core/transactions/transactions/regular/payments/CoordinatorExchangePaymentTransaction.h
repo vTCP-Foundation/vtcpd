@@ -127,8 +127,7 @@ protected:
 
     void sendFinalPathConfiguration(
         OptimalPathResult *pathStats,
-        const PathID &pathID,
-        const TrustLineAmount &finalPathAmount);
+        const PathID &pathID);
 
 protected:
     EventsInterfaceManager *mEventsInterfaceManager;

@@ -108,7 +108,8 @@ void TransactionsScheduler::tryAttachMessageToTransaction(
             // in future if such cases will be more this code should make separate method
             if (message->typeID() == Message::Payments_TTLProlongationResponse or
                     message->typeID() == Message::Payments_FinalAmountsConfiguration or
-                    message->typeID() == Message::Payments_FinalPathConfiguration) {
+                    message->typeID() == Message::Payments_FinalPathConfiguration or
+                    message->typeID() == Message::Payments_FinalPathExchangeConfiguration) {
                 auto paymentTransaction = static_pointer_cast<BasePaymentTransaction>(
                                               transactionAndState.first);
                 if (paymentTransaction->coordinatorAddress() != transactionMessage->senderAddresses.at(0)) {

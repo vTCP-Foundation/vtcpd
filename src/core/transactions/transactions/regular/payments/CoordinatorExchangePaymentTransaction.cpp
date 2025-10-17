@@ -1,6 +1,153 @@
 #include "CoordinatorExchangePaymentTransaction.h"
+#include "../../../network/messages/payments/FinalPathExchangeConfigurationMessage.h"
 
 #include <map>
+#include <algorithm>
+#include <string>
+#include <boost/multiprecision/cpp_int.hpp>
+
+#include "../../../../common/exceptions/ValueError.h"
+
+using boost::multiprecision::cpp_int;
+
+namespace {
+
+cpp_int pow10(const size_t exponent)
+{
+    cpp_int result = 1;
+    for (size_t idx = 0; idx < exponent; ++idx) {
+        result *= 10;
+    }
+    return result;
+}
+
+TrustLineAmount ceilDivideToAmount(const cpp_int &numerator, const cpp_int &denominator)
+{
+    if (denominator <= 0) {
+        throw ValueError(
+            "CoordinatorExchangePaymentTransaction::ceilDivideToAmount: "
+            "denominator must be positive");
+    }
+
+    cpp_int quotient = numerator / denominator;
+    if (numerator % denominator != 0) {
+        ++quotient;
+    }
+
+    if (quotient < 0) {
+        throw ValueError(
+            "CoordinatorExchangePaymentTransaction::ceilDivideToAmount: "
+            "negative quotient computed");
+    }
+
+    return quotient.convert_to<TrustLineAmount>();
+}
+
+const ExchangeStep* findExchangeStep(
+    const ExchangePath &path,
+    ContractorID nodeID,
+    SerializedEquivalent fromEquivalent,
+    SerializedEquivalent toEquivalent)
+{
+    const auto it = std::find_if(
+        path.exchangeSteps.begin(),
+        path.exchangeSteps.end(),
+        [nodeID, fromEquivalent, toEquivalent](const ExchangeStep &step) {
+            return step.nodeID == nodeID &&
+                   step.fromEquivalent == fromEquivalent &&
+                   step.toEquivalent == toEquivalent;
+        });
+
+    if (it == path.exchangeSteps.end()) {
+        return nullptr;
+    }
+
+    return &(*it);
+}
+
+TrustLineAmount invertExchangeForRequiredInput(
+    const ExchangeStep &step,
+    const TrustLineAmount &outputAmount)
+{
+    if (step.exchangeRate == TrustLineAmount(0)) {
+        throw ValueError(
+            "CoordinatorExchangePaymentTransaction::invertExchangeForRequiredInput: "
+            "zero exchange rate encountered");
+    }
+
+    cpp_int numerator = cpp_int(outputAmount);
+    cpp_int denominator = cpp_int(step.exchangeRate);
+
+    if (step.exchangeRateShift >= 0) {
+        denominator *= pow10(static_cast<size_t>(step.exchangeRateShift));
+    } else {
+        numerator *= pow10(static_cast<size_t>(-step.exchangeRateShift));
+    }
+
+    return ceilDivideToAmount(numerator, denominator);
+}
+
+TrustLineAmount calculateRequiredInputForPath(
+    const OptimalPathResult &pathResult,
+    const TrustLineAmount &desiredOutputAmount)
+{
+    if (desiredOutputAmount == TrustLineAmount(0)) {
+        return TrustLineAmount(0);
+    }
+
+    const auto &path = pathResult.path();
+    if (path.ids.empty() || path.ids.size() != path.equivalents.size()) {
+        throw ValueError(
+            "CoordinatorExchangePaymentTransaction::calculateRequiredInputForPath: "
+            "invalid path structure");
+    }
+
+    TrustLineAmount requiredAmount = desiredOutputAmount;
+
+    for (size_t idx = path.ids.size() - 1; idx > 0; --idx) {
+        const ContractorID previousNode = path.ids[idx - 1];
+        const ContractorID currentNode = path.ids[idx];
+        const SerializedEquivalent previousEquivalent = path.equivalents[idx - 1];
+        const SerializedEquivalent currentEquivalent = path.equivalents[idx];
+
+        if (previousNode == currentNode && previousEquivalent != currentEquivalent) {
+            const auto *exchangeStep = findExchangeStep(
+                path,
+                currentNode,
+                previousEquivalent,
+                currentEquivalent);
+            if (!exchangeStep) {
+                throw ValueError(
+                    "CoordinatorExchangePaymentTransaction::calculateRequiredInputForPath: "
+                    "exchange step not found");
+            }
+
+            requiredAmount = invertExchangeForRequiredInput(*exchangeStep, requiredAmount);
+            continue;
+        }
+
+        if (idx < path.ids.size() - 1) {
+            const auto *commissionStep = findExchangeStep(
+                path,
+                currentNode,
+                currentEquivalent,
+                currentEquivalent);
+            if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
+                try {
+                    requiredAmount = requiredAmount + commissionStep->commission;
+                } catch (const std::exception &e) {
+                    throw ValueError(
+                        "CoordinatorExchangePaymentTransaction::calculateRequiredInputForPath: "
+                        "commission addition overflow: " + std::string(e.what()));
+                }
+            }
+        }
+    }
+
+    return requiredAmount;
+}
+
+}
 
 CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
     const CreditUsageExchangeCommand::Shared command,
@@ -136,7 +283,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPayment
     }
 
     // Calculate mExchangeAmount (amount to pay in sender equivalent)
-    // using cached paths similar to EstimatePaymentForReceiveAmountTransaction
+    // using cached paths and calculateFlows() for accurate commission handling
     try {
         PathCacheKey key{mContractorID, mExchangeEquivalent, mEquivalent};
         auto cachedPaths = mExchangePathsManager->retrievePaths(key);
@@ -148,24 +295,66 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPayment
             return resultNoPathsError();
         }
 
-        // Calculate required payment amount (simplified approach without inverseSimulatePath)
-        TrustLineAmount remainingReceive = mCommand->amount();  // mAmount - receiver amount
+        // Calculate required payment amount for each path using integer-safe simulation
+        TrustLineAmount remainingReceive = mCommand->amount();  // receiver amount
         TrustLineAmount totalPayment = TrustLineAmount(0);
 
-        for (const auto &pathResult : *cachedPaths) {
+        for (auto pathResult : *cachedPaths) {  // Copy to allow modification
             if (remainingReceive == TrustLineAmount(0)) {
                 break;
             }
 
-            // Use the minimum of remaining needed and what this path can deliver
             TrustLineAmount deliveredAmount = min(remainingReceive, pathResult.received_amount);
+            if (deliveredAmount == TrustLineAmount(0)) {
+                continue;
+            }
 
-            // For simplified calculation: assume optimal_flow is proportional to received_amount
-            // More accurate would be to use inverseSimulatePath, but for now use direct ratio
-            double ratio = deliveredAmount.convert_to<double>() / pathResult.received_amount.convert_to<double>();
-            TrustLineAmount requiredPayment(static_cast<uint64_t>(pathResult.optimal_flow.convert_to<double>() * ratio));
+            TrustLineAmount pathFlow;
+            try {
+                pathFlow = calculateRequiredInputForPath(pathResult, deliveredAmount);
+            } catch (const ValueError &e) {
+                warning() << "Unable to compute required flow for path: " << e.what();
+                continue;
+            } catch (const std::exception &e) {
+                warning() << "Unexpected error while computing required flow: " << e.what();
+                continue;
+            }
 
-            totalPayment = totalPayment + requiredPayment;
+            if (pathFlow > pathResult.optimal_flow) {
+                warning() << "Required flow " << pathFlow
+                          << " exceeds path capacity " << pathResult.optimal_flow
+                          << "; skipping path";
+                continue;
+            }
+
+            TrustLineAmount requiredPayment = pathFlow;
+            try {
+                pathResult.calculateFlows(pathFlow);
+
+                if (!pathResult.flows.empty()) {
+                    requiredPayment = pathResult.flows.front().first;
+
+                    const TrustLineAmount deliveredByPath = pathResult.flows.back().first;
+                    if (deliveredByPath < deliveredAmount) {
+                        warning() << "Path delivers only " << deliveredByPath
+                                  << " but " << deliveredAmount
+                                  << " requested; skipping";
+                        continue;
+                    }
+                }
+            } catch (const std::exception &e) {
+                warning() << "calculateFlows failed for path: " << e.what()
+                          << "; falling back to direct flow";
+            }
+
+            try {
+                totalPayment = totalPayment + requiredPayment;
+            } catch (const std::exception &e) {
+                throw ValueError(
+                    "CoordinatorExchangePaymentTransaction::runPaymentInitializationStage: "
+                    "failed to accumulate payment: " + std::string(e.what()));
+            }
+
             remainingReceive = remainingReceive - deliveredAmount;
         }
 
@@ -1180,7 +1369,8 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
     reservations.emplace_back(
         mCurrentAmountReservingPathIdentifier,
         make_shared<const TrustLineAmount>(kReservationAmount),
-        senderEquivalent);
+        senderEquivalent,
+        PathReservation::Outgoing);
 
     sendMessage<IntermediateNodeReservationRequestMessage>(
         neighborID,
@@ -1218,7 +1408,8 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
     reservations.emplace_back(
         mCurrentAmountReservingPathIdentifier,
         make_shared<const TrustLineAmount>(pathFlow.first),
-        pathFlow.second);
+        pathFlow.second,
+        PathReservation::Outgoing);
 
     // TODO: Add existing next after neighbor node reservations from mNodesFinalAmountsConfiguration
     // For now, skip this optimization
@@ -1265,7 +1456,8 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askRemoteN
     reservations.emplace_back(
         mCurrentAmountReservingPathIdentifier,
         make_shared<const TrustLineAmount>(pathFlow.first),
-        pathFlow.second);
+        pathFlow.second,
+        PathReservation::Outgoing);
 
     // TODO: Add existing next after remote node reservations from mNodesFinalAmountsConfiguration
     // For now, skip this optimization
@@ -1294,7 +1486,8 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askRemoteN
         OptimalPathResult::ReservationRequestSent);
 
     debug() << "Further amount reservation request sent to the node (" << remoteNode->fullAddress() << ") ["
-            << pathStats->maxFlow() << ", next node - (" << nextAfterRemoteNode->fullAddress() << ")]";
+            << pathFlow.first << ", " << pathFlow.second << "]" 
+            << ", next node - (" << nextAfterRemoteNode->fullAddress() << ")]";
 
     // delay is equal 4 because in IntermediateNodePaymentTransaction::runCoordinatorRequestProcessingStage delay is 2
     return resultWaitForMessageTypes( {
@@ -1667,12 +1860,6 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
                           "or that an error is present in protocol itself.");
         }
 
-        // send final path amount to all intermediate nodes on path
-        sendFinalPathConfiguration(
-            path,
-            mCurrentAmountReservingPathIdentifier,
-            path->maxFlow());
-
         try {
             addFinalConfigurationOnPath(
                 mCurrentAmountReservingPathIdentifier,
@@ -1681,6 +1868,9 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
             error() << "Failed to add final configuration: " << e.what();
             return reject("Internal payment error: flow calculation mismatch");
         }
+
+        // do not need to send final path exchange configuration message, 
+        // because this path contains only one intermediate node and it already has final configuration
 
         if (kTotalAmount == mExchangeAmount) {
             debug() << "Total exchange amount: " << mExchangeAmount << ". Collected.";
@@ -1868,7 +2058,8 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
         remoteNodeAndPos.second,
         OptimalPathResult::ReservationApproved);
 
-    if (reservedAmount != path->maxFlow()) {
+    const auto pathFlow = path->previousPathFlow();
+    if (reservedAmount != pathFlow.first) {
         path->shortageMaxFlow(reservedAmount);
         auto firstIntermediateNode = pathNodes[0];
         auto firstIntermediateNodeID = mContractorsManager->contractorIDByAddress(firstIntermediateNode);
@@ -1896,11 +2087,6 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
                           "or that an error is present in protocol itself.");
         }
 
-        // send final path amount to all intermediate nodes on path
-        sendFinalPathConfiguration(
-            path,
-            mCurrentAmountReservingPathIdentifier,
-            path->maxFlow());
 
         try {
             addFinalConfigurationOnPath(
@@ -1910,6 +2096,11 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
             error() << "Failed to add final configuration: " << e.what();
             return reject("Internal payment error: flow calculation mismatch");
         }
+
+        // send final path configuration to all intermediate nodes on path
+        sendFinalPathConfiguration(
+            path,
+            mCurrentAmountReservingPathIdentifier);
 
         if (kTotalAmount == mExchangeAmount) {
             debug() << "Total exchange amount: " << mExchangeAmount << ". Collected.";
@@ -2069,18 +2260,45 @@ void CoordinatorExchangePaymentTransaction::dropReservationsOnPath(
     try {
         const auto lastProcessedNodeAndPos = pathStats->currentIntermediateNodeAndPos();
         const auto lastProcessedNode = lastProcessedNodeAndPos.first;
-        for (const auto &intermediateNode : pathStats->path().nodes) {
+
+        // Determine equivalents from path based on node position
+        const auto &pathNodes = pathStats->path().nodes;
+        const auto &pathEquivalents = pathStats->mPath.equivalents;
+
+        if (pathEquivalents.size() != pathNodes.size()) {
+            warning() << "Path equivalents size mismatch: " << pathEquivalents.size()
+                      << " vs nodes size: " << pathNodes.size();
+            return;
+        }
+
+        for (size_t nodeIdx = 0; nodeIdx < pathNodes.size(); ++nodeIdx) {
+            const auto &intermediateNode = pathNodes[nodeIdx];
+
             if (!sendToLastProcessedNode && intermediateNode == lastProcessedNode) {
                 break;
             }
-            debug() << "send message with drop reservation info for node " << intermediateNode->fullAddress();
-            sendMessage<FinalPathConfigurationMessage>(
+
+            // Determine incoming and outgoing equivalents based on node position
+            SerializedEquivalent incomingEquivalent =
+                (nodeIdx > 0) ? pathEquivalents[nodeIdx - 1] : senderEquivalent;
+            SerializedEquivalent outgoingEquivalent = pathEquivalents[nodeIdx];
+
+            debug() << "send message with drop reservation info for node "
+                    << intermediateNode->fullAddress()
+                    << " (incoming equiv: " << incomingEquivalent
+                    << ", outgoing equiv: " << outgoingEquivalent << ")";
+
+            sendMessage<FinalPathExchangeConfigurationMessage>(
                 intermediateNode,
                 senderEquivalent,
                 mContractorsManager->ownAddresses(),
                 currentTransactionUUID(),
                 pathID,
-                TrustLine::kZeroAmount());
+                TrustLine::kZeroAmount(),
+                incomingEquivalent,
+                TrustLine::kZeroAmount(),
+                outgoingEquivalent);
+
             if (sendToLastProcessedNode && intermediateNode == lastProcessedNode) {
                 break;
             }
@@ -2450,9 +2668,10 @@ void CoordinatorExchangePaymentTransaction::addFinalConfigurationOnPath(
             PathReservation incomingReservation(
                 pathID,
                 make_shared<const TrustLineAmount>(incomingFlow.first),
-                incomingFlow.second);
+                incomingFlow.second,
+                PathReservation::Incoming);
             debug() << "incoming reservation for node: " << contractor->mainAddress()->fullAddress()
-                    << " amount: " << *incomingReservation.amount 
+                    << " amount: " << *incomingReservation.amount
                     << " equivalent: " << incomingReservation.equivalent;
 
             if (mNodesFinalAmountsConfiguration.find(nodeKey) ==
@@ -2469,9 +2688,10 @@ void CoordinatorExchangePaymentTransaction::addFinalConfigurationOnPath(
             PathReservation outgoingReservation(
                 pathID,
                 make_shared<const TrustLineAmount>(outgoingFlow.first),
-                outgoingFlow.second);
+                outgoingFlow.second,
+                PathReservation::Outgoing);
             debug() << "outgoing reservation for node: " << contractor->mainAddress()->fullAddress()
-                << " amount: " << *outgoingReservation.amount 
+                << " amount: " << *outgoingReservation.amount
                 << " equivalent: " << outgoingReservation.equivalent;
 
             mNodesFinalAmountsConfiguration[nodeKey].push_back(outgoingReservation);
@@ -2491,9 +2711,10 @@ void CoordinatorExchangePaymentTransaction::addFinalConfigurationOnPath(
     PathReservation receiverReservation(
         pathID,
         make_shared<const TrustLineAmount>(receiverIncomingFlow.first),
-        receiverIncomingFlow.second);
+        receiverIncomingFlow.second,
+        PathReservation::Incoming);
     debug() << "receiver incoming reservation for node: " << mContractor->mainAddress()->fullAddress()
-            << " amount: " << *receiverReservation.amount 
+            << " amount: " << *receiverReservation.amount
             << " equivalent: " << receiverReservation.equivalent;
 
     auto receiverKey = mContractor->mainAddress()->fullAddress();
@@ -2507,8 +2728,7 @@ void CoordinatorExchangePaymentTransaction::addFinalConfigurationOnPath(
 
 void CoordinatorExchangePaymentTransaction::sendFinalPathConfiguration(
     OptimalPathResult *pathStats,
-    const PathID &pathID,
-    const TrustLineAmount &finalPathAmount)
+    const PathID &pathID)
 {
     debug() << "sendFinalPathConfiguration";
 
@@ -2523,14 +2743,62 @@ void CoordinatorExchangePaymentTransaction::sendFinalPathConfiguration(
         if (intermediateNode == mContractor->mainAddress()) {
             continue;
         }
-        debug() << "send message with final path amount info for node " << intermediateNode->fullAddress();
-        sendMessage<FinalPathConfigurationMessage>(
+
+        auto nodeKey = intermediateNode->fullAddress();
+        debug() << "send message with final path configuration for node " << nodeKey;
+
+        // Find reservations for this node
+        auto nodeConfigIter = mNodesFinalAmountsConfiguration.find(nodeKey);
+        if (nodeConfigIter == mNodesFinalAmountsConfiguration.end()) {
+            warning() << "No configuration found for intermediate node " << nodeKey;
+            continue;
+        }
+
+        // Find incoming and outgoing reservations for this pathID
+        TrustLineAmount incomingAmount = TrustLineAmount(0);
+        SerializedEquivalent incomingEquivalent = senderEquivalent;
+        TrustLineAmount outgoingAmount = TrustLineAmount(0);
+        SerializedEquivalent outgoingEquivalent = senderEquivalent;
+
+        bool foundIncoming = false;
+        bool foundOutgoing = false;
+
+        for (const auto &reservation : nodeConfigIter->second) {
+            if (reservation.pathID == pathID) {
+                if (reservation.direction == PathReservation::Incoming) {
+                    incomingAmount = *reservation.amount;
+                    incomingEquivalent = reservation.equivalent;
+                    foundIncoming = true;
+                } else if (reservation.direction == PathReservation::Outgoing) {
+                    outgoingAmount = *reservation.amount;
+                    outgoingEquivalent = reservation.equivalent;
+                    foundOutgoing = true;
+                }
+            }
+        }
+
+        if (!foundIncoming || !foundOutgoing) {
+            warning() << "Incomplete reservations for node " << nodeKey
+                      << " pathID " << pathID
+                      << " (incoming: " << foundIncoming
+                      << ", outgoing: " << foundOutgoing << ")";
+            continue;  // Skip this node - cannot send valid configuration
+        }
+
+        debug() << "Sending final path configuration: pathID=" << pathID
+                << " incoming=" << incomingAmount << " (equiv " << incomingEquivalent << ")"
+                << " outgoing=" << outgoingAmount << " (equiv " << outgoingEquivalent << ")";
+
+        sendMessage<FinalPathExchangeConfigurationMessage>(
             intermediateNode,
             senderEquivalent,
             mContractorsManager->ownAddresses(),
             currentTransactionUUID(),
             pathID,
-            finalPathAmount);
+            incomingAmount,
+            incomingEquivalent,
+            outgoingAmount,
+            outgoingEquivalent);
     }
 }
 

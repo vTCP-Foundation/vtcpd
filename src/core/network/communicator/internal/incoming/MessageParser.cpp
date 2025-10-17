@@ -158,6 +158,9 @@ pair<bool, Message::Shared> MessagesParser::processBytesSequence(
         case Message::Payments_FinalPathConfiguration:
             return messageCollected<FinalPathConfigurationMessage>(buffer);
 
+        case Message::Payments_FinalPathExchangeConfiguration:
+            return messageCollected<FinalPathExchangeConfigurationMessage>(buffer);
+
         case Message::Payments_FinalPathCycleConfiguration:
             return messageCollected<FinalPathCycleConfigurationMessage>(buffer);
 

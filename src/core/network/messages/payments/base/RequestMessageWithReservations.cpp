@@ -45,9 +45,10 @@ RequestMessageWithReservations::RequestMessageWithReservations(
         transactionUUID)
 {
     // Convert pair vector to PathReservation vector using mEquivalent
+    // Default direction for backward compatibility (single-equivalent payments)
     mFinalAmountsConfiguration.reserve(finalAmountsConfig.size());
     for (const auto& [pathID, amount] : finalAmountsConfig) {
-        mFinalAmountsConfiguration.emplace_back(pathID, amount, equivalent);
+        mFinalAmountsConfiguration.emplace_back(pathID, amount, equivalent, PathReservation::Outgoing);
     }
 }
 
@@ -63,9 +64,10 @@ RequestMessageWithReservations::RequestMessageWithReservations(
         transactionUUID)
 {
     // Convert pair vector to PathReservation vector using mEquivalent
+    // Default direction for backward compatibility (single-equivalent payments)
     mFinalAmountsConfiguration.reserve(finalAmountsConfig.size());
     for (const auto& [pathID, amount] : finalAmountsConfig) {
-        mFinalAmountsConfiguration.emplace_back(pathID, amount, equivalent);
+        mFinalAmountsConfiguration.emplace_back(pathID, amount, equivalent, PathReservation::Outgoing);
     }
 }
 
@@ -91,10 +93,17 @@ RequestMessageWithReservations::RequestMessageWithReservations(
         SerializedEquivalent equivalent;
         deserializer.copyInto(&equivalent);
 
+        // Direction field (for backward compatibility, default to Outgoing if not present)
+        // Old messages don't have direction field, so we use default
+        uint8_t directionByte;
+        deserializer.copyInto(&directionByte);
+        PathReservation::Direction direction = static_cast<PathReservation::Direction>(directionByte);
+
         mFinalAmountsConfiguration.emplace_back(
             pathID,
             make_shared<const TrustLineAmount>(trustLineAmount),
-            equivalent);
+            equivalent,
+            direction);
     }
 }
 
@@ -128,6 +137,7 @@ pair<BytesShared, size_t> RequestMessageWithReservations::serializeToBytes() con
         serializer.copy(reservation.pathID);
         serializer.copy(*reservation.amount.get());
         serializer.copy(reservation.equivalent);
+        serializer.copy(static_cast<uint8_t>(reservation.direction));
     }
 
     return serializer.collect();
@@ -141,7 +151,8 @@ const size_t RequestMessageWithReservations::kOffsetToInheritedBytes() const
         finalAmountsConfiguration().size() * (
             BytesSerializer::kSerializedPathIDSize +
             BytesSerializer::kSerializedTrustLineAmountSize +
-            sizeof(SerializedEquivalent));
+            sizeof(SerializedEquivalent) +
+            sizeof(uint8_t)); // direction field
 
     return kOffset;
 }

@@ -5,6 +5,7 @@
 #include "../../../common/exceptions/RuntimeError.h"
 #include "../../../rates/manager/ExchangeRatesManager.h"
 #include "../../../rates/manager/CommissionsManager.h"
+#include "../../../network/messages/payments/FinalPathExchangeConfigurationMessage.h"
 
 class IntermediateNodeExchangePaymentTransaction : public BaseExchangePaymentTransaction
 {
@@ -59,7 +60,12 @@ protected:
     void savePaymentOperationIntoHistory(IOTransaction::Shared ioTransaction) override;
     bool checkReservationsDirections() const override;
 
-    void shortageReservationsOnPath(
+    void shortageIncomingReservationsOnPath(
+        const PathID pathID,
+        const SerializedEquivalent equivalent,
+        const TrustLineAmount &amount);
+
+    void shortageOutgoingReservationsOnPath(
         const PathID pathID,
         const SerializedEquivalent equivalent,
         const TrustLineAmount &amount);

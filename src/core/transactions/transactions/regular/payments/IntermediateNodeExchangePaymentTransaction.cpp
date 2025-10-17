@@ -247,7 +247,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runPr
     mLastProcessedPath = kReservation.pathID;
     sendMessage<IntermediateNodeReservationResponseMessage>(
         kNeighbor,
-        mEquivalent,
+        kReservation.equivalent,
         mContractorsManager->ownAddresses(),
         currentTransactionUUID(),
         kReservation.pathID,
@@ -370,7 +370,8 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runCo
     reservations.emplace_back(
         kReservation.pathID,
         make_shared<const TrustLineAmount>(reservationAmount),
-        kReservation.equivalent);
+        kReservation.equivalent,
+        PathReservation::Outgoing);
 
     if (kFinalAmounts.size() > 1) {
         reservations.insert(
@@ -391,7 +392,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runCo
     return resultWaitForMessageTypes( {
         Message::Payments_IntermediateNodeReservationResponse,
         Message::Payments_IntermediateNodeReservationRequest,
-        Message::Payments_FinalPathConfiguration,
+        Message::Payments_FinalPathExchangeConfiguration,
         Message::Payments_FinalAmountsConfiguration,
         Message::Payments_TransactionPublicKeyHash,
         Message::Payments_TTLProlongationResponse,
@@ -430,7 +431,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runNe
     }
     info() << "Sender ID " << senderID;
 
-    auto *const baseTrustLines = trustLinesManager(mEquivalent);
+    auto *const baseTrustLines = trustLinesManager(kMessage->equivalent());
 
 #ifdef TESTS
     mSubsystemsController->testForbidSendMessageToCoordinatorOnReservationStage(
@@ -482,10 +483,12 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runNe
     debug() << "Next node accepted amount reservation.";
 
     if (kMessage->amountReserved() != mLastReservedAmount) {    
-        shortageReservationsOnPath(
+        shortageOutgoingReservationsOnPath(
             kMessage->pathID(),
             kMessage->equivalent(),
             kMessage->amountReserved());
+
+        // todo : add shortage incoming reservations on path recalculated by new outgoing amount
     }
 
     mLastReservedAmount = kMessage->amountReserved();
@@ -506,7 +509,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runNe
 
     mStep = Stages::Common_FinalPathConfigurationChecking;
     return resultWaitForMessageTypes( {
-        Message::Payments_FinalPathConfiguration,
+        Message::Payments_FinalPathExchangeConfiguration,
         Message::Payments_IntermediateNodeReservationRequest,
         Message::Payments_FinalAmountsConfiguration,
         Message::Payments_TransactionPublicKeyHash,
@@ -518,27 +521,39 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
 {
     debug() << "runFinalPathConfigurationProcessingStage";
 
-    if (!contextIsValid(Message::Payments_FinalPathConfiguration, false)) {
+    if (!contextIsValid(Message::Payments_FinalPathExchangeConfiguration, false)) {
         warning() << "No final paths configuration was received from the coordinator.";
         return runReservationProlongationStage();
     }
 
-    const auto kMessage = popNextMessage<FinalPathConfigurationMessage>();
+    const auto kMessage = popNextMessage<FinalPathExchangeConfigurationMessage>();
 
-    debug() << "Final payment path configuration received";
+    debug() << "Final payment path exchange configuration received";
+    debug() << "PathID: " << kMessage->pathID()
+            << " incoming: " << kMessage->incomingAmount() << " (equiv " << kMessage->incomingEquivalent() << ")"
+            << " outgoing: " << kMessage->outgoingAmount() << " (equiv " << kMessage->outgoingEquivalent() << ")";
 
-    if (kMessage->amount() == 0) {
+    // Check if this is a drop reservation message (both amounts are zero)
+    if (kMessage->incomingAmount() == TrustLine::kZeroAmount() &&
+        kMessage->outgoingAmount() == TrustLine::kZeroAmount()) {
+        debug() << "Drop reservation message received";
         rollBack(kMessage->pathID());
         if (mReservations.empty()) {
             debug() << "There are no reservations. Transaction closed.";
             return resultDone();
         }
-    }
+    } else {
+        // Normal path configuration - validate and update reservations
+        shortageIncomingReservationsOnPath(
+            kMessage->pathID(),
+            kMessage->incomingEquivalent(),
+            kMessage->incomingAmount());
 
-    shortageReservationsOnPath(
-        kMessage->pathID(),
-        kMessage->equivalent(),
-        kMessage->amount());
+        shortageOutgoingReservationsOnPath(
+            kMessage->pathID(),
+            kMessage->outgoingEquivalent(),
+            kMessage->outgoingAmount());
+    }
 
     mStep = Stages::IntermediateNode_ReservationProlongation;
     return resultWaitForMessageTypes( {
@@ -557,7 +572,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runRe
         return runPreviousNeighborRequestProcessingStage();
     }
 
-    if (contextIsValid(Message::Payments_FinalPathConfiguration, false)) {
+    if (contextIsValid(Message::Payments_FinalPathExchangeConfiguration, false)) {
         return runFinalPathConfigurationProcessingStage();
     }
 
@@ -581,7 +596,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runRe
             }
             return resultWaitForMessageTypes( {
                 Message::Payments_TTLProlongationResponse,
-                Message::Payments_FinalPathConfiguration,
+                Message::Payments_FinalPathExchangeConfiguration,
                 Message::Payments_FinalAmountsConfiguration,
                 Message::Payments_TransactionPublicKeyHash,
                 Message::Payments_IntermediateNodeReservationRequest},
@@ -608,7 +623,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runRe
     mTTLRequestWasSend = true;
     return resultWaitForMessageTypes( {
         Message::Payments_IntermediateNodeReservationRequest,
-        Message::Payments_FinalPathConfiguration,
+        Message::Payments_FinalPathExchangeConfiguration,
         Message::Payments_FinalAmountsConfiguration,
         Message::Payments_TransactionPublicKeyHash,
         Message::Payments_TTLProlongationResponse},
@@ -1176,14 +1191,37 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runVo
     maxNetworkDelay(2));
 }
 
-void IntermediateNodeExchangePaymentTransaction::shortageReservationsOnPath(
+void IntermediateNodeExchangePaymentTransaction::shortageIncomingReservationsOnPath(
     const PathID pathID,
     const SerializedEquivalent equivalent,
     const TrustLineAmount &amount)
 {
     for (const auto &nodeAndReservations : mReservations) {
         for (const auto &pathIDAndReservation : nodeAndReservations.second) {
-            if (pathIDAndReservation.first == pathID && pathIDAndReservation.second->equivalent() == equivalent) {
+            if (pathIDAndReservation.first == pathID && pathIDAndReservation.second->equivalent() == equivalent 
+                && pathIDAndReservation.second->direction() == AmountReservation::Incoming) {
+                if (pathIDAndReservation.second->amount() != amount) {
+                    shortageReservation(
+                        nodeAndReservations.first,
+                        pathIDAndReservation.second,
+                        amount,
+                        pathIDAndReservation.first,
+                        pathIDAndReservation.second->equivalent());
+                }
+            }
+        }
+    }
+}
+
+void IntermediateNodeExchangePaymentTransaction::shortageOutgoingReservationsOnPath(
+    const PathID pathID,
+    const SerializedEquivalent equivalent,
+    const TrustLineAmount &amount)
+{
+    for (const auto &nodeAndReservations : mReservations) {
+        for (const auto &pathIDAndReservation : nodeAndReservations.second) {
+            if (pathIDAndReservation.first == pathID && pathIDAndReservation.second->equivalent() == equivalent 
+                && pathIDAndReservation.second->direction() == AmountReservation::Outgoing) {
                 if (pathIDAndReservation.second->amount() != amount) {
                     shortageReservation(
                         nodeAndReservations.first,

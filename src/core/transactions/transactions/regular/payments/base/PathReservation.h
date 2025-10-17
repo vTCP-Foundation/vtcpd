@@ -4,15 +4,22 @@
 #include "../../../../../common/Types.h"
 
 struct PathReservation {
+    enum Direction {
+        Incoming = 0,
+        Outgoing = 1
+    };
+
     PathID pathID;
     ConstSharedTrustLineAmount amount;
     SerializedEquivalent equivalent;
+    Direction direction;
 
     PathReservation(
         const PathID &id,
         const ConstSharedTrustLineAmount &amt,
-        const SerializedEquivalent &equiv)
-        : pathID(id), amount(amt), equivalent(equiv) {}
+        const SerializedEquivalent &equiv,
+        const Direction &dir)
+        : pathID(id), amount(amt), equivalent(equiv), direction(dir) {}
 };
 
 #endif //VTCPD_PATHRESERVATION_H

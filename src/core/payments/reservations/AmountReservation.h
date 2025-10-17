@@ -18,8 +18,8 @@ public:
 public:
     enum ReservationDirection
     {
-        Outgoing,
-        Incoming
+        Incoming = 0,
+        Outgoing = 1
     };
 
     typedef uint8_t SerializedReservationDirectionSize;

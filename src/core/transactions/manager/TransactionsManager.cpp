@@ -499,6 +499,8 @@ void TransactionsManager::processMessage(
     } else if (message->typeID() == Message::Payments_ReceiverInitPaymentRequest) {
         launchReceiverExchangePaymentTransaction(
             static_pointer_cast<ReceiverInitPaymentRequestMessage>(message));
+        // launchReceiverPaymentTransaction(
+        //     static_pointer_cast<ReceiverInitPaymentRequestMessage>(message));
 
     } else if (message->typeID() == Message::Payments_IntermediateNodeReservationRequest) {
         // It is possible, that transaction was already initialised
@@ -512,6 +514,8 @@ void TransactionsManager::processMessage(
             info() << "Launching IntermediateNodeExchangePaymentTransaction";
             launchIntermediateNodeExchangePaymentTransaction(
                 static_pointer_cast<IntermediateNodeReservationRequestMessage>(message));
+            // launchIntermediateNodePaymentTransaction(
+            //     static_pointer_cast<IntermediateNodeReservationRequestMessage>(message));
         }
 
     } else if (message->typeID() == Message::Payments_IntermediateNodeCycleReservationRequest) {
