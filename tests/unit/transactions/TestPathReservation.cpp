@@ -21,27 +21,32 @@ TEST(PathReservation, Construction) {
     PathID pathID = 123;
     auto amount = A(1000);
     SerializedEquivalent equivalent = 5;
+    PathReservation::Direction direction = PathReservation::Outgoing;
 
-    PathReservation reservation(pathID, amount, equivalent);
+    PathReservation reservation(pathID, amount, equivalent, direction);
 
     EXPECT_EQ(reservation.pathID, pathID);
     EXPECT_EQ(*reservation.amount, TrustLineAmount(1000));
     EXPECT_EQ(reservation.equivalent, equivalent);
+    EXPECT_EQ(reservation.direction, direction);
 }
 
 TEST(PathReservation, FieldAccess) {
     PathID pathID = 456;
     auto amount = A(2500);
     SerializedEquivalent equivalent = 10;
+    PathReservation::Direction direction = PathReservation::Incoming;
 
-    PathReservation reservation(pathID, amount, equivalent);
+    PathReservation reservation(pathID, amount, equivalent, direction);
 
     // Access all fields directly
     PathID accessedPathID = reservation.pathID;
     TrustLineAmount accessedAmount = *reservation.amount;
     SerializedEquivalent accessedEquiv = reservation.equivalent;
+    PathReservation::Direction accessedDirection = reservation.direction;
 
     EXPECT_EQ(accessedPathID, 456);
     EXPECT_EQ(accessedAmount, TrustLineAmount(2500));
     EXPECT_EQ(accessedEquiv, 10);
+    EXPECT_EQ(accessedDirection, PathReservation::Incoming);
 }
