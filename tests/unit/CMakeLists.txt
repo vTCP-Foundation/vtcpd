@@ -50,6 +50,11 @@ add_executable(unit_tests
     paths/TestExchangePath.cpp
     transactions/TestPathReservation.cpp
     transactions/EstimationTransactionsTest.cpp
+    transactions/TestBaseExchangePaymentTransaction.cpp
+    transactions/TestCoordinatorExchangePaymentTransaction.cpp
+    transactions/TestCoordinatorPathProcessing.cpp
+    transactions/TestReceiverExchangePaymentTransaction.cpp
+    transactions/TestIntermediateNodeCheckReservations.cpp
     payments/TestAmountReservation.cpp
     payments/TestAmountReservationsHandler.cpp
     core/CoreORToolsStartupTest.cpp
@@ -98,6 +103,10 @@ target_link_libraries(unit_tests PRIVATE
     network__messages
     network__communicator
     transactions
+    observing
+    observing__messages
+    subsystems_controller
+    resources_manager
 )
 
 # Set C++ standard
