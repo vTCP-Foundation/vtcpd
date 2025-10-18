@@ -32,6 +32,9 @@ add_executable(unit_tests
     network/IncomingRemoteNodeTest.cpp
     network/messages/IntermediateNodeReservationRequestMessageTest.cpp
     network/messages/IntermediateNodeReservationResponseMessageTest.cpp
+    network/messages/TestRequestMessageWithReservations.cpp
+    network/messages/TestFinalAmountsConfigurationMessage.cpp
+    network/messages/TestTransactionPublicKeyHashMessage.cpp
     commissions/CommissionsManagerTest.cpp
     commissions/TopologyTrustLinesManagerCommissionsTest.cpp
     commands/InitiateMaxFlowExchangeCalculationCommandTest.cpp
@@ -55,6 +58,7 @@ add_executable(unit_tests
     transactions/TestCoordinatorPathProcessing.cpp
     transactions/TestReceiverExchangePaymentTransaction.cpp
     transactions/TestIntermediateNodeCheckReservations.cpp
+    transactions/TestBasePaymentTransactionSerialization.cpp
     payments/TestAmountReservation.cpp
     payments/TestAmountReservationsHandler.cpp
     core/CoreORToolsStartupTest.cpp
