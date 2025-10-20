@@ -152,7 +152,6 @@ TransactionResult::SharedConst InitiateMaxFlowExchangeCalculationTransaction::ap
 
             // Store results
             mMaxFlows[contractorID] = result.maxFlow;
-            mOptimalPathResults[contractorID] = result.optimalPaths;
 
             // Cache the paths for future use
             if (!result.optimalPaths.empty()) {

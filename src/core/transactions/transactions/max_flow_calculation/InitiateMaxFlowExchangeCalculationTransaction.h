@@ -75,7 +75,6 @@ private:
     size_t mCountProcessCollectingTopologyRun;
     vector<pair<ContractorID, BaseAddress::Shared>> mContractorIDs;
     map<ContractorID, TrustLineAmount> mMaxFlows;
-    map<ContractorID, vector<OptimalPathResult>> mOptimalPathResults;
     HopsCount_t mHopsCnt;
 };
 

@@ -409,7 +409,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPayment
     {BaseResource::Paths},
     // this delay should be greater than time of FindPathByMaxFlowTransaction running,
     // because we didn't get resources
-    maxNetworkDelay(4));
+    maxNetworkDelay(10));
 }
 
 TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPathsResourceProcessingStage()
