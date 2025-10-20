@@ -119,6 +119,7 @@ public:
 
         // FindPath
         FindPathByMaxFlowTransactionType = 800,
+        FindPathsByMaxFlowExchangeTransaction = 801,
 
         // Channels
         OpenChannelTransaction = 900,
