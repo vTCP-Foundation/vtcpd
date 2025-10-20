@@ -72,7 +72,8 @@ public:
         const vector<OptimalPathResult> &paths);
 
     optional<vector<OptimalPathResult>> retrievePaths(
-        const PathCacheKey &key);
+        const PathCacheKey &key,
+        optional<uint32_t> customTTL = nullopt);
 
     void invalidatePaths(
         const PathCacheKey &key);

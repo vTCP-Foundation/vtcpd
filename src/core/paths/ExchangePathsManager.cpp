@@ -53,7 +53,8 @@ void ExchangePathsManager::storePaths(
 }
 
 optional<vector<OptimalPathResult>> ExchangePathsManager::retrievePaths(
-    const PathCacheKey &key)
+    const PathCacheKey &key,
+    optional<uint32_t> customTTL)
 {
     lock_guard<mutex> lock(mCacheMutex);
 
@@ -62,18 +63,20 @@ optional<vector<OptimalPathResult>> ExchangePathsManager::retrievePaths(
         return nullopt;
     }
 
+    const auto ttlSeconds = customTTL.value_or(kPathResultsTTLSeconds);
     auto now = utc_now();
-    auto expiresAt = it->second.computedAt + boost::posix_time::seconds(kPathResultsTTLSeconds);
+    const auto age = now - it->second.computedAt;
 
-    if (expiresAt <= now) {
+    if (age >= boost::posix_time::seconds(ttlSeconds)) {
         debug() << "Cached paths for contractor " << key.contractor
-                << " expired, removing";
+                << " expired (age=" << age.total_seconds() << "s, TTL="
+                << ttlSeconds << "s), removing";
         mCachedPaths.erase(it);
         return nullopt;
     }
 
     debug() << "Retrieved " << it->second.paths.size() << " cached paths for contractor "
-            << key.contractor;
+            << key.contractor << " (TTL=" << ttlSeconds << "s)";
 
     return it->second.paths;
 }
