@@ -18,6 +18,19 @@ void ResourcesManager::requestPaths(
         equivalent);
 }
 
+void ResourcesManager::requestExchangePaths(
+    const TransactionUUID &transactionUUID,
+    BaseAddress::Shared contractorAddress,
+    const vector<SerializedEquivalent> &exchangeEquivalents,
+    const SerializedEquivalent receiverEquivalent) const
+{
+    requestExchangePathsResourceSignal(
+        transactionUUID,
+        contractorAddress,
+        exchangeEquivalents,
+        receiverEquivalent);
+}
+
 void ResourcesManager::requestObservingBlockNumber(
     const TransactionUUID &transactionUUID)
 {

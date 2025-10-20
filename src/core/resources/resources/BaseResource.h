@@ -16,6 +16,7 @@ public:
     {
         Paths = 1,
         ObservingBlockNumber = 2,
+        ExchangePaths = 3,
     };
 
 public:
