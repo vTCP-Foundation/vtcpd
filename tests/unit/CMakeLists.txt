@@ -110,8 +110,9 @@ target_link_libraries(unit_tests PRIVATE
     transactions__base
     network__messages
     network__communicator
-    transactions
     observing
+    transactions
+    transactions__payments
     observing__messages
     subsystems_controller
     resources_manager
