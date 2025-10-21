@@ -184,7 +184,8 @@ CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
     mCountParticipantKeysResending(0),
     mDirectPathIsAlreadyProcessed(false),
     mIsAuditPendingPathsOccurred(false),
-    mCountReceiverInaccessible(0)
+    mCountReceiverInaccessible(0),
+    mIsWaitingForExchangePathsResource(false)
 {
     mStep = Stages::Coordinator_Initialization;
     mContractor = make_shared<Contractor>(command->contractorAddresses());
@@ -280,6 +281,70 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPayment
     if (mContractor == mContractorsManager->selfContractor()) {
         warning() << "Attempt to initialise operation against itself was prevented. Canceled.";
         return resultProtocolError();
+    }
+
+    info() << "Starting payment initialization for exchange payment";
+
+    // Step 1: Check path availability for all exchange equivalents
+    vector<SerializedEquivalent> missingEquivalents;
+    missingEquivalents.reserve(mExchangeEquivalents.size());
+
+    for (const auto& exchangeEquiv : mExchangeEquivalents) {
+        PathCacheKey key{mContractorID, exchangeEquiv, mEquivalent};
+
+        // Check if paths exist and are fresh using custom TTL (150s)
+        // retrievePaths() returns nullopt if paths missing OR expired (age >= 150s)
+        auto cachedPaths = mExchangePathsManager->retrievePaths(
+            key,
+            kExchangePathsCacheTTLSeconds);
+
+        if (!cachedPaths) {
+            // Paths not found or expired - need collection
+            debug() << "Exchange paths missing or expired for equivalent " << exchangeEquiv
+                    << " -> " << mEquivalent;
+            missingEquivalents.push_back(exchangeEquiv);
+        } else {
+            debug() << "Found " << cachedPaths->size() << " cached paths for equivalent "
+                    << exchangeEquiv << " -> " << mEquivalent;
+        }
+    }
+
+    // Step 2: If any equivalents missing, request path collection
+    if (!missingEquivalents.empty()) {
+        info() << "Exchange paths missing or expired for " << missingEquivalents.size()
+               << " of " << mExchangeEquivalents.size() << " equivalents, requesting collection";
+
+        mResourcesManager->requestExchangePaths(
+            currentTransactionUUID(),
+            mContractorAddresses[0], // Main contractor address
+            missingEquivalents,
+            mEquivalent); // Receiver equivalent
+
+        mStep = Stages::Coordinator_ReceiverResourceProcessing;
+        mIsWaitingForExchangePathsResource = true;
+
+        // Wait for ExchangePathsResource
+        return resultWaitForResourceTypes(
+            {BaseResource::ExchangePaths},
+            maxNetworkDelay(4)); // 4 hops for topology collection
+    }
+
+    info() << "All exchange paths available in cache, proceeding to path processing";
+
+    // Step 3: All paths available, proceed to path processing stage
+    mStep = Stages::Coordinator_ReceiverResourceProcessing;
+    return runPathsResourceProcessingStage();
+}
+
+TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPathsResourceProcessingStage()
+{
+    debug() << "runPathsResourceProcessingStage";
+
+    if (mIsWaitingForExchangePathsResource) {
+        if (!resourceIsValid(BaseResource::ExchangePaths)) {
+            return resultNoPathsError();
+        }
+        popNextResource<ExchangePathsResource>();
     }
 
     // Calculate mExchangeAmount (amount to pay in sender equivalent)
@@ -398,23 +463,6 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPayment
         warning() << "Total outgoing possibilities (" << kTotalOutgoingPossibilities << ") less then operation amount";
         return resultInsufficientFundsError();
     }
-
-    // mResourcesManager->requestPaths(
-    //     currentTransactionUUID(),
-    //     mContractor->mainAddress(),
-    //     mEquivalent);
-
-    mStep = Stages::Coordinator_ReceiverResourceProcessing;
-    return resultWaitForResourceTypes(
-    {BaseResource::Paths},
-    // this delay should be greater than time of FindPathByMaxFlowTransaction running,
-    // because we didn't get resources
-    maxNetworkDelay(10));
-}
-
-TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPathsResourceProcessingStage()
-{
-    debug() << "runPathsResourceProcessingStage";
 
     // Step 1: Initialize total flow counter
     TrustLineAmount remainingAmount = mExchangeAmount;

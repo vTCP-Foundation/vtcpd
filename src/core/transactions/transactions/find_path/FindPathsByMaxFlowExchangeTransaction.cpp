@@ -119,6 +119,26 @@ TransactionResult::SharedConst FindPathsByMaxFlowExchangeTransaction::processCol
                    kTopologyCollectingAgainMillisecondsTimeout);
     }
 
+#ifdef DEBUG_LOG_MAX_FLOW_CALCULATION
+    debug() << "Collected topology:";
+    debug() << "Topology participants:";
+    mEquivalentsSubsystemsRouter->printParticipants();
+    debug() << "Receiver equivalent: " << mEquivalent;
+    mEquivalentsSubsystemsRouter->topologyTrustLineManager(mEquivalent)->printTrustLines();
+    for (const auto &exchangeEquivalent : mExchangeEquivalents) {
+        debug() << "Exchange equivalent: " << exchangeEquivalent;
+        mEquivalentsSubsystemsRouter->topologyTrustLineManager(exchangeEquivalent)->printTrustLines();
+    }
+    debug() << "Exchange rates:";
+    mExchangeRatesManager->printExtqrnalRates();
+    debug() << "Participants commissions in receiver equivalent:";
+    mEquivalentsSubsystemsRouter->topologyTrustLineManager(mEquivalent)->printCommissions();
+    debug() << "Participants commissions in exchange equivalents:";
+    for (const auto &exchangeEquivalent : mExchangeEquivalents) {
+        mEquivalentsSubsystemsRouter->topologyTrustLineManager(exchangeEquivalent)->printCommissions();
+    }
+#endif
+
     try {
         // Use special constant for current node ID in topology calculations
         // This ID is used by TopologyTrustLinesManager to identify the local node

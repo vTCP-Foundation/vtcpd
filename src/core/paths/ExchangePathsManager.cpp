@@ -966,7 +966,6 @@ void ExchangePathsManager::dfsEnumeratePaths(
     // Avoid cycles on (node, equivalent)
     for (size_t i = 0; i < currentPath.size(); ++i) {
         if (currentPath[i] == currentNode && currentEquivPath[i] == currentEquivalent) {
-            debug() << "DFS: cycle detected at node " << currentNode << " eq " << currentEquivalent;
             return;
         }
     }
@@ -977,7 +976,6 @@ void ExchangePathsManager::dfsEnumeratePaths(
 
     // If target reached with desired equivalent – finalize the path
     if (currentNode == targetNode && currentEquivalent == targetEquivalent) {
-        debug() << "DFS: TARGET REACHED! Path length: " << currentPath.size();
         ExchangePath completePath;
         completePath.ids = currentPath;
         completePath.equivalents = currentEquivPath;
@@ -1169,11 +1167,8 @@ void ExchangePathsManager::dfsEnumeratePaths(
         for (auto tlPtr : tlm->trustLinePtrsSet(currentNode)) {
             auto tl = tlPtr->topologyTrustLine();
             if (*tl->freeAmount() == TrustLineAmount(0)) {
-                debug() << "DFS: Skipping edge " << currentNode << "->" << tl->targetID() << " (zero capacity)";
                 continue;
             }
-            debug() << "DFS: Following edge " << currentNode << "->" << tl->targetID()
-                   << " capacity=" << *tl->freeAmount();
             neighborCount++;
             dfsEnumeratePaths(
                 tl->targetID(), currentEquivalent,
@@ -1181,29 +1176,20 @@ void ExchangePathsManager::dfsEnumeratePaths(
                 currentPath, currentEquivPath, currentExchanges,
                 results, maxDepth, currentDepth + 1);
         }
-        debug() << "DFS: Found " << neighborCount << " neighbors for node " << currentNode << " in eq " << currentEquivalent;
 
         // 2) Try exchanges at current node to any available next equivalent (multi-step exchanges)
-        debug() << "DFS: Looking for exchange rates at node " << currentNode;
         auto allRates = mRatesManager->listExternalRates();
-        debug() << "DFS: Total external rates available: " << allRates.size();
         size_t exchangeCount = 0;
         for (const auto &p : allRates) {
-            debug() << "DFS: Checking rate: contractorID=" << p.first
-                   << " from=" << p.second->equivalentFrom()
-                   << " to=" << p.second->equivalentTo();
             if (p.first != currentNode) continue; // rate not offered here
             auto rate = p.second;
             if (rate->equivalentFrom() != currentEquivalent) continue;
 
             SerializedEquivalent nextEq = rate->equivalentTo();
             if (nextEq == currentEquivalent) {
-                debug() << "DFS: Skipping exchange (same equivalent)";
                 continue;
             }
 
-            debug() << "DFS: Found exchange at node " << currentNode
-                   << " from eq " << currentEquivalent << " to eq " << nextEq;
             exchangeCount++;
 
             ExchangeStep step;
@@ -1224,7 +1210,6 @@ void ExchangePathsManager::dfsEnumeratePaths(
                 results, maxDepth, currentDepth + 1);
             currentExchanges.pop_back();
         }
-        debug() << "DFS: Found " << exchangeCount << " applicable exchanges at node " << currentNode;
     }
 
     // Backtrack

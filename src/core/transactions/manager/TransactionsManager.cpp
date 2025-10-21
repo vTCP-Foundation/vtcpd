@@ -1462,6 +1462,26 @@ void TransactionsManager::launchCoordinatorExchangePaymentTransaction(
     CreditUsageExchangeCommand::Shared command)
 {
     try {
+        mEquivalentsSubsystemsRouter->iAmGateway(command->equivalent());
+    } catch (NotFoundError &e) {
+        info() << "launchCoordinatorExchangePaymentTransaction: init new equivalent "
+               << command->equivalent();
+        mEquivalentsSubsystemsRouter->initNewEquivalent(command->equivalent());
+        mEquivalentsCyclesSubsystemsRouter->initNewEquivalent(command->equivalent());
+    }
+
+    for (const auto& exchangeEquivalent : command->exchangeEquivalents()) {
+        try {
+            mEquivalentsSubsystemsRouter->iAmGateway(exchangeEquivalent);
+        } catch (NotFoundError &e) {
+            info() << "launchCoordinatorExchangePaymentTransaction: init new equivalent "
+                   << exchangeEquivalent;
+            mEquivalentsSubsystemsRouter->initNewEquivalent(exchangeEquivalent);
+            mEquivalentsCyclesSubsystemsRouter->initNewEquivalent(exchangeEquivalent);
+        }
+    }
+
+    try {
         auto transaction = make_shared<CoordinatorExchangePaymentTransaction>(
                                command,
                                mContractorsManager,

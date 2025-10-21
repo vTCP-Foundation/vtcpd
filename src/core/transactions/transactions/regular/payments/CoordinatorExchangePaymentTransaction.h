@@ -6,6 +6,7 @@
 #include "../../../interface/events_interface/interface/EventsInterfaceManager.h"
 #include "../../../interface/commands_interface/commands/payments/CreditUsageExchangeCommand.h"
 #include "../../../paths/lib/OptimalPathResult.h"
+#include "../../../resources/resources/ExchangePathsResource.h"
 #include "base/PathReservation.h"
 #include "../../../common/exceptions/RuntimeError.h"
 #include "../../../../common/exceptions/CallChainBreakException.h"
@@ -188,12 +189,18 @@ protected:
     // Counter for receiver inaccessibility
     uint8_t mCountReceiverInaccessible;
 
+    // Flag to indicate if the transaction is waiting for exchange paths resource
+    bool mIsWaitingForExchangePathsResource;
+
     static const SerializedPositionInPath kFirstIntermediateNodeIndex = 0;
     static const uint16_t kMaxCountParticipantKeysResending = 5;
     static const uint8_t kMaxReceiverInaccessible = 5;
     static const uint8_t kMaxCountPathsRecollecting = 3;
     static const uint32_t kPathsRecollectingIntervalInMilliseconds = 1000;
     static const uint32_t kAuditRetryingIntervalInMilliseconds = 5000;
+
+    // Maximum age (in seconds) for cached paths to be considered fresh for payment execution
+    static constexpr uint32_t kExchangePathsCacheTTLSeconds = 150;
 };
 
 #endif //VTCPD_COORDINATOREXCHANGEPAYMENTTRANSACTION_H
