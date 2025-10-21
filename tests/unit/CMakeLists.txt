@@ -51,6 +51,8 @@ add_executable(unit_tests
     paths/PathSimulationTest.cpp
     paths/TestOptimalPathResult.cpp
     paths/TestExchangePath.cpp
+    resources/ExchangePathsResourceTest.cpp
+    resources/ResourcesManagerSignalTest.cpp
     transactions/TestPathReservation.cpp
     transactions/EstimationTransactionsTest.cpp
     transactions/TestBaseExchangePaymentTransaction.cpp
