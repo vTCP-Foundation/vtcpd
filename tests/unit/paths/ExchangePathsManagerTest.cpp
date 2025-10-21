@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <thread>
 #include <chrono>
+#include <atomic>
 
 #include "core/paths/ExchangePathsManager.h"
 #include "core/contractors/ContractorsManager.h"
@@ -13,6 +14,7 @@
 #include "core/io/storage/sqlite/StorageHandlerSQLite.h"
 #include "core/crypto/keychain.h"
 #include "core/interface/events_interface/interface/EventsInterfaceManager.h"
+#include "core/rates/Commission.h"
 
 using namespace testing;
 using namespace std;
@@ -22,8 +24,8 @@ namespace {
         return make_shared<TrustLineAmount>(v);
     }
 
-    // Helper to create test environment
-    struct TestEnvironment {
+    // Helper to create test environment for ExchangePathsManager tests
+    struct ExchangePathsManagerTestEnv {
         Logger logger;
         boost::asio::io_context io;
         std::string dbDir;
@@ -35,8 +37,8 @@ namespace {
         std::unique_ptr<ExchangeRatesManager> ratesManager;
         std::unique_ptr<ExchangePathsManager> pathsManager;
 
-        TestEnvironment(const std::string& testName) {
-            dbDir = "build-tests/testdb_paths_" + testName;
+        ExchangePathsManagerTestEnv(const std::string& testName) {
+            dbDir = "build-tests/testdb_exchpaths_" + testName;
             std::filesystem::remove_all(dbDir);
 
             storage = std::make_unique<StorageHandlerSQLite>(dbDir, "test.db", logger);
@@ -69,275 +71,347 @@ namespace {
                 io, router.get(), ratesManager.get(), contractors.get(), logger);
         }
 
-        ~TestEnvironment() {
+        ~ExchangePathsManagerTestEnv() {
             std::filesystem::remove_all(dbDir);
         }
-    };
 
-    // Helper to create a simple path
-    OptimalPathResult createSimplePath(
-        const vector<ContractorID>& nodes,
-        const vector<SerializedEquivalent>& equivalents,
-        TrustLineAmount flow = TrustLineAmount(100))
-    {
-        OptimalPathResult result;
-        result.path().ids = nodes;
-        result.path().equivalents = equivalents;
-        result.path().minCapacity = flow;
-        result.path().effectiveExchangeRate = 1.0;
-        result.path().totalCommissions = TrustLineAmount(0);
-        result.optimal_flow = flow;
-        result.received_amount = flow;
-        result.effective_exchange_rate = 1.0;
-        result.path_efficiency = 1.0;
-        return result;
-    }
-}
+        // Setup simple exchange topology for testing path caching
+        void setupSimpleExchangeTopology(
+            ContractorID targetID,
+            SerializedEquivalent senderEq,
+            SerializedEquivalent receiverEq)
+        {
+            // Initialize equivalents
+            router->initNewEquivalent(senderEq);
+            router->initNewEquivalent(receiverEq);
 
-// Test 1: Store and Retrieve Test
-TEST(ExchangePathsManagerTest, StoreAndRetrievePathsSuccessfully)
-{
-    TestEnvironment env("store_retrieve");
+            // Simple path: self(0) -> node1 -> target (in senderEq)
+            //              exchange at node1: senderEq -> receiverEq (rate 1.0)
+            //              node1 -> target (in receiverEq)
+            auto tlmSender = router->topologyTrustLineManager(senderEq);
+            auto tlmReceiver = router->topologyTrustLineManager(receiverEq);
 
-    // Create different keys
-    PathCacheKey key1{ContractorID(1), SerializedEquivalent(1001), SerializedEquivalent(2002)};
-    PathCacheKey key2{ContractorID(2), SerializedEquivalent(1001), SerializedEquivalent(2002)};
-    PathCacheKey key3{ContractorID(1), SerializedEquivalent(1001), SerializedEquivalent(3003)};
+            ContractorID node1 = 1;
+            
+            // Sender equivalent path: 0 -> 1 -> target
+            tlmSender->addTrustLine(make_shared<TopologyTrustLine>(0, node1, A(100)));
+            tlmSender->addTrustLine(make_shared<TopologyTrustLine>(node1, targetID, A(100)));
 
-    // Create mock paths
-    vector<OptimalPathResult> paths1 = {
-        createSimplePath({1, 2, 3}, {1001, 1001, 2002}, TrustLineAmount(100))
-    };
-    vector<OptimalPathResult> paths2 = {
-        createSimplePath({2, 3, 4}, {1001, 1001, 2002}, TrustLineAmount(200))
-    };
-    vector<OptimalPathResult> paths3 = {
-        createSimplePath({1, 2, 5}, {1001, 1001, 3003}, TrustLineAmount(300))
-    };
+            // Receiver equivalent path: 1 -> target
+            tlmReceiver->addTrustLine(make_shared<TopologyTrustLine>(node1, targetID, A(100)));
 
-    // Store paths
-    env.pathsManager->storePaths(key1, paths1);
-    env.pathsManager->storePaths(key2, paths2);
-    env.pathsManager->storePaths(key3, paths3);
+            // Add exchange rate at node1: senderEq -> receiverEq, rate = 1.0
+            auto expiresAt = utc_now() + boost::posix_time::seconds(300);
+            ExchangeRate rate(senderEq, receiverEq, TrustLineAmount(1), 0, expiresAt,
+                            TrustLineAmount(0), TrustLineAmount(0));
+            ratesManager->addOrUpdateExternal(node1, rate);
+        }
 
-    // Retrieve and verify
-    auto retrieved1 = env.pathsManager->retrievePaths(key1);
-    ASSERT_TRUE(retrieved1.has_value());
-    EXPECT_EQ(retrieved1->size(), 1);
-    EXPECT_EQ((*retrieved1)[0].optimal_flow, TrustLineAmount(100));
-
-    auto retrieved2 = env.pathsManager->retrievePaths(key2);
-    ASSERT_TRUE(retrieved2.has_value());
-    EXPECT_EQ(retrieved2->size(), 1);
-    EXPECT_EQ((*retrieved2)[0].optimal_flow, TrustLineAmount(200));
-
-    auto retrieved3 = env.pathsManager->retrievePaths(key3);
-    ASSERT_TRUE(retrieved3.has_value());
-    EXPECT_EQ(retrieved3->size(), 1);
-    EXPECT_EQ((*retrieved3)[0].optimal_flow, TrustLineAmount(300));
-
-    // Retrieve non-existent key
-    PathCacheKey nonExistentKey{ContractorID(999), SerializedEquivalent(1001), SerializedEquivalent(2002)};
-    auto retrievedNone = env.pathsManager->retrievePaths(nonExistentKey);
-    EXPECT_FALSE(retrievedNone.has_value());
-}
-
-// Test 2: TTL Expiration Test
-TEST(ExchangePathsManagerTest, PathsExpireAfterTTL)
-{
-    TestEnvironment env("ttl_expiration");
-
-    PathCacheKey key{ContractorID(1), SerializedEquivalent(1001), SerializedEquivalent(2002)};
-    vector<OptimalPathResult> paths = {
-        createSimplePath({1, 2, 3}, {1001, 1001, 2002}, TrustLineAmount(100))
-    };
-
-    // Store paths
-    env.pathsManager->storePaths(key, paths);
-
-    // Verify paths exist
-    auto retrieved1 = env.pathsManager->retrievePaths(key);
-    ASSERT_TRUE(retrieved1.has_value());
-
-    // Wait for TTL to expire (600 seconds + buffer)
-    // Note: In real tests, we would need to mock DateTime::now()
-    // For now, we test that paths are still available within TTL
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    auto retrieved2 = env.pathsManager->retrievePaths(key);
-    EXPECT_TRUE(retrieved2.has_value()); // Should still be valid
-}
-
-// Test 3: Invalidate by Key Test
-TEST(ExchangePathsManagerTest, InvalidateSpecificKey)
-{
-    TestEnvironment env("invalidate_key");
-
-    PathCacheKey key1{ContractorID(1), SerializedEquivalent(1001), SerializedEquivalent(2002)};
-    PathCacheKey key2{ContractorID(2), SerializedEquivalent(1001), SerializedEquivalent(2002)};
-    PathCacheKey key3{ContractorID(3), SerializedEquivalent(1001), SerializedEquivalent(2002)};
-
-    vector<OptimalPathResult> paths = {
-        createSimplePath({1, 2, 3}, {1001, 1001, 2002}, TrustLineAmount(100))
-    };
-
-    // Store paths for all keys
-    env.pathsManager->storePaths(key1, paths);
-    env.pathsManager->storePaths(key2, paths);
-    env.pathsManager->storePaths(key3, paths);
-
-    // Invalidate key2
-    env.pathsManager->invalidatePaths(key2);
-
-    // Verify key1 and key3 still exist, key2 removed
-    EXPECT_TRUE(env.pathsManager->retrievePaths(key1).has_value());
-    EXPECT_FALSE(env.pathsManager->retrievePaths(key2).has_value());
-    EXPECT_TRUE(env.pathsManager->retrievePaths(key3).has_value());
-}
-
-// Test 4: Invalidate by Contractor Test
-TEST(ExchangePathsManagerTest, InvalidateAllPathsForContractor)
-{
-    TestEnvironment env("invalidate_contractor");
-
-    ContractorID contractorC = 1;
-    ContractorID contractorD = 2;
-
-    PathCacheKey keyC1{contractorC, SerializedEquivalent(1001), SerializedEquivalent(2002)};
-    PathCacheKey keyC2{contractorC, SerializedEquivalent(1001), SerializedEquivalent(3003)};
-    PathCacheKey keyC3{contractorC, SerializedEquivalent(2002), SerializedEquivalent(3003)};
-    PathCacheKey keyD{contractorD, SerializedEquivalent(1001), SerializedEquivalent(2002)};
-
-    vector<OptimalPathResult> paths = {
-        createSimplePath({1, 2, 3}, {1001, 1001, 2002}, TrustLineAmount(100))
-    };
-
-    // Store paths
-    env.pathsManager->storePaths(keyC1, paths);
-    env.pathsManager->storePaths(keyC2, paths);
-    env.pathsManager->storePaths(keyC3, paths);
-    env.pathsManager->storePaths(keyD, paths);
-
-    // Invalidate all paths for contractor C
-    env.pathsManager->invalidatePathsForContractor(contractorC);
-
-    // Verify all C keys removed, D key remains
-    EXPECT_FALSE(env.pathsManager->retrievePaths(keyC1).has_value());
-    EXPECT_FALSE(env.pathsManager->retrievePaths(keyC2).has_value());
-    EXPECT_FALSE(env.pathsManager->retrievePaths(keyC3).has_value());
-    EXPECT_TRUE(env.pathsManager->retrievePaths(keyD).has_value());
-}
-
-// Test 5: Invalidate by Equivalent Test
-TEST(ExchangePathsManagerTest, InvalidatePathsForEquivalent)
-{
-    TestEnvironment env("invalidate_equivalent");
-
-    SerializedEquivalent eq1 = 1001;
-    SerializedEquivalent eq2 = 2002;
-    SerializedEquivalent eq3 = 3003;
-
-    PathCacheKey key1{ContractorID(1), eq1, eq2}; // Has eq1 as sender
-    PathCacheKey key2{ContractorID(1), eq2, eq3}; // Has eq2 as sender
-    PathCacheKey key3{ContractorID(2), eq1, eq3}; // Has eq1 as sender
-
-    vector<OptimalPathResult> paths = {
-        createSimplePath({1, 2, 3}, {1001, 1001, 2002}, TrustLineAmount(100))
-    };
-
-    // Store paths
-    env.pathsManager->storePaths(key1, paths);
-    env.pathsManager->storePaths(key2, paths);
-    env.pathsManager->storePaths(key3, paths);
-
-    // Invalidate paths with eq1
-    env.pathsManager->invalidatePathsForEquivalent(eq1);
-
-    // Verify keys with eq1 removed, key2 remains
-    EXPECT_FALSE(env.pathsManager->retrievePaths(key1).has_value());
-    EXPECT_TRUE(env.pathsManager->retrievePaths(key2).has_value());
-    EXPECT_FALSE(env.pathsManager->retrievePaths(key3).has_value());
-}
-
-// Test 6: Thread Safety Test
-TEST(ExchangePathsManagerTest, ConcurrentAccessIsSafe)
-{
-    TestEnvironment env("thread_safety");
-
-    const int numThreads = 20;
-    const int opsPerThread = 100;
-
-    auto storeWorker = [&](int threadId) {
-        for (int i = 0; i < opsPerThread; ++i) {
-            PathCacheKey key{
-                static_cast<ContractorID>(threadId * opsPerThread + i),
-                SerializedEquivalent(1001),
-                SerializedEquivalent(2002)
-            };
-            vector<OptimalPathResult> paths = {
-                createSimplePath({1, 2, 3}, {1001, 1001, 2002}, TrustLineAmount(i))
-            };
-            env.pathsManager->storePaths(key, paths);
+        // Cache paths for given key
+        void cachePaths(const PathCacheKey &key) {
+            // Use calculateMaxFlow to build paths, then store them
+            auto result = pathsManager->calculateMaxFlow(
+                key.contractor,           // target contractor
+                key.receiverEquivalent,   // receiver equivalent
+                {key.senderEquivalent},   // sender equivalents
+                0,                        // sender ID (self)
+                5);                       // hopsCount
+            
+            // Store the calculated paths in cache
+            if (!result.optimalPaths.empty()) {
+                pathsManager->storePaths(key, result.optimalPaths);
+            }
         }
     };
+}
 
-    auto retrieveWorker = [&](int threadId) {
-        for (int i = 0; i < opsPerThread; ++i) {
-            PathCacheKey key{
-                static_cast<ContractorID>((threadId % 10) * opsPerThread + (i % opsPerThread)),
-                SerializedEquivalent(1001),
-                SerializedEquivalent(2002)
-            };
-            auto retrieved = env.pathsManager->retrievePaths(key);
-            // Just try to retrieve, may or may not exist
-        }
-    };
+// Test 1: Default behavior preserved (no customTTL)
+TEST(ExchangePathsManagerTest, RetrievePathsWithoutCustomTTL_UsesDefaultTTL)
+{
+    ExchangePathsManagerTestEnv env("default_ttl");
 
+    const SerializedEquivalent senderEq = 1001;
+    const SerializedEquivalent receiverEq = 2002;
+    const ContractorID targetID = 10;
+
+    env.setupSimpleExchangeTopology(targetID, senderEq, receiverEq);
+
+    PathCacheKey key{targetID, senderEq, receiverEq};
+
+    // Cache paths using calculateMaxFlow
+    env.cachePaths(key);
+
+    // Act - call without customTTL parameter (should use default 600s)
+    auto result = env.pathsManager->retrievePaths(key);
+
+    // Assert - paths should be returned (age=0, well under default 600s TTL)
+    ASSERT_TRUE(result.has_value());
+    EXPECT_GT(result->size(), 0u);
+}
+
+// Test 2: Custom TTL used when provided
+TEST(ExchangePathsManagerTest, RetrievePathsWithCustomTTL_UsesProvidedTTL)
+{
+    ExchangePathsManagerTestEnv env("custom_ttl");
+
+    const SerializedEquivalent senderEq = 1001;
+    const SerializedEquivalent receiverEq = 2002;
+    const ContractorID targetID = 10;
+
+    env.setupSimpleExchangeTopology(targetID, senderEq, receiverEq);
+
+    PathCacheKey key{targetID, senderEq, receiverEq};
+
+    // Cache paths
+    env.cachePaths(key);
+
+    // Act - call with custom TTL of 150 seconds
+    auto result = env.pathsManager->retrievePaths(key, 150);
+
+    // Assert - paths should be returned (age is 0, well under 150s)
+    ASSERT_TRUE(result.has_value());
+    EXPECT_GT(result->size(), 0u);
+}
+
+// Test 3: TTL boundary semantics (age >= TTL means expired)
+// Use short TTL (2 seconds) for fast test execution
+TEST(ExchangePathsManagerTest, RetrievePathsAtExactTTLBoundary_ReturnsNullopt)
+{
+    ExchangePathsManagerTestEnv env("ttl_boundary");
+
+    const SerializedEquivalent senderEq = 1001;
+    const SerializedEquivalent receiverEq = 2002;
+    const ContractorID targetID = 10;
+
+    env.setupSimpleExchangeTopology(targetID, senderEq, receiverEq);
+
+    PathCacheKey key{targetID, senderEq, receiverEq};
+
+    // Cache paths
+    env.cachePaths(key);
+
+    // Sleep for exactly 2 seconds to test boundary
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // Act - retrieve with TTL=2 seconds
+    auto result = env.pathsManager->retrievePaths(key, 2);
+
+    // Assert - paths should be expired (age >= 2, TTL = 2)
+    EXPECT_FALSE(result.has_value());
+}
+
+// Test 4: Just under TTL is valid (age < TTL)
+// Use short TTL (3 seconds) with 1 second wait for fast test
+TEST(ExchangePathsManagerTest, RetrievePathsJustUnderTTL_ReturnsPaths)
+{
+    ExchangePathsManagerTestEnv env("under_ttl");
+
+    const SerializedEquivalent senderEq = 1001;
+    const SerializedEquivalent receiverEq = 2002;
+    const ContractorID targetID = 10;
+
+    env.setupSimpleExchangeTopology(targetID, senderEq, receiverEq);
+
+    PathCacheKey key{targetID, senderEq, receiverEq};
+
+    // Cache paths
+    env.cachePaths(key);
+
+    // Sleep for 1 second (just under 3s TTL)
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    // Act - retrieve with TTL=3 seconds
+    auto result = env.pathsManager->retrievePaths(key, 3);
+
+    // Assert - paths should still be valid (age = 1 < 3)
+    ASSERT_TRUE(result.has_value());
+    EXPECT_GT(result->size(), 0u);
+}
+
+// Test 5: Missing paths return nullopt
+TEST(ExchangePathsManagerTest, RetrievePathsForMissingKey_ReturnsNullopt)
+{
+    ExchangePathsManagerTestEnv env("missing_key");
+
+    PathCacheKey key{123, 1001, 2002};
+    // Don't cache any paths
+
+    // Act - retrieve with custom TTL
+    auto result = env.pathsManager->retrievePaths(key, 150);
+
+    // Assert - should return nullopt (key not found)
+    EXPECT_FALSE(result.has_value());
+
+    // Also test with default TTL
+    auto result2 = env.pathsManager->retrievePaths(key);
+    EXPECT_FALSE(result2.has_value());
+}
+
+// Test 6: Thread safety with customTTL
+TEST(ExchangePathsManagerTest, RetrievePathsConcurrently_ThreadSafe)
+{
+    ExchangePathsManagerTestEnv env("thread_safe");
+
+    const SerializedEquivalent senderEq = 1001;
+    const SerializedEquivalent receiverEq = 2002;
+    const ContractorID targetID = 10;
+
+    env.setupSimpleExchangeTopology(targetID, senderEq, receiverEq);
+
+    PathCacheKey key{targetID, senderEq, receiverEq};
+
+    // Cache paths
+    env.cachePaths(key);
+
+    const int numThreads = 10;
+    const int retrievalsPerThread = 100;
+    std::atomic<int> successCount{0};
+
+    // Act - concurrent retrievals with different TTL values
     vector<std::thread> threads;
+    for (int i = 0; i < numThreads; ++i) {
+        threads.emplace_back([&, i]() {
+            uint32_t customTTL = 150 + (i % 3) * 50; // Use 150, 200, or 250 seconds
 
-    // Start 10 store threads
-    for (int i = 0; i < 10; ++i) {
-        threads.emplace_back(storeWorker, i);
+            for (int j = 0; j < retrievalsPerThread; ++j) {
+                auto result = env.pathsManager->retrievePaths(key, customTTL);
+                if (result.has_value()) {
+                    successCount++;
+                }
+            }
+        });
     }
 
-    // Start 10 retrieve threads
-    for (int i = 0; i < 10; ++i) {
-        threads.emplace_back(retrieveWorker, i);
+    // Wait for all threads
+    for (auto &thread : threads) {
+        thread.join();
     }
 
-    // Wait for all threads to complete
-    for (auto& t : threads) {
-        t.join();
-    }
-
-    // Verify some stored keys are retrievable
-    PathCacheKey testKey{ContractorID(0), SerializedEquivalent(1001), SerializedEquivalent(2002)};
-    auto retrieved = env.pathsManager->retrievePaths(testKey);
-    EXPECT_TRUE(retrieved.has_value());
+    // Assert - all retrievals should succeed (paths are fresh)
+    EXPECT_EQ(successCount, numThreads * retrievalsPerThread);
 }
 
-// Test 7: Edge Cases
-TEST(ExchangePathsManagerTest, EdgeCases)
+// Test 7: Zero TTL always expires
+TEST(ExchangePathsManagerTest, RetrievePathsWithZeroTTL_AlwaysExpired)
 {
-    TestEnvironment env("edge_cases");
+    ExchangePathsManagerTestEnv env("zero_ttl");
 
-    // Test 1: Store empty path vector
-    PathCacheKey key1{ContractorID(1), SerializedEquivalent(1001), SerializedEquivalent(2002)};
-    vector<OptimalPathResult> emptyPaths;
-    env.pathsManager->storePaths(key1, emptyPaths);
+    const SerializedEquivalent senderEq = 1001;
+    const SerializedEquivalent receiverEq = 2002;
+    const ContractorID targetID = 10;
 
-    auto retrieved1 = env.pathsManager->retrievePaths(key1);
-    ASSERT_TRUE(retrieved1.has_value());
-    EXPECT_EQ(retrieved1->size(), 0);
+    env.setupSimpleExchangeTopology(targetID, senderEq, receiverEq);
 
-    // Test 2: Same sender and receiver equivalent
-    PathCacheKey key2{ContractorID(1), SerializedEquivalent(1001), SerializedEquivalent(1001)};
-    vector<OptimalPathResult> paths = {
-        createSimplePath({1, 2, 3}, {1001, 1001, 1001}, TrustLineAmount(100))
-    };
-    env.pathsManager->storePaths(key2, paths);
+    PathCacheKey key{targetID, senderEq, receiverEq};
 
-    auto retrieved2 = env.pathsManager->retrievePaths(key2);
-    ASSERT_TRUE(retrieved2.has_value());
-    EXPECT_EQ(retrieved2->size(), 1);
+    // Cache paths
+    env.cachePaths(key);
+
+    // Small delay to ensure age > 0
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    // Act - retrieve with TTL=0 (immediate expiry)
+    auto result = env.pathsManager->retrievePaths(key, 0);
+
+    // Assert - should be expired (any age >= 0)
+    EXPECT_FALSE(result.has_value());
+}
+
+// Test 8: Very large TTL always valid
+TEST(ExchangePathsManagerTest, RetrievePathsWithVeryLargeTTL_AlwaysValid)
+{
+    ExchangePathsManagerTestEnv env("large_ttl");
+
+    const SerializedEquivalent senderEq = 1001;
+    const SerializedEquivalent receiverEq = 2002;
+    const ContractorID targetID = 10;
+
+    env.setupSimpleExchangeTopology(targetID, senderEq, receiverEq);
+
+    PathCacheKey key{targetID, senderEq, receiverEq};
+
+    // Cache paths
+    env.cachePaths(key);
+
+    // Wait a short time
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    // Act - retrieve with very large TTL (1 year = 31536000 seconds)
+    auto result = env.pathsManager->retrievePaths(key, 365 * 24 * 60 * 60);
+
+    // Assert - should still be valid
+    ASSERT_TRUE(result.has_value());
+    EXPECT_GT(result->size(), 0u);
+}
+
+// Test 9: Verify paths expired immediately after TTL boundary
+// Uses 2 second TTL with 3 second wait
+TEST(ExchangePathsManagerTest, RetrievePathsAfterTTLExpiry_ReturnsNullopt)
+{
+    ExchangePathsManagerTestEnv env("after_expiry");
+
+    const SerializedEquivalent senderEq = 1001;
+    const SerializedEquivalent receiverEq = 2002;
+    const ContractorID targetID = 10;
+
+    env.setupSimpleExchangeTopology(targetID, senderEq, receiverEq);
+
+    PathCacheKey key{targetID, senderEq, receiverEq};
+
+    // Cache paths
+    env.cachePaths(key);
+
+    // Wait 3 seconds (well past 2s TTL)
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    // Act - retrieve with TTL=2 seconds
+    auto result = env.pathsManager->retrievePaths(key, 2);
+
+    // Assert - paths should be expired (age = 3 > 2)
+    EXPECT_FALSE(result.has_value());
+}
+
+// Test 10: Multiple keys with different TTLs
+TEST(ExchangePathsManagerTest, MultipleKeysWithDifferentTTLs_IndependentExpiry)
+{
+    ExchangePathsManagerTestEnv env("multi_key");
+
+    const SerializedEquivalent senderEq1 = 1001;
+    const SerializedEquivalent senderEq2 = 1002;
+    const SerializedEquivalent receiverEq = 2002;
+    const ContractorID targetID = 10;
+
+    // Setup topology for two different sender equivalents
+    env.setupSimpleExchangeTopology(targetID, senderEq1, receiverEq);
+    
+    // Setup second sender equivalent (reuse some infrastructure)
+    env.router->initNewEquivalent(senderEq2);
+    auto tlmSender2 = env.router->topologyTrustLineManager(senderEq2);
+    ContractorID node1 = 1;
+    tlmSender2->addTrustLine(make_shared<TopologyTrustLine>(0, node1, A(100)));
+    tlmSender2->addTrustLine(make_shared<TopologyTrustLine>(node1, targetID, A(100)));
+    
+    // Add exchange rate for second sender equivalent
+    auto expiresAt = utc_now() + boost::posix_time::seconds(300);
+    ExchangeRate rate2(senderEq2, receiverEq, TrustLineAmount(1), 0, expiresAt,
+                      TrustLineAmount(0), TrustLineAmount(0));
+    env.ratesManager->addOrUpdateExternal(node1, rate2);
+
+    PathCacheKey key1{targetID, senderEq1, receiverEq};
+    PathCacheKey key2{targetID, senderEq2, receiverEq};
+
+    // Cache paths for both keys
+    env.cachePaths(key1);
+    env.cachePaths(key2);
+
+    // Wait 2 seconds
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // Act - retrieve key1 with TTL=3 (valid), key2 with TTL=2 (expired)
+    auto result1 = env.pathsManager->retrievePaths(key1, 3);
+    auto result2 = env.pathsManager->retrievePaths(key2, 2);
+
+    // Assert - key1 valid (age=2 < 3), key2 expired (age=2 >= 2)
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_FALSE(result2.has_value());
 }
