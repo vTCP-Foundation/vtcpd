@@ -187,6 +187,12 @@ private:
         BaseAddress::Shared destinationNodeAddress,
         const SerializedEquivalent equivalent);
 
+    void onExchangePathsResourceRequestedSlot(
+        const TransactionUUID &transactionUUID,
+        BaseAddress::Shared contractorAddress,
+        const vector<SerializedEquivalent> &exchangeEquivalents,
+        const SerializedEquivalent receiverEquivalent);
+
     void onObservingBlockNumberRequestSlot(
         const TransactionUUID &transactionUUID);
 

@@ -86,6 +86,7 @@
 #include "../transactions/trustlines_list/GetAllTrustLineListTransaction.h"
 
 #include "../transactions/find_path/FindPathByMaxFlowTransaction.h"
+#include "../transactions/find_path/FindPathsByMaxFlowExchangeTransaction.h"
 
 #include "../transactions/transaction/PaymentTransactionByCommandUUIDTransaction.h"
 
@@ -168,6 +169,12 @@ public:
         const TransactionUUID &requestedTransactionUUID,
         BaseAddress::Shared destinationNodeAddress,
         const SerializedEquivalent equivalent);
+
+    void launchFindPathsByMaxFlowExchangeTransaction(
+        const TransactionUUID &requestedTransactionUUID,
+        BaseAddress::Shared contractorAddress,
+        const vector<SerializedEquivalent> &exchangeEquivalents,
+        const SerializedEquivalent receiverEquivalent);
 
     void launchPaymentTransactionAfterGettingObservingSignatures(
         const TransactionUUID& transactionUUID,

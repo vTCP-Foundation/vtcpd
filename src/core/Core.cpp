@@ -811,6 +811,15 @@ void Core::connectResourcesManagerSignals()
             _2,
             _3));
 
+    mResourcesManager->requestExchangePathsResourceSignal.connect(
+        boost::bind(
+            &Core::onExchangePathsResourceRequestedSlot,
+            this,
+            _1,
+            _2,
+            _3,
+            _4));
+
     mResourcesManager->requestObservingBlockNumberSignal.connect(
         boost::bind(
             &Core::onObservingBlockNumberRequestSlot,
@@ -822,6 +831,8 @@ void Core::connectResourcesManagerSignals()
             &Core::onResourceCollectedSlot,
             this,
             _1));
+
+    info() << "RequestExchangePathsResourceSignal connected";
 }
 void Core::connectSignalsToSlots()
 {
@@ -1063,6 +1074,31 @@ void Core::onPathsResourceRequestedSlot(
     } catch (exception &e) {
         mLog->logException("Core", e);
     }
+}
+
+void Core::onExchangePathsResourceRequestedSlot(
+    const TransactionUUID &transactionUUID,
+    BaseAddress::Shared contractorAddress,
+    const vector<SerializedEquivalent> &exchangeEquivalents,
+    const SerializedEquivalent receiverEquivalent)
+{
+    info() << "Exchange paths requested for transaction " << transactionUUID
+           << ", contractor " << contractorAddress->fullAddress()
+           << ", " << exchangeEquivalents.size() << " exchange equivalent(s)"
+           << ", receiver equivalent " << receiverEquivalent;
+
+    try {
+        mTransactionsManager->launchFindPathsByMaxFlowExchangeTransaction(
+            transactionUUID,
+            contractorAddress,
+            exchangeEquivalents,
+            receiverEquivalent);
+
+    } catch (exception &e) {
+        mLog->logException("Core", e);
+    }
+
+    debug() << "Scheduled FindPathsByMaxFlowExchangeTransaction for exchange paths";
 }
 
 void Core::onObservingBlockNumberRequestSlot(

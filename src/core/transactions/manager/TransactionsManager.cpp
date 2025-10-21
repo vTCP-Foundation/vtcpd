@@ -2529,6 +2529,39 @@ void TransactionsManager::launchFindPathByMaxFlowTransaction(
     }
 }
 
+void TransactionsManager::launchFindPathsByMaxFlowExchangeTransaction(
+    const TransactionUUID &requestedTransactionUUID,
+    BaseAddress::Shared contractorAddress,
+    const vector<SerializedEquivalent> &exchangeEquivalents,
+    const SerializedEquivalent receiverEquivalent)
+{
+    try {
+        prepareAndSchedule(
+            make_shared<FindPathsByMaxFlowExchangeTransaction>(
+                contractorAddress,
+                requestedTransactionUUID,
+                receiverEquivalent,
+                exchangeEquivalents,
+                mContractorsManager,
+                mResourcesManager,
+                mEquivalentsSubsystemsRouter,
+                mTailManager,
+                mExchangePathsManager,
+                mExchangeRatesManager,
+                mCommissionsManager,
+                mLog,
+                this->mHopsCnt),
+            true,
+            true,
+            false);
+    } catch (ConflictError &e) {
+        throw ConflictError(e.message());
+    } catch (NotFoundError &e) {
+        error() << "There are no subsystems for FindPathsByMaxFlowExchangeTransaction "
+                   "with receiver equivalent " << receiverEquivalent << " Details are: " << e.what();
+    }
+}
+
 void TransactionsManager::launchPongReactionTransaction(
     PongMessage::Shared message)
 {

@@ -7,6 +7,8 @@ add_library(resources_manager
     resources/BaseResource.cpp
     resources/PathsResource.h
     resources/PathsResource.cpp
+    resources/ExchangePathsResource.h
+    resources/ExchangePathsResource.cpp
     resources/BlockNumberRecourse.h
     resources/BlockNumberRecourse.cpp)
 
