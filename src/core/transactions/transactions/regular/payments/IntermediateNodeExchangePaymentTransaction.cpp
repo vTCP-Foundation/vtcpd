@@ -3,6 +3,78 @@
 #include <algorithm>
 #include <map>
 #include <set>
+#include <boost/multiprecision/cpp_int.hpp>
+
+#include "../../../../common/exceptions/ValueError.h"
+
+using boost::multiprecision::cpp_int;
+
+namespace {
+
+// Helper function to calculate 10^exponent for exchange rate shift calculations
+cpp_int pow10(const size_t exponent)
+{
+    cpp_int result = 1;
+    for (size_t idx = 0; idx < exponent; ++idx) {
+        result *= 10;
+    }
+    return result;
+}
+
+// Helper function to perform ceiling division and convert to TrustLineAmount
+// Used to ensure we don't lose precision when calculating required incoming amounts
+TrustLineAmount ceilDivideToAmount(const cpp_int &numerator, const cpp_int &denominator)
+{
+    if (denominator <= 0) {
+        throw ValueError(
+            "IntermediateNodeExchangePaymentTransaction::ceilDivideToAmount: "
+            "denominator must be positive");
+    }
+
+    cpp_int quotient = numerator / denominator;
+    if (numerator % denominator != 0) {
+        ++quotient;  // Round up to favor higher incoming reservation
+    }
+
+    if (quotient < 0) {
+        throw ValueError(
+            "IntermediateNodeExchangePaymentTransaction::ceilDivideToAmount: "
+            "negative quotient computed");
+    }
+
+    return quotient.convert_to<TrustLineAmount>();
+}
+
+// Helper function to calculate required input amount from output amount using exchange rate
+// This performs inverse exchange calculation with ceiling division to ensure
+// the incoming reservation is sufficient to cover the outgoing amount
+TrustLineAmount invertExchangeForRequiredInput(
+    const TrustLineAmount &outputAmount,
+    const TrustLineAmount &exchangeRate,
+    int16_t exchangeRateShift)
+{
+    if (exchangeRate == TrustLineAmount(0)) {
+        throw ValueError(
+            "IntermediateNodeExchangePaymentTransaction::invertExchangeForRequiredInput: "
+            "zero exchange rate encountered");
+    }
+
+    // Formula: outputAmount = inputAmount * rate * 10^shift
+    // Therefore: inputAmount = outputAmount / (rate * 10^shift)
+    cpp_int numerator = cpp_int(outputAmount);
+    cpp_int denominator = cpp_int(exchangeRate);
+
+    if (exchangeRateShift >= 0) {
+        denominator *= pow10(static_cast<size_t>(exchangeRateShift));
+    } else {
+        numerator *= pow10(static_cast<size_t>(-exchangeRateShift));
+    }
+
+    // Use ceiling division to favor higher incoming amount
+    return ceilDivideToAmount(numerator, denominator);
+}
+
+}  // anonymous namespace
 
 IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTransaction(
     IntermediateNodeReservationRequestMessage::ConstShared message,
@@ -482,13 +554,105 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runNe
 
     debug() << "Next node accepted amount reservation.";
 
-    if (kMessage->amountReserved() != mLastReservedAmount) {    
+    if (kMessage->amountReserved() != mLastReservedAmount) {
         shortageOutgoingReservationsOnPath(
             kMessage->pathID(),
             kMessage->equivalent(),
             kMessage->amountReserved());
 
-        // todo : add shortage incoming reservations on path recalculated by new outgoing amount
+        // Calculate and adjust incoming reservation based on the reduced outgoing amount
+        // This ensures reservation balance is maintained across the intermediate node
+        const TrustLineAmount outgoingAmount = kMessage->amountReserved();
+        const SerializedEquivalent outgoingEquivalent = kMessage->equivalent();
+        const PathID pathID = kMessage->pathID();
+
+        // Find the incoming reservation for the same path
+        AmountReservation::ConstShared incomingReservation = nullptr;
+        SerializedEquivalent incomingEquivalent;
+
+        for (const auto &[contractorID, reservationsMap] : mReservations) {
+            for (const auto &[resPathID, reservation] : reservationsMap) {
+                if (resPathID == pathID &&
+                    reservation->direction() == AmountReservation::Incoming) {
+                    incomingReservation = reservation;
+                    incomingEquivalent = reservation->equivalent();
+                    break;
+                }
+            }
+            if (incomingReservation) {
+                break;
+            }
+        }
+
+        if (!incomingReservation) {
+            error() << "Incoming reservation not found for pathID " << pathID;
+            return sendErrorMessageOnNextNodeResponse(
+                ResponseMessage::Rejected);
+        }
+
+        // Calculate required incoming amount based on equivalents
+        TrustLineAmount incomingAmount;
+
+        if (incomingEquivalent == outgoingEquivalent) {
+            // Same equivalent: check for commission
+            auto commission = mCommissionsManager->getCommission(incomingEquivalent);
+
+            if (commission && commission->amount() > TrustLineAmount(0)) {
+                // Add commission to outgoing amount to get required incoming amount
+                incomingAmount = outgoingAmount + commission->amount();
+
+                debug() << "Calculating incoming reservation with commission: "
+                        << "outgoing=" << outgoingAmount
+                        << ", commission=" << commission->amount()
+                        << ", incoming=" << incomingAmount;
+            } else {
+                // No commission: amounts are equal
+                incomingAmount = outgoingAmount;
+
+                debug() << "Calculating incoming reservation (no commission): "
+                        << "incoming=" << incomingAmount;
+            }
+        } else {
+            // Different equivalents: need to apply inverse exchange rate
+            auto exchangeRate = mExchangeRatesManager->get(incomingEquivalent, outgoingEquivalent);
+
+            if (!exchangeRate) {
+                error() << "Exchange rate not found for incoming calculation: "
+                        << incomingEquivalent << " -> " << outgoingEquivalent;
+                return sendErrorMessageOnNextNodeResponse(
+                    ResponseMessage::Rejected);
+            }
+
+            // Calculate incoming amount using inverse exchange
+            // outgoingAmount = incomingAmount * rate * 10^shift
+            // incomingAmount = outgoingAmount / (rate * 10^shift)
+            // Use ceiling division to favor higher incoming (ensures outgoing is covered)
+            try {
+                incomingAmount = invertExchangeForRequiredInput(
+                    outgoingAmount,
+                    exchangeRate->exchangeRate(),
+                    exchangeRate->exchangeRateShift());
+
+                debug() << "Calculating incoming reservation via exchange: "
+                        << "outgoing=" << outgoingAmount << " (equiv " << outgoingEquivalent << "), "
+                        << "incoming=" << incomingAmount << " (equiv " << incomingEquivalent << "), "
+                        << "rate=" << exchangeRate->exchangeRate()
+                        << ", shift=" << exchangeRate->exchangeRateShift();
+
+            } catch (const std::exception &e) {
+                error() << "Error calculating incoming amount: " << e.what();
+                return sendErrorMessageOnNextNodeResponse(
+                    ResponseMessage::Rejected);
+            }
+        }
+
+        // Update incoming reservation with calculated amount
+        shortageIncomingReservationsOnPath(pathID, incomingEquivalent, incomingAmount);
+
+        info() << "Incoming reservation adjusted: "
+               << "pathID=" << pathID
+               << ", incoming=" << incomingAmount << " (equiv " << incomingEquivalent << ")"
+               << ", outgoing=" << outgoingAmount << " (equiv " << outgoingEquivalent << ")";
     }
 
     mLastReservedAmount = kMessage->amountReserved();
