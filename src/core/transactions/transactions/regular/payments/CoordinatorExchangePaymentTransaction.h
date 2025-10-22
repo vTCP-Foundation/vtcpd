@@ -116,6 +116,7 @@ protected:
     // Helper functions for path filtering and capacity management
     TrustLineAmount calculateTotalReservedAmount();
     TransactionResult::SharedConst proceedToNextStage();
+    bool validatePathForProcessing(const OptimalPathResult *pathStats);
 
     void shortageReservationsOnPath(
         ContractorID neighborID,

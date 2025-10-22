@@ -926,6 +926,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
             // Get final amounts configuration for this node
             auto nodeKey = paymentNodeIdAndContractor.second->mainAddress()->fullAddress();
             const auto& nodeConfig = mNodesFinalAmountsConfiguration.find(nodeKey);
+            info() << "final amount configuration size: " << nodeConfig->second.size();
 
             if (nodeConfig != mNodesFinalAmountsConfiguration.end()) {
                 // Send with PathReservation vector (new constructor)
@@ -958,6 +959,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
             // Get final amounts configuration for this node
             auto nodeKey = paymentNodeIdAndContractor.second->mainAddress()->fullAddress();
             const auto& nodeConfig = mNodesFinalAmountsConfiguration.find(nodeKey);
+            info() << "final amount configuration size: " << nodeConfig->second.size();
 
             if (nodeConfig != mNodesFinalAmountsConfiguration.end()) {
                 // Send with PathReservation vector (new constructor)
@@ -1190,9 +1192,88 @@ void CoordinatorExchangePaymentTransaction::initAmountsReservationOnNextPath()
             "CoordinatorExchangePaymentTransaction::initAmountsReservationOnNextPath: "
             "no paths are available.");
 
-    mCurrentAmountReservingPathIdentifier = *mPathIDs.cbegin();
-    debug() << "[" << mCurrentAmountReservingPathIdentifier << "] path reservation initialized";
-    mCurrentPathParticipants.clear();
+    // Step 1: Check if more capacity needed before taking first path
+    TrustLineAmount totalReserved = calculateTotalReservedAmount();
+    if (totalReserved >= mAmount) {
+        // Sufficient capacity reserved, no more paths needed
+        info() << "Path filtering: sufficient capacity already reserved ("
+               << totalReserved << " >= " << mAmount << "), proceeding to next stage";
+
+        // Request observing block number resource and transition to next stage
+        mResourcesManager->requestObservingBlockNumber(mTransactionUUID);
+        mStep = Stages::Common_ObservingBlockNumberProcessing;
+
+        throw CallChainBreakException("Sufficient capacity reserved, proceeding to next stage");
+    }
+
+    TrustLineAmount remainingNeeded = mAmount - totalReserved;
+    debug() << "Path filtering: remaining needed = " << remainingNeeded
+            << " (total reserved: " << totalReserved << ", target: " << mAmount << ")";
+
+    // Step 2: Find valid path through filtering
+    while (!mPathIDs.empty()) {
+        PathID nextPathID = *mPathIDs.cbegin();
+        auto pathStatsIt = mPathsStats.find(nextPathID);
+
+        if (pathStatsIt == mPathsStats.end()) {
+            warning() << "Path filtering: next path not found in mPathsStats, pathID=" << nextPathID;
+            mPathIDs.erase(mPathIDs.cbegin());
+            continue;
+        }
+
+        OptimalPathResult *pathStats = pathStatsIt->second.get();
+
+        // Step 3: Validate path for processing (check inaccessible nodes and rejected trust lines)
+        if (!validatePathForProcessing(pathStats)) {
+            // Path contains bad nodes/trustlines, mark unusable and try next
+            pathStats->setUnusable();
+            mPathsStats.erase(nextPathID);
+            mPathIDs.erase(mPathIDs.cbegin());
+            continue;
+        }
+
+        // Step 4: Check if truncation needed
+        if (pathStats->received_amount > remainingNeeded) {
+            info() << "Path capacity truncation: available=" << pathStats->received_amount
+                   << ", needed=" << remainingNeeded;
+
+            try {
+                // Calculate truncated input amount that delivers exactly remainingNeeded
+                TrustLineAmount truncatedInput = calculateRequiredInputForPath(
+                    *pathStats, remainingNeeded);
+
+                // Update path capacity
+                pathStats->shortageMaxFlow(truncatedInput);
+                pathStats->received_amount = remainingNeeded;
+
+                // Recalculate flows for reservation
+                pathStats->calculateFlows(truncatedInput);
+
+                info() << "Path capacity truncated: input=" << truncatedInput
+                       << ", output=" << remainingNeeded;
+
+            } catch (const std::exception &e) {
+                // Truncation calculation failed, skip this path and try next
+                error() << "Path capacity truncation failed: " << e.what()
+                        << ", skipping path";
+                pathStats->setUnusable();
+                mPathsStats.erase(nextPathID);
+                mPathIDs.erase(mPathIDs.cbegin());
+                continue;
+            }
+        }
+
+        // Step 5: Path is valid and truncated if needed, proceed with it
+        mCurrentAmountReservingPathIdentifier = nextPathID;
+        debug() << "[" << mCurrentAmountReservingPathIdentifier << "] path reservation initialized";
+        mCurrentPathParticipants.clear();
+        return;
+    }
+
+    // No more paths available
+    throw NotFoundError(
+        "CoordinatorExchangePaymentTransaction::initAmountsReservationOnNextPath: "
+        "no paths are available.");
 }
 
 OptimalPathResult* CoordinatorExchangePaymentTransaction::currentAmountReservationPathStats()
@@ -2200,23 +2281,92 @@ void CoordinatorExchangePaymentTransaction::switchToNextPath()
         mPathIDs.erase(mPathIDs.cbegin());
     }
 
-    if (mPathIDs.empty()) {
-        // remove unusable path from paths scope
-        if (!justProcessedPath->isValid()) {
-            mPathsStats.erase(justProcessedPathIdentifier);
-        }
-        throw NotFoundError(
-            "CoordinatorExchangePaymentTransaction::switchToNextPath: "
-            "no paths are available");
-    }
-
-    mCurrentAmountReservingPathIdentifier = *mPathIDs.cbegin();
-    debug() << "[" << mCurrentAmountReservingPathIdentifier << "] switching to next path";
-
-    // remove unusable path from paths scope
+    // Remove unusable path from paths scope
     if (!justProcessedPath->isValid()) {
         mPathsStats.erase(justProcessedPathIdentifier);
     }
+
+    // Step 1: Check if more capacity needed before taking next path
+    TrustLineAmount totalReserved = calculateTotalReservedAmount();
+    if (totalReserved >= mAmount) {
+        // Sufficient capacity reserved, no more paths needed
+        info() << "Path filtering: sufficient capacity already reserved ("
+               << totalReserved << " >= " << mAmount << "), proceeding to next stage";
+
+        // Request observing block number resource and transition to next stage
+        mResourcesManager->requestObservingBlockNumber(mTransactionUUID);
+        mStep = Stages::Common_ObservingBlockNumberProcessing;
+
+        throw CallChainBreakException("Sufficient capacity reserved, proceeding to next stage");
+    }
+
+    TrustLineAmount remainingNeeded = mAmount - totalReserved;
+    debug() << "Path filtering: remaining needed = " << remainingNeeded
+            << " (total reserved: " << totalReserved << ", target: " << mAmount << ")";
+
+    // Step 2: Find valid path through filtering
+    while (!mPathIDs.empty()) {
+        PathID nextPathID = *mPathIDs.cbegin();
+        auto pathStatsIt = mPathsStats.find(nextPathID);
+
+        if (pathStatsIt == mPathsStats.end()) {
+            warning() << "Path filtering: next path not found in mPathsStats, pathID=" << nextPathID;
+            mPathIDs.erase(mPathIDs.cbegin());
+            continue;
+        }
+
+        OptimalPathResult *pathStats = pathStatsIt->second.get();
+
+        // Step 3: Validate path for processing (check inaccessible nodes and rejected trust lines)
+        if (!validatePathForProcessing(pathStats)) {
+            // Path contains bad nodes/trustlines, mark unusable and try next
+            pathStats->setUnusable();
+            mPathsStats.erase(nextPathID);
+            mPathIDs.erase(mPathIDs.cbegin());
+            continue;
+        }
+
+        // Step 4: Check if truncation needed
+        if (pathStats->received_amount > remainingNeeded) {
+            info() << "Path capacity truncation: available=" << pathStats->received_amount
+                   << ", needed=" << remainingNeeded;
+
+            try {
+                // Calculate truncated input amount that delivers exactly remainingNeeded
+                TrustLineAmount truncatedInput = calculateRequiredInputForPath(
+                    *pathStats, remainingNeeded);
+
+                // Update path capacity
+                pathStats->shortageMaxFlow(truncatedInput);
+                pathStats->received_amount = remainingNeeded;
+
+                // Recalculate flows for reservation
+                pathStats->calculateFlows(truncatedInput);
+
+                info() << "Path capacity truncated: input=" << truncatedInput
+                       << ", output=" << remainingNeeded;
+
+            } catch (const std::exception &e) {
+                // Truncation calculation failed, skip this path and try next
+                error() << "Path capacity truncation failed: " << e.what()
+                        << ", skipping path";
+                pathStats->setUnusable();
+                mPathsStats.erase(nextPathID);
+                mPathIDs.erase(mPathIDs.cbegin());
+                continue;
+            }
+        }
+
+        // Step 5: Path is valid and truncated if needed, proceed with it
+        mCurrentAmountReservingPathIdentifier = nextPathID;
+        debug() << "[" << mCurrentAmountReservingPathIdentifier << "] switching to next path";
+        return;
+    }
+
+    // No more paths available
+    throw NotFoundError(
+        "CoordinatorExchangePaymentTransaction::switchToNextPath: "
+        "no paths are available");
 }
 
 void CoordinatorExchangePaymentTransaction::informAllNodesAboutTransactionFinish()
@@ -2996,9 +3146,60 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::proceedToN
     // Transition to next transaction stage after sufficient capacity reserved
     info() << "Sufficient capacity reserved, proceeding to final amounts configuration";
 
+    // Request observing block number resource before proceeding
+    mResourcesManager->requestObservingBlockNumber(mTransactionUUID);
+
     // Transition to final amounts configuration stage (via observing block number)
     mStep = Stages::Common_ObservingBlockNumberProcessing;
-    return sendFinalAmountsConfigurationToAllParticipants();
+
+    return resultWaitForResourceTypes(
+        {BaseResource::ObservingBlockNumber},
+        maxNetworkDelay(1));
+}
+
+bool CoordinatorExchangePaymentTransaction::validatePathForProcessing(
+    const OptimalPathResult *pathStats)
+{
+    const auto &path = pathStats->path();
+
+    // Check for empty path.nodes
+    // Though this should be prevented by addPathForFurtherProcessing (task 08-03),
+    // we still validate as an edge case safety check
+    if (path.nodes.empty()) {
+        error() << "Path filtering: path.nodes is empty, skipping path";
+        return false;
+    }
+
+    // Check for inaccessible nodes
+    // Note: Use path.nodes (BaseAddress::Shared) for filtering
+    // path.nodes is populated by addPathForFurtherProcessing and guaranteed to be available here
+    for (const auto &nodeAddress : path.nodes) {
+        if (std::find(mInaccessibleNodes.begin(),
+                      mInaccessibleNodes.end(),
+                      nodeAddress) != mInaccessibleNodes.end()) {
+            info() << "Path filtering: contains inaccessible node: "
+                   << nodeAddress->fullAddress();
+            return false;
+        }
+    }
+
+    // Check for rejected trust lines
+    // Iterate through edges in path.nodes (consecutive pairs)
+    for (size_t i = 0; i + 1 < path.nodes.size(); ++i) {
+        auto source = path.nodes[i];
+        auto dest = path.nodes[i + 1];
+
+        for (const auto &[rejSource, rejDest] : mRejectedTrustLines) {
+            if (source == rejSource && dest == rejDest) {
+                info() << "Path filtering: contains rejected trust line: "
+                       << source->fullAddress() << " -> "
+                       << dest->fullAddress();
+                return false;
+            }
+        }
+    }
+
+    return true;  // Path is valid
 }
 
 const string CoordinatorExchangePaymentTransaction::logHeader() const

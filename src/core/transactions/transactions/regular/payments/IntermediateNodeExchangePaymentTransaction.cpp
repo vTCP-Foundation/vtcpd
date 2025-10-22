@@ -856,6 +856,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
 
     mMaximalClaimingBlockNumber = kMessage->maximalClaimingBlockNumber();
     debug() << "maximal claiming block number: " << mMaximalClaimingBlockNumber;
+    info() << "final amount configuration size: " << kMessage->finalAmountsConfiguration().size();
 
     if (!updateReservations(
                 kMessage->finalAmountsConfiguration())) {

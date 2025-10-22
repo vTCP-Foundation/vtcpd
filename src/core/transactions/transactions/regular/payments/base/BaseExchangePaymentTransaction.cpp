@@ -1379,6 +1379,7 @@ bool BaseExchangePaymentTransaction::updateReservations(
     // Track which finalAmounts entries were matched
     unordered_set<size_t> matchedFinalAmounts;
     const auto reservationsCopy = mReservations;
+    info() << "reservations size: " << reservationsCopy.size();
 
     for (const auto &nodeAndReservations : reservationsCopy) {
         for (auto pathIDAndReservation : nodeAndReservations.second) {
