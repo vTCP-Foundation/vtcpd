@@ -62,6 +62,8 @@ add_executable(unit_tests
     transactions/TestReceiverExchangePaymentTransaction.cpp
     transactions/TestIntermediateNodeCheckReservations.cpp
     transactions/TestBasePaymentTransactionSerialization.cpp
+    transactions/TestCoordinatorExchangePaymentCapacityAdjustment.cpp
+    transactions/TestIntermediateNodeExchangePaymentIncoming.cpp
     payments/TestAmountReservation.cpp
     payments/TestAmountReservationsHandler.cpp
     core/CoreORToolsStartupTest.cpp
