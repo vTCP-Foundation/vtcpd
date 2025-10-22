@@ -486,20 +486,17 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPathsRe
         return resultInsufficientFundsError();
     }
 
-    // Step 1: Initialize total flow counter
-    TrustLineAmount remainingAmount = mExchangeAmount;
-    TrustLineAmount totalAddedFlow = TrustLineAmount(0);
-
-    // Step 2: Iterate through each sender equivalent
+    // Step 1: Iterate through each sender equivalent and add ALL paths without truncation
+    // Capacity truncation will be performed later during path processing
     for (const auto& senderEquiv : mExchangeEquivalents) {
-        // Step 3: Create cache key for this sender-receiver equivalent combination
+        // Step 2: Create cache key for this sender-receiver equivalent combination
         PathCacheKey key{
             mContractorID,
             senderEquiv,
             mEquivalent  // receiver equivalent
         };
 
-        // Step 4: Retrieve optimal paths from ExchangePathsManager
+        // Step 3: Retrieve optimal paths from ExchangePathsManager
         auto optimalPaths = mExchangePathsManager->retrievePaths(key);
 
         if (!optimalPaths) {
@@ -508,32 +505,24 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPathsRe
             continue;
         }
 
-        // Step 5: Add paths until total flow >= payment amount (in receiver equivalent)
+        // Step 4: Add ALL paths with their full capacity (no truncation, no early break)
+        // This provides maximum flexibility when paths fail during reservation
         for (const auto& pathResult : *optimalPaths) {
-            if (remainingAmount == TrustLineAmount(0)) {
-                break;  // Sufficient flow accumulated
-            }
-
-            // Step 6: Add path to mPathsStats
-            const auto pathAmount = min(remainingAmount, pathResult.optimal_flow);
-            addPathForFurtherProcessing(pathResult, pathAmount);
-            remainingAmount = remainingAmount - pathAmount;
-            totalAddedFlow = totalAddedFlow + pathResult.received_amount;
-        }
-
-        // Check if we have enough flow
-        if (remainingAmount == TrustLineAmount(0)) {
-            break;  // No need to check other equivalents
+            // Add path with full optimal_flow capacity (sender equivalent)
+            // Note: calculateFlows expects input amount in sender equivalent, not receiver
+            addPathForFurtherProcessing(pathResult, pathResult.optimal_flow);
         }
     }
 
-    // Step 7: Validate that we have sufficient paths (check receiver amount delivery)
-    if (remainingAmount > TrustLineAmount(0)) {
-        warning() << "Insufficient total flow: " << totalAddedFlow
-                  << " < " << mAmount;
+    // Step 5: Validate that we have at least some paths available
+    if (mPathsStats.empty()) {
+        warning() << "No paths available for processing";
         return transactionResultFromCommand(
             mCommand->responseInsufficientFunds());
     }
+
+    info() << "Added " << mPathsStats.size() << " paths for further processing";
+
 
     mStep = Stages::Coordinator_ReceiverRequestProcessing;
     return runReceiverRequestProcessingStage();
@@ -2964,6 +2953,52 @@ void CoordinatorExchangePaymentTransaction::sendFinalPathConfiguration(
             outgoingAmount,
             outgoingEquivalent);
     }
+}
+
+TrustLineAmount CoordinatorExchangePaymentTransaction::calculateTotalReservedAmount()
+{
+    // Calculate total amount already successfully reserved across all processed paths
+    // Only count paths where reservation is actually approved (not just valid/added)
+    TrustLineAmount total = TrustLineAmount(0);
+
+    for (const auto &[pathID, pathStats] : mPathsStats) {
+        // Check if path has been successfully reserved
+        bool isReserved = false;
+
+        if (pathStats->containsIntermediateNodes()) {
+            // Path with intermediate nodes: check if last intermediate node approved
+            isReserved = pathStats->isLastIntermediateNodeApproved();
+        } else {
+            // Direct path to receiver: check if receiver approved
+            // For direct paths, mIntermediateNodesStates is empty, so we check differently
+            // In this case, we consider path reserved when maxFlow > 0 and path is valid
+            // (reservation would have been confirmed during processing)
+            isReserved = (pathStats->mMaxPathFlow > TrustLineAmount(0));
+        }
+
+        if (isReserved) {
+            try {
+                total = total + pathStats->received_amount;
+            } catch (const std::exception &e) {
+                warning() << "Error adding path received_amount: " << e.what()
+                          << " for pathID=" << pathID;
+                continue;
+            }
+        }
+    }
+
+    debug() << "Total reserved amount: " << total;
+    return total;
+}
+
+TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::proceedToNextStage()
+{
+    // Transition to next transaction stage after sufficient capacity reserved
+    info() << "Sufficient capacity reserved, proceeding to final amounts configuration";
+
+    // Transition to final amounts configuration stage (via observing block number)
+    mStep = Stages::Common_ObservingBlockNumberProcessing;
+    return sendFinalAmountsConfigurationToAllParticipants();
 }
 
 const string CoordinatorExchangePaymentTransaction::logHeader() const

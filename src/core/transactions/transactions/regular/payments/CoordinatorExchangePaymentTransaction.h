@@ -113,6 +113,10 @@ protected:
     void switchToNextPath();
     void informAllNodesAboutTransactionFinish();
 
+    // Helper functions for path filtering and capacity management
+    TrustLineAmount calculateTotalReservedAmount();
+    TransactionResult::SharedConst proceedToNextStage();
+
     void shortageReservationsOnPath(
         ContractorID neighborID,
         const PathID &pathID,
