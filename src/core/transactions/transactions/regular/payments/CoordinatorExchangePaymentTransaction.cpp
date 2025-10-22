@@ -147,6 +147,28 @@ TrustLineAmount calculateRequiredInputForPath(
     return requiredAmount;
 }
 
+TrustLineAmount applyExchangeForward(
+    const TrustLineAmount &amount,
+    const ExchangeStep &step)
+{
+    cpp_int result = cpp_int(amount) * cpp_int(step.exchangeRate);
+
+    if (step.exchangeRateShift >= 0) {
+        result *= pow10(static_cast<size_t>(step.exchangeRateShift));
+    } else {
+        const cpp_int divisor = pow10(static_cast<size_t>(-step.exchangeRateShift));
+        result /= divisor;
+    }
+
+    if (result < 0) {
+        throw ValueError(
+            "CoordinatorExchangePaymentTransaction::applyExchangeForward: "
+            "negative exchange result");
+    }
+
+    return result.convert_to<TrustLineAmount>();
+}
+
 }
 
 CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
@@ -2230,7 +2252,11 @@ void CoordinatorExchangePaymentTransaction::shortageReservationsOnPath(
     const PathID &pathID,
     const TrustLineAmount &kNewAmount)
 {
-    debug() << "shortageReservationsOnPath";
+    debug() << "shortageReservationsOnPath: pathID=" << pathID
+            << ", neighborID=" << neighborID
+            << ", newAmount=" << kNewAmount;
+
+    // Step 1: Update coordinator's own reservation (existing logic)
     auto nodeReservations = mReservations[neighborID];
     for (const auto &pathIDAndReservation : nodeReservations) {
         if (pathIDAndReservation.first == pathID) {
@@ -2246,6 +2272,96 @@ void CoordinatorExchangePaymentTransaction::shortageReservationsOnPath(
             break;
         }
     }
+
+    // Step 2: Find path in mPathsStats
+    auto pathStatsIt = mPathsStats.find(pathID);
+    if (pathStatsIt == mPathsStats.end()) {
+        warning() << "Path not found in mPathsStats for pathID=" << pathID;
+        return;
+    }
+
+    OptimalPathResult *pathStats = pathStatsIt->second.get();
+    const auto &path = pathStats->path();
+
+    // Store old received_amount for logging
+    const TrustLineAmount oldReceivedAmount = pathStats->received_amount;
+
+    // Step 3: Calculate new received_amount by forward-simulating through path
+    // The kNewAmount is the amount coordinator sends to first node (in sender equivalent)
+    // We need to calculate what receiver gets (in receiver equivalent)
+    TrustLineAmount newReceivedAmount;
+    try {
+        // Forward simulate through path: apply exchanges and subtract commissions
+        // Note: We use path.ids and path.equivalents for iteration (NOT path.nodes)
+        // because findExchangeStep expects ContractorID, not BaseAddress
+
+        TrustLineAmount currentAmount = kNewAmount;
+
+        for (size_t idx = 0; idx + 1 < path.ids.size(); ++idx) {
+            const ContractorID fromNode = path.ids[idx];
+            const ContractorID toNode = path.ids[idx + 1];
+            const SerializedEquivalent currentEquiv = path.equivalents[idx];
+            const SerializedEquivalent nextEquiv = path.equivalents[idx + 1];
+
+            // Check for exchange (same node, different equivalent)
+            if (fromNode == toNode && currentEquiv != nextEquiv) {
+                // Find exchange step
+                const auto *exchangeStep = findExchangeStep(
+                    path, fromNode, currentEquiv, nextEquiv);
+
+                if (!exchangeStep) {
+                    warning() << "Exchange step not found during shortage calculation";
+                    return;  // Keep old values
+                }
+
+                // Apply exchange forward
+                currentAmount = applyExchangeForward(currentAmount, *exchangeStep);
+                continue;  // Don't add to flows, this is in-place exchange
+            }
+
+            // Check for commission at arrival node (if not receiver)
+            if (idx + 1 < path.ids.size() - 1) {  // Not last node (receiver)
+                const auto *commissionStep = findExchangeStep(
+                    path, toNode, nextEquiv, nextEquiv);
+
+                if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
+                    if (currentAmount < commissionStep->commission) {
+                        warning() << "Amount exhausted by commission during shortage, "
+                                  << "marking path unusable";
+                        pathStats->setUnusable();
+                        return;
+                    }
+                    currentAmount = currentAmount - commissionStep->commission;
+                }
+            }
+        }
+
+        newReceivedAmount = currentAmount;
+
+    } catch (const std::exception &e) {
+        warning() << "Error calculating new received amount: " << e.what();
+        return;  // Keep old values
+    }
+
+    // Step 4: Update ALL path statistics fields
+    pathStats->mMaxPathFlow = kNewAmount;
+    pathStats->optimal_flow = kNewAmount;
+    pathStats->received_amount = newReceivedAmount;
+
+    // Step 5: Recalculate flows vector
+    try {
+        pathStats->calculateFlows(kNewAmount);
+    } catch (const std::exception &e) {
+        warning() << "Error recalculating flows: " << e.what();
+        // flows may be inconsistent, but main fields are updated
+    }
+
+    info() << "Path capacity adjusted: pathID=" << pathID
+           << ", newMaxFlow=" << kNewAmount
+           << ", newOptimalFlow=" << kNewAmount
+           << ", newReceivedAmount=" << newReceivedAmount
+           << " (was " << oldReceivedAmount << ")"
+           << ", flows recalculated";
 }
 
 void CoordinatorExchangePaymentTransaction::dropReservationsOnPath(
