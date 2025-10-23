@@ -279,14 +279,6 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runPr
     }
     debug() << "All reservations were updated";
 
-    if (!trustLines->trustLineContractorKeysPresent(senderID)) {
-        warning() << "There are no contractor keys on TL";
-        return sendErrorMessageOnPreviousNodeRequest(
-                   kNeighbor,
-                   kReservation.pathID,
-                   ResponseMessage::RejectedDueContractorKeysAbsence);
-    }
-
     const auto kIncomingAmount = trustLines->incomingTrustAmountConsideringReservations(senderID);
     TrustLineAmount reservationAmount = std::min(
                                             *kReservation.amount.get(),

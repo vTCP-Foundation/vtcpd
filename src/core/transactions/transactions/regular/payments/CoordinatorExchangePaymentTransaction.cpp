@@ -1455,15 +1455,6 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
             "invalid first level TL occurred. ");
     }
 
-    if (!senderTrustLines->trustLineOwnKeysPresent(neighborID)) {
-        warning() << "There are no own keys on TL with neighbor. Switching to another path.";
-        path->setUnusable();
-        mNeighborsKeysProblem = true;
-        publicKeysSharingSignal(neighborID, senderEquivalent);
-        mIsAuditPendingPathsOccurred = true;
-        throw CallChainBreakException("Break call chain for preventing call loop");
-    }
-
     if (!senderTrustLines->trustLineIsActive(neighborID)) {
         warning() << "Invalid TL state " << senderTrustLines->trustLineState(neighborID);
         if (senderTrustLines->trustLineState(neighborID) == TrustLine::AuditPending ||
@@ -1474,12 +1465,24 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
         throw CallChainBreakException("Break call chain for preventing call loop");
     }
 
-    // const auto kAvailableOutgoingAmount = senderTrustLines->outgoingTrustAmountConsideringReservations(neighborID);
-    // const auto kRemainingAmountForProcessing =
-    //     mExchangeAmount - totalReservedAmount(AmountReservation::Outgoing, senderEquivalent);
+    if (!senderTrustLines->trustLineOwnKeysPresent(neighborID)) {
+        warning() << "There are no own keys on TL with neighbor. Switching to another path.";
+        path->setUnusable();
+        mNeighborsKeysProblem = true;
+        publicKeysSharingSignal(neighborID, senderEquivalent);
+        // after signal keys will be shared and tx can pass
+        mIsAuditPendingPathsOccurred = true;
+        throw CallChainBreakException("Break call chain for preventing call loop");
+    }
 
-    // const auto kReservationAmount = min(*kAvailableOutgoingAmount, kRemainingAmountForProcessing);
-    const auto kReservationAmount = path->paymentFlow;
+    if (!senderTrustLines->trustLineContractorKeysPresent(neighborID)) {
+        warning() << "There are no contractors keys on TL with neighbor. Switching to another path.";
+        path->setUnusable();
+        mNeighborsKeysProblem = true;
+        throw CallChainBreakException("Break call chain for preventing call loop");
+    }
+
+    const auto kReservationAmount = path->optimal_flow;
 
     if (kReservationAmount == 0) {
         debug() << "No payment amount is available. Switching to another path.";
@@ -1500,7 +1503,6 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
         throw CallChainBreakException("Break call chain for preventing call loop");
     }
 
-    path->shortageMaxFlow(kReservationAmount);
     path->setNodeState(
         kFirstIntermediateNodeIndex,
         OptimalPathResult::NeighbourReservationRequestSent);
@@ -1511,6 +1513,22 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
         make_shared<const TrustLineAmount>(kReservationAmount),
         senderEquivalent,
         PathReservation::Outgoing);
+
+    if (mNodesFinalAmountsConfiguration.find(neighbor->fullAddress()) != mNodesFinalAmountsConfiguration.end()) {
+        // add existing neighbor reservations
+        const auto kNeighborReservations = mNodesFinalAmountsConfiguration[neighbor->fullAddress()];
+        reservations.insert(
+            reservations.end(),
+            kNeighborReservations.begin(),
+            kNeighborReservations.end());
+    }
+    debug() << "Prepared for sending reservations size: " << reservations.size();
+
+#ifdef TESTS
+    mSubsystemsController->testForbidSendRequestToIntNodeOnReservationStage(
+        neighbor,
+        kReservationAmount);
+#endif
 
     sendMessage<IntermediateNodeReservationRequestMessage>(
         neighborID,
@@ -1551,8 +1569,16 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
         pathFlow.second,
         PathReservation::Outgoing);
 
-    // TODO: Add existing next after neighbor node reservations from mNodesFinalAmountsConfiguration
-    // For now, skip this optimization
+    if (mNodesFinalAmountsConfiguration.find(kNextAfterNeighborNode->fullAddress()) !=
+        mNodesFinalAmountsConfiguration.end()) {
+        // add existing next after neighbor node reservations
+        const auto kNeighborReservations = mNodesFinalAmountsConfiguration[kNextAfterNeighborNode->fullAddress()];
+
+        reservations.insert(
+            reservations.end(),
+            kNeighborReservations.begin(),
+            kNeighborReservations.end());
+    }
     debug() << "Prepared for sending reservations size: " << reservations.size();
 
 #ifdef TESTS
@@ -1599,9 +1625,15 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askRemoteN
         pathFlow.second,
         PathReservation::Outgoing);
 
-    // TODO: Add existing next after remote node reservations from mNodesFinalAmountsConfiguration
-    // For now, skip this optimization
-
+    if (mNodesFinalAmountsConfiguration.find(nextAfterRemoteNode->fullAddress()) !=
+        mNodesFinalAmountsConfiguration.end()) {
+        // add existing next after remote node reservations
+        const auto kRemoteNodeReservations = mNodesFinalAmountsConfiguration[nextAfterRemoteNode->fullAddress()];
+        reservations.insert(
+            reservations.end(),
+            kRemoteNodeReservations.begin(),
+            kRemoteNodeReservations.end());
+    }
     debug() << "Prepared for sending reservations size: " << reservations.size();
 
     // Get sender equivalent from path
