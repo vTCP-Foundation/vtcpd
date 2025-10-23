@@ -67,7 +67,6 @@ struct OptimalPathResult {
     // Methods from PathStats
     void setNodeState(const SerializedPositionInPath positionInPath, const NodeState state);
     const TrustLineAmount& maxFlow() const;
-    void shortageMaxFlow(const TrustLineAmount &kAmount);
     ExchangePath& path();
     const ExchangePath& path() const;
     bool containsIntermediateNodes() const;

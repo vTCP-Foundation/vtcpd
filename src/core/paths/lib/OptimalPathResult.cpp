@@ -30,26 +30,6 @@ const TrustLineAmount& OptimalPathResult::maxFlow() const
     return mMaxPathFlow;
 }
 
-/**
- * @param kAmount - new max flow of the path.
- *
- * @throws ValueError in case of attempt to increase path max flow.
- */
-void OptimalPathResult::shortageMaxFlow(
-    const TrustLineAmount& kAmount)
-{
-    if (mMaxPathFlow == 0) {
-        mMaxPathFlow = kAmount;
-    }
-    else if (kAmount <= mMaxPathFlow) {
-        mMaxPathFlow = kAmount;
-    }
-    else
-        throw ValueError(
-            "OptimalPathResult::shortageMaxFlow: "
-            "attempt to increase max flow occurred.");
-}
-
 ExchangePath& OptimalPathResult::path()
 {
     return mPath;

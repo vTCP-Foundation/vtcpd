@@ -48,38 +48,6 @@ TEST(OptimalPathResult, SetNodeState) {
     EXPECT_EQ(result.mIntermediateNodesStates[0], OptimalPathResult::NodeState::ReservationRequestDoesntSent);
 }
 
-TEST(OptimalPathResult, MaxFlow) {
-    OptimalPathResult result;
-    result.mMaxPathFlow = A(5000);
-
-    EXPECT_EQ(result.maxFlow(), A(5000));
-}
-
-TEST(OptimalPathResult, ShortageMaxFlowReduces) {
-    OptimalPathResult result;
-    result.mMaxPathFlow = A(1000);
-
-    result.shortageMaxFlow(A(500));
-
-    EXPECT_EQ(result.mMaxPathFlow, A(500));
-}
-
-TEST(OptimalPathResult, ShortageMaxFlowInitializes) {
-    OptimalPathResult result;
-    // mMaxPathFlow is 0 by default
-
-    result.shortageMaxFlow(A(800));
-
-    EXPECT_EQ(result.mMaxPathFlow, A(800));
-}
-
-TEST(OptimalPathResult, ShortageMaxFlowThrowsOnIncrease) {
-    OptimalPathResult result;
-    result.mMaxPathFlow = A(500);
-
-    EXPECT_THROW(result.shortageMaxFlow(A(1000)), ValueError);
-}
-
 TEST(OptimalPathResult, PathReturnsExchangePathReference) {
     OptimalPathResult result;
     result.mPath.ids = {1, 2, 3};

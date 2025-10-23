@@ -731,13 +731,11 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runDirectA
         return tryProcessNextPath();
     }
 
-    if (kMessage->amountReserved() != pathStats->maxFlow()) {
-        pathStats->shortageMaxFlow(
-            kMessage->amountReserved());
+    if (kMessage->amountReserved() != pathStats->optimal_flow) {
         shortageReservationsOnPath(
             receiverID,
             mCurrentAmountReservingPathIdentifier,
-            pathStats->maxFlow());
+            kMessage->amountReserved());
     }
 
     // Check total reserved amount using sender equivalent
@@ -1243,7 +1241,6 @@ void CoordinatorExchangePaymentTransaction::initAmountsReservationOnNextPath()
                     *pathStats, remainingNeeded);
 
                 // Update path capacity
-                pathStats->shortageMaxFlow(truncatedInput);
                 pathStats->received_amount = remainingNeeded;
 
                 // Recalculate flows for reservation
@@ -1362,7 +1359,6 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryReserve
     }
 
     // Reserving on the contractor side
-    pathStats->shortageMaxFlow(kReservationAmount);
     vector<pair<PathID, ConstSharedTrustLineAmount>> reservations;
     reservations.emplace_back(
         mCurrentAmountReservingPathIdentifier,
@@ -1798,12 +1794,11 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
     path->setNodeState(
         kFirstIntermediateNodeIndex, OptimalPathResult::NeighbourReservationApproved);
 
-    if (message->amountReserved() != path->maxFlow()) {
-        path->shortageMaxFlow(message->amountReserved());
+    if (message->amountReserved() != path->optimal_flow) {
         shortageReservationsOnPath(
             neighborID,
             mCurrentAmountReservingPathIdentifier,
-            path->maxFlow());
+            message->amountReserved());
     }
 
     return runAmountReservationStage();
@@ -2007,12 +2002,11 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
 
     const auto pathFlow = path->previousPathFlow();
     if (message->amountReserved() != pathFlow.first) {
-        path->shortageMaxFlow(message->amountReserved());
-        debug() << "Path max flow is now " << path->maxFlow();
         shortageReservationsOnPath(
             neighborID,
             mCurrentAmountReservingPathIdentifier,
-            path->maxFlow());
+            message->amountReserved());
+        debug() << "Path max flow is now " << message->amountReserved();
     }
 
     if (path->isLastIntermediateNodeProcessed()) {
@@ -2232,14 +2226,13 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
 
     const auto pathFlow = path->previousPathFlow();
     if (reservedAmount != pathFlow.first) {
-        path->shortageMaxFlow(reservedAmount);
         auto firstIntermediateNode = pathNodes[0];
         auto firstIntermediateNodeID = mContractorsManager->contractorIDByAddress(firstIntermediateNode);
         shortageReservationsOnPath(
             firstIntermediateNodeID,
             mCurrentAmountReservingPathIdentifier,
-            path->maxFlow());
-        debug() << "Path max flow is now " << path->maxFlow();
+            reservedAmount);
+        debug() << "Path max flow is now " << reservedAmount;
     }
 
     if (path->isLastIntermediateNodeProcessed()) {
@@ -2369,7 +2362,6 @@ void CoordinatorExchangePaymentTransaction::switchToNextPath()
                     *pathStats, remainingNeeded);
 
                 // Update path capacity
-                pathStats->shortageMaxFlow(truncatedInput);
                 pathStats->received_amount = remainingNeeded;
 
                 // Recalculate flows for reservation
@@ -2728,6 +2720,7 @@ void CoordinatorExchangePaymentTransaction::addPathForFurtherProcessing(
 
     // Step 4: Add to mPathsStats and mPathIDs
     pathCopy->calculateFlows(pathAmount);
+    pathCopy->mMaxPathFlow = pathResult.optimal_flow;
     mPathsStats[pathID] = std::move(pathCopy);
     mPathIDs.push_back(pathID);
 
@@ -2736,9 +2729,6 @@ void CoordinatorExchangePaymentTransaction::addPathForFurtherProcessing(
     debug() << "Path " << pathID << " " << mPathsStats[pathID]->path().toString();
     for (const auto &flow : mPathsStats[pathID]->flows) {
         debug() << "Flow: " << flow.first << ", Equivalent: " << flow.second;
-    }
-    for (const auto &nodeState : mPathsStats[pathID]->mIntermediateNodesStates) {
-        debug() << "Node state: " << nodeState;
     }
 }
 
