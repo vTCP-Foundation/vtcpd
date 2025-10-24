@@ -7,6 +7,10 @@
 #include "../../../rates/manager/CommissionsManager.h"
 #include "../../../network/messages/payments/FinalPathExchangeConfigurationMessage.h"
 
+#include <map>
+#include <optional>
+#include <set>
+
 class IntermediateNodeExchangePaymentTransaction : public BaseExchangePaymentTransaction
 {
 
@@ -83,6 +87,17 @@ protected:
 
     void sendErrorMessageOnFinalAmountsConfiguration();
 
+    // Sends CoordinatorReservationResponseMessage::RejectedDueConditionsChanged with optional actual values.
+    TransactionResult::SharedConst sendRejectedDueConditionsChanged(
+        const std::optional<ExchangeRate::Shared> &actualExchangeRate,
+        const std::optional<TrustLineAmount> &actualCommission);
+
+    // Answers whether the transaction may finish (no reservations and no stored context).
+    bool canCompleteTransaction() const;
+
+    // Clears context caches once all reservations are gone to keep state consistent.
+    void clearContextIfTransactionIdle();
+
 private:
     // message on which current transaction was started
     IntermediateNodeReservationRequestMessage::ConstShared mMessage;
@@ -93,6 +108,13 @@ private:
     PathID mLastProcessedPath;
     ExchangeRatesManager *mExchangeRatesManager;
     CommissionsManager *mCommissionsManager;
+
+    // Stores first-seen exchange rates for (incoming, outgoing) equivalent pairs.
+    std::map<std::pair<SerializedEquivalent, SerializedEquivalent>, ExchangeRate::Shared> mContextExchangeRates;
+    // Stores first-seen commissions keyed by equivalent to ensure single-charge semantics.
+    std::map<SerializedEquivalent, Commission::Shared> mContextCommissions;
+    // Tracks equivalents for which the commission was already charged in this payment.
+    std::set<SerializedEquivalent> mChargedCommissionEquivalents;
 };
 
 #endif //VTCPD_INTERMEDIATENODEEXCHANGEPAYMENTTRANSACTION_H

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <map>
 #include <set>
+#include <string>
 #include <boost/multiprecision/cpp_int.hpp>
 
 #include "../../../../common/exceptions/ValueError.h"
@@ -72,6 +73,42 @@ TrustLineAmount invertExchangeForRequiredInput(
 
     // Use ceiling division to favor higher incoming amount
     return ceilDivideToAmount(numerator, denominator);
+}
+
+// Helper function to apply exchange rate to incoming amount for forward conversion
+// Used by validation flow to predict coordinator's outgoing amount when an exchange rate exists.
+TrustLineAmount applyExchangeRateDirect(
+    const TrustLineAmount &inputAmount,
+    const TrustLineAmount &exchangeRate,
+    int16_t exchangeRateShift)
+{
+    cpp_int result = cpp_int(inputAmount) * cpp_int(exchangeRate);
+
+    if (exchangeRateShift > 0) {
+        result *= pow10(static_cast<size_t>(exchangeRateShift));
+    } else if (exchangeRateShift < 0) {
+        auto divisor = pow10(static_cast<size_t>(-exchangeRateShift));
+        if (divisor == 0) {
+            throw ValueError(
+                "IntermediateNodeExchangePaymentTransaction::applyExchangeRateDirect: "
+                "invalid divisor while applying negative shift");
+        }
+        result /= divisor;
+    }
+
+    if (result < 0) {
+        throw ValueError(
+            "IntermediateNodeExchangePaymentTransaction::applyExchangeRateDirect: "
+            "negative converted amount computed");
+    }
+
+    try {
+        return result.convert_to<TrustLineAmount>();
+    } catch (const std::exception &e) {
+        throw ValueError(
+            "IntermediateNodeExchangePaymentTransaction::applyExchangeRateDirect: "
+            "conversion overflow: " + std::string(e.what()));
+    }
 }
 
 }  // anonymous namespace
@@ -175,6 +212,10 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::run()
 
         case Stages::Common_Uncertain: {
             info() << "Uncertain stage";
+            clearContextIfTransactionIdle();
+            if (!canCompleteTransaction()) {
+                warning() << "Uncertain stage reached with pending reservations or context";
+            }
             return resultDone();
         }
 
@@ -357,6 +398,15 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runCo
     const auto &kReservation = kFinalAmounts[0];
     mLastProcessedPath = kReservation.pathID;
 
+    const auto expectedExchangeRate = kMessage->expectedExchangeRate();
+    const auto expectedCommission = kMessage->expectedCommission();
+
+    if (expectedExchangeRate.has_value() && expectedCommission.has_value()) {
+        error() << "Protocol violation: both exchange rate and commission provided in request";
+        return sendErrorMessageOnCoordinatorRequest(
+                   ResponseMessage::Rejected);
+    }
+
     debug() << "requested reservation amount is " << *kReservation.amount.get()
             << " on path " << kReservation.pathID
             << " equivalent " << kReservation.equivalent;
@@ -401,6 +451,226 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runCo
         warning() << "There are no contractor keys on TL";
         return sendErrorMessageOnCoordinatorRequest(
                    ResponseMessage::RejectedDueContractorKeysAbsence);
+    }
+
+    // Locate incoming reservation for the same path to validate conditions
+    AmountReservation::ConstShared incomingReservation = nullptr;
+    SerializedEquivalent incomingEquivalent = 0;
+    for (const auto &[contractorID, reservationsMap] : mReservations) {
+        for (const auto &[pathID, reservation] : reservationsMap) {
+            if (pathID == kReservation.pathID &&
+                reservation->direction() == AmountReservation::Incoming) {
+                incomingReservation = reservation;
+                incomingEquivalent = reservation->equivalent();
+                break;
+            }
+        }
+        if (incomingReservation) {
+            break;
+        }
+    }
+
+    if (!incomingReservation) {
+        error() << "Incoming reservation not found for path " << kReservation.pathID;
+        return sendErrorMessageOnCoordinatorRequest(
+                   ResponseMessage::Rejected);
+    }
+
+    const auto outgoingEquivalent = kReservation.equivalent;
+    const auto incomingAmount = incomingReservation->amount();
+    const TrustLineAmount requestedOutgoingAmount = *kReservation.amount.get();
+    const bool equivalentsDiffer = incomingEquivalent != outgoingEquivalent;
+    const auto rateKey = make_pair(incomingEquivalent, outgoingEquivalent);
+    const bool commissionAlreadyCharged =
+        mChargedCommissionEquivalents.find(incomingEquivalent) != mChargedCommissionEquivalents.end();
+
+    std::optional<ExchangeRate::Shared> actualExchangeRate;
+    std::optional<Commission::Shared> actualCommission;
+
+    if (expectedExchangeRate.has_value()) {
+        if (!equivalentsDiffer) {
+            warning() << "Exchange rate provided for identical equivalents";
+        }
+
+        auto contextIt = mContextExchangeRates.find(rateKey);
+        if (contextIt != mContextExchangeRates.end()) {
+            actualExchangeRate = contextIt->second;
+        } else if (equivalentsDiffer) {
+            auto rateFromManager = mExchangeRatesManager->get(
+                incomingEquivalent,
+                outgoingEquivalent);
+            if (rateFromManager != nullptr) {
+                mContextExchangeRates.emplace(rateKey, rateFromManager);
+                actualExchangeRate = rateFromManager;
+            }
+        }
+
+        if (!actualExchangeRate.has_value()) {
+            info() << "Exchange rate expected but not available for equivalents "
+                   << incomingEquivalent << " -> " << outgoingEquivalent;
+            return sendRejectedDueConditionsChanged(
+                       std::nullopt,
+                       std::nullopt);
+        }
+
+        const auto &expectedRate = expectedExchangeRate.value();
+        const auto &currentRate = actualExchangeRate.value();
+        if (currentRate->exchangeRate() != expectedRate.first ||
+            currentRate->exchangeRateShift() != expectedRate.second) {
+            info() << "Exchange rate mismatch on path " << kReservation.pathID
+                   << ": expected rate=" << expectedRate.first
+                   << " shift=" << expectedRate.second
+                   << ", actual rate=" << currentRate->exchangeRate()
+                   << " shift=" << currentRate->exchangeRateShift();
+            return sendRejectedDueConditionsChanged(
+                       actualExchangeRate,
+                       std::nullopt);
+        }
+    }
+
+    if (expectedCommission.has_value()) {
+        auto contextIt = mContextCommissions.find(incomingEquivalent);
+        if (contextIt != mContextCommissions.end()) {
+            actualCommission = contextIt->second;
+        } else {
+            auto commissionFromManager = mCommissionsManager->getCommission(incomingEquivalent);
+            if (commissionFromManager != nullptr) {
+                mContextCommissions.emplace(
+                    incomingEquivalent,
+                    commissionFromManager);
+                actualCommission = commissionFromManager;
+            }
+        }
+
+        if (!actualCommission.has_value()) {
+            info() << "Commission expected but not available for equivalent "
+                   << incomingEquivalent;
+            return sendRejectedDueConditionsChanged(
+                       std::nullopt,
+                       TrustLineAmount(0));
+        }
+
+        const auto expectedCommissionAmount = expectedCommission.value();
+        const auto actualCommissionAmount = actualCommission.value()->amount();
+        if (actualCommissionAmount != expectedCommissionAmount) {
+            info() << "Commission mismatch on path " << kReservation.pathID
+                   << ": expected=" << expectedCommissionAmount
+                   << ", actual=" << actualCommissionAmount;
+            return sendRejectedDueConditionsChanged(
+                       std::nullopt,
+                       TrustLineAmount(actualCommissionAmount));
+        }
+    }
+
+    if (!expectedExchangeRate.has_value() && equivalentsDiffer) {
+        ExchangeRate::Shared availableRate = nullptr;
+        auto contextIt = mContextExchangeRates.find(rateKey);
+        if (contextIt != mContextExchangeRates.end()) {
+            availableRate = contextIt->second;
+        } else {
+            auto rateFromManager = mExchangeRatesManager->get(
+                incomingEquivalent,
+                outgoingEquivalent);
+            if (rateFromManager != nullptr) {
+                mContextExchangeRates.emplace(rateKey, rateFromManager);
+                availableRate = rateFromManager;
+            }
+        }
+
+        if (availableRate != nullptr) {
+            info() << "Exchange rate exists on node but was not provided in request";
+            return sendRejectedDueConditionsChanged(
+                       availableRate,
+                       std::nullopt);
+        }
+    }
+
+    if (!expectedCommission.has_value() && !commissionAlreadyCharged) {
+        Commission::Shared availableCommission = nullptr;
+        auto contextIt = mContextCommissions.find(incomingEquivalent);
+        if (contextIt != mContextCommissions.end()) {
+            availableCommission = contextIt->second;
+        } else {
+            auto commissionFromManager = mCommissionsManager->getCommission(incomingEquivalent);
+            if (commissionFromManager != nullptr) {
+                mContextCommissions.emplace(
+                    incomingEquivalent,
+                    commissionFromManager);
+                availableCommission = commissionFromManager;
+            }
+        }
+
+        if (availableCommission != nullptr &&
+            availableCommission->amount() > TrustLineAmount(0)) {
+            info() << "Commission exists on node but was not provided in request";
+            return sendRejectedDueConditionsChanged(
+                       std::nullopt,
+                       TrustLineAmount(availableCommission->amount()));
+        }
+    }
+
+    // Validate outgoing reservation against incoming reservation according to current conditions
+    bool reservationValid = true;
+    if (!equivalentsDiffer) {
+        auto commissionIt = mContextCommissions.find(incomingEquivalent);
+        if (!commissionAlreadyCharged &&
+            commissionIt != mContextCommissions.end() &&
+            commissionIt->second != nullptr) {
+            const TrustLineAmount commissionAmount = commissionIt->second->amount();
+            TrustLineAmount expectedOutgoing = TrustLine::kZeroAmount();
+            if (incomingAmount >= commissionAmount) {
+                expectedOutgoing = incomingAmount - commissionAmount;
+            }
+
+            if (requestedOutgoingAmount != expectedOutgoing) {
+                warning() << "Outgoing amount " << requestedOutgoingAmount
+                          << " does not match incoming amount " << incomingAmount
+                          << " minus commission " << commissionAmount
+                          << " on path " << kReservation.pathID;
+                reservationValid = false;
+            }
+        } else {
+            if (requestedOutgoingAmount != incomingAmount) {
+                warning() << "Outgoing amount " << requestedOutgoingAmount
+                          << " does not match incoming amount " << incomingAmount
+                          << " on path " << kReservation.pathID;
+                reservationValid = false;
+            }
+        }
+    } else {
+        auto rateIt = mContextExchangeRates.find(rateKey);
+        if (rateIt == mContextExchangeRates.end() || rateIt->second == nullptr) {
+            error() << "Exchange rate missing in context for path " << kReservation.pathID;
+            reservationValid = false;
+        } else {
+            const auto &rate = rateIt->second;
+            if (rate->equivalentFrom() != incomingEquivalent ||
+                rate->equivalentTo() != outgoingEquivalent) {
+                warning() << "Exchange rate equivalents mismatch for path " << kReservation.pathID;
+            }
+
+            try {
+                const auto expectedOutgoing = applyExchangeRateDirect(
+                    incomingAmount,
+                    rate->exchangeRate(),
+                    rate->exchangeRateShift());
+
+                if (requestedOutgoingAmount != expectedOutgoing) {
+                    warning() << "Outgoing amount " << requestedOutgoingAmount
+                              << " does not match exchange conversion result "
+                              << expectedOutgoing << " on path " << kReservation.pathID;
+                    reservationValid = false;
+                }
+            } catch (const std::exception &e) {
+                error() << "Failed to calculate expected outgoing amount: " << e.what();
+                reservationValid = false;
+            }
+        }
+    }
+
+    if (!reservationValid) {
+        return sendErrorMessageOnCoordinatorRequest(
+                   ResponseMessage::Rejected);
     }
 
     const auto kOutgoingAmount = trustLines->outgoingTrustAmountConsideringReservations(nextNodeID);
@@ -546,91 +816,82 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runNe
 
     debug() << "Next node accepted amount reservation.";
 
-    if (kMessage->amountReserved() != mLastReservedAmount) {
-        shortageOutgoingReservationsOnPath(
-            kMessage->pathID(),
-            kMessage->equivalent(),
-            kMessage->amountReserved());
+    const PathID pathID = kMessage->pathID();
+    AmountReservation::ConstShared incomingReservation = nullptr;
+    SerializedEquivalent incomingEquivalent = 0;
 
-        // Calculate and adjust incoming reservation based on the reduced outgoing amount
-        // This ensures reservation balance is maintained across the intermediate node
-        const TrustLineAmount outgoingAmount = kMessage->amountReserved();
-        const SerializedEquivalent outgoingEquivalent = kMessage->equivalent();
-        const PathID pathID = kMessage->pathID();
-
-        // Find the incoming reservation for the same path
-        AmountReservation::ConstShared incomingReservation = nullptr;
-        SerializedEquivalent incomingEquivalent;
-
-        for (const auto &[contractorID, reservationsMap] : mReservations) {
-            for (const auto &[resPathID, reservation] : reservationsMap) {
-                if (resPathID == pathID &&
-                    reservation->direction() == AmountReservation::Incoming) {
-                    incomingReservation = reservation;
-                    incomingEquivalent = reservation->equivalent();
-                    break;
-                }
-            }
-            if (incomingReservation) {
+    for (const auto &[contractorID, reservationsMap] : mReservations) {
+        for (const auto &[resPathID, reservation] : reservationsMap) {
+            if (resPathID == pathID &&
+                reservation->direction() == AmountReservation::Incoming) {
+                incomingReservation = reservation;
+                incomingEquivalent = reservation->equivalent();
                 break;
             }
         }
-
-        if (!incomingReservation) {
-            error() << "Incoming reservation not found for pathID " << pathID;
-            return sendErrorMessageOnNextNodeResponse(
-                ResponseMessage::Rejected);
+        if (incomingReservation) {
+            break;
         }
+    }
 
-        // Calculate required incoming amount based on equivalents
+    if (!incomingReservation) {
+        error() << "Incoming reservation not found for pathID " << pathID;
+        return sendErrorMessageOnNextNodeResponse(
+            ResponseMessage::Rejected);
+    }
+
+    const SerializedEquivalent outgoingEquivalent = kMessage->equivalent();
+
+    if (kMessage->amountReserved() != mLastReservedAmount) {
+        shortageOutgoingReservationsOnPath(
+            pathID,
+            outgoingEquivalent,
+            kMessage->amountReserved());
+
+        const TrustLineAmount outgoingAmount = kMessage->amountReserved();
         TrustLineAmount incomingAmount;
 
         if (incomingEquivalent == outgoingEquivalent) {
-            // Same equivalent: check for commission
-            auto commission = mCommissionsManager->getCommission(incomingEquivalent);
+            auto commissionIt = mContextCommissions.find(incomingEquivalent);
+            const bool commissionPending =
+                commissionIt != mContextCommissions.end() &&
+                commissionIt->second != nullptr &&
+                commissionIt->second->amount() > TrustLineAmount(0) &&
+                mChargedCommissionEquivalents.find(incomingEquivalent) == mChargedCommissionEquivalents.end();
 
-            if (commission && commission->amount() > TrustLineAmount(0)) {
-                // Add commission to outgoing amount to get required incoming amount
-                incomingAmount = outgoingAmount + commission->amount();
+            if (commissionPending) {
+                incomingAmount = outgoingAmount + commissionIt->second->amount();
 
                 debug() << "Calculating incoming reservation with commission: "
                         << "outgoing=" << outgoingAmount
-                        << ", commission=" << commission->amount()
+                        << ", commission=" << commissionIt->second->amount()
                         << ", incoming=" << incomingAmount;
             } else {
-                // No commission: amounts are equal
                 incomingAmount = outgoingAmount;
 
-                debug() << "Calculating incoming reservation (no commission): "
+                debug() << "Calculating incoming reservation without commission adjustment: "
                         << "incoming=" << incomingAmount;
             }
         } else {
-            // Different equivalents: need to apply inverse exchange rate
-            auto exchangeRate = mExchangeRatesManager->get(incomingEquivalent, outgoingEquivalent);
-
-            if (!exchangeRate) {
-                error() << "Exchange rate not found for incoming calculation: "
+            auto rateIt = mContextExchangeRates.find(std::make_pair(incomingEquivalent, outgoingEquivalent));
+            if (rateIt == mContextExchangeRates.end() || rateIt->second == nullptr) {
+                error() << "Exchange rate missing in context for incoming calculation: "
                         << incomingEquivalent << " -> " << outgoingEquivalent;
                 return sendErrorMessageOnNextNodeResponse(
                     ResponseMessage::Rejected);
             }
 
-            // Calculate incoming amount using inverse exchange
-            // outgoingAmount = incomingAmount * rate * 10^shift
-            // incomingAmount = outgoingAmount / (rate * 10^shift)
-            // Use ceiling division to favor higher incoming (ensures outgoing is covered)
             try {
                 incomingAmount = invertExchangeForRequiredInput(
                     outgoingAmount,
-                    exchangeRate->exchangeRate(),
-                    exchangeRate->exchangeRateShift());
+                    rateIt->second->exchangeRate(),
+                    rateIt->second->exchangeRateShift());
 
-                debug() << "Calculating incoming reservation via exchange: "
+                debug() << "Calculating incoming reservation via context exchange rate: "
                         << "outgoing=" << outgoingAmount << " (equiv " << outgoingEquivalent << "), "
                         << "incoming=" << incomingAmount << " (equiv " << incomingEquivalent << "), "
-                        << "rate=" << exchangeRate->exchangeRate()
-                        << ", shift=" << exchangeRate->exchangeRateShift();
-
+                        << "rate=" << rateIt->second->exchangeRate()
+                        << ", shift=" << rateIt->second->exchangeRateShift();
             } catch (const std::exception &e) {
                 error() << "Error calculating incoming amount: " << e.what();
                 return sendErrorMessageOnNextNodeResponse(
@@ -638,7 +899,6 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runNe
             }
         }
 
-        // Update incoming reservation with calculated amount
         shortageIncomingReservationsOnPath(pathID, incomingEquivalent, incomingAmount);
 
         info() << "Incoming reservation adjusted: "
@@ -648,6 +908,15 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runNe
     }
 
     mLastReservedAmount = kMessage->amountReserved();
+
+    if (incomingEquivalent == outgoingEquivalent) {
+        auto commissionIt = mContextCommissions.find(incomingEquivalent);
+        if (commissionIt != mContextCommissions.end() &&
+            commissionIt->second != nullptr &&
+            commissionIt->second->amount() > TrustLineAmount(0)) {
+            mChargedCommissionEquivalents.insert(incomingEquivalent);
+        }
+    }
 
 #ifdef TESTS
     mSubsystemsController->testSleepOnNextNeighborResponseProcessingStage(
@@ -694,7 +963,8 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
         kMessage->outgoingAmount() == TrustLine::kZeroAmount()) {
         debug() << "Drop reservation message received";
         rollBack(kMessage->pathID());
-        if (mReservations.empty()) {
+        clearContextIfTransactionIdle();
+        if (canCompleteTransaction()) {
             debug() << "There are no reservations. Transaction closed.";
             return resultDone();
         }
@@ -1400,6 +1670,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::appro
     BaseExchangePaymentTransaction::approve();
     BaseExchangePaymentTransaction::runThreeNodesCyclesTransactions();
     BaseExchangePaymentTransaction::runFourNodesCyclesTransactions();
+    clearContextIfTransactionIdle();
     return resultDone();
 }
 
@@ -1431,8 +1702,11 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::sendE
         pathID,
         errorState);
     if (mReservations.empty()) {
-        debug() << "There are no reservations. Transaction closed.";
-        return resultDone();
+        clearContextIfTransactionIdle();
+        if (canCompleteTransaction()) {
+            debug() << "There are no reservations. Transaction closed.";
+            return resultDone();
+        }
     }
     mStep = Stages::IntermediateNode_ReservationProlongation;
     return resultWaitForMessageTypes( {
@@ -1454,7 +1728,8 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::sendE
         mLastProcessedPath,
         errorState);
     rollBack(mLastProcessedPath);
-    if (mReservations.empty()) {
+    clearContextIfTransactionIdle();
+    if (canCompleteTransaction()) {
         debug() << "There are no reservations. Transaction closed.";
         return resultDone();
     }
@@ -1478,7 +1753,8 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::sendE
         mLastProcessedPath,
         errorState);
     rollBack(mLastProcessedPath);
-    if (mReservations.empty()) {
+    clearContextIfTransactionIdle();
+    if (canCompleteTransaction()) {
         debug() << "There are no reservations. Transaction closed.";
         return resultDone();
     }
@@ -1499,6 +1775,96 @@ void IntermediateNodeExchangePaymentTransaction::sendErrorMessageOnFinalAmountsC
         mContractorsManager->ownAddresses(),
         mTransactionUUID,
         FinalAmountsConfigurationResponseMessage::Rejected);
+}
+
+TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::sendRejectedDueConditionsChanged(
+    const std::optional<ExchangeRate::Shared> &actualExchangeRate,
+    const std::optional<TrustLineAmount> &actualCommission)
+{
+    // Communicate the RejectedDueConditionsChanged status to the coordinator, echoing whichever
+    // actual condition (rate or commission) caused the rejection so the coordinator can react.
+    if (mCoordinator == nullptr) {
+        warning() << "Coordinator is unknown while sending RejectedDueConditionsChanged";
+        return resultDone();
+    }
+
+    auto senderAddresses = mContractorsManager->ownAddresses();
+
+    CoordinatorReservationResponseMessage::Shared response;
+    const bool hasExchangeRate = actualExchangeRate.has_value() && actualExchangeRate.value() != nullptr;
+    const bool hasCommission = actualCommission.has_value();
+
+    if (hasExchangeRate && hasCommission) {
+        warning() << "Both exchange rate and commission provided for rejection; using exchange rate only";
+    }
+
+    if (hasExchangeRate) {
+        response = make_shared<CoordinatorReservationResponseMessage>(
+            mEquivalent,
+            senderAddresses,
+            currentTransactionUUID(),
+            mLastProcessedPath,
+            ResponseMessage::RejectedDueConditionsChanged,
+            TrustLine::kZeroAmount(),
+            actualExchangeRate.value()->exchangeRate(),
+            actualExchangeRate.value()->exchangeRateShift());
+    } else if (hasCommission) {
+        response = make_shared<CoordinatorReservationResponseMessage>(
+            mEquivalent,
+            senderAddresses,
+            currentTransactionUUID(),
+            mLastProcessedPath,
+            ResponseMessage::RejectedDueConditionsChanged,
+            TrustLine::kZeroAmount(),
+            actualCommission.value());
+    } else {
+        response = make_shared<CoordinatorReservationResponseMessage>(
+            mEquivalent,
+            senderAddresses,
+            currentTransactionUUID(),
+            mLastProcessedPath,
+            ResponseMessage::RejectedDueConditionsChanged,
+            TrustLine::kZeroAmount());
+    }
+
+    sendMessage(
+        mCoordinator->mainAddress(),
+        response);
+
+    rollBack(mLastProcessedPath);
+    clearContextIfTransactionIdle();
+    if (canCompleteTransaction()) {
+        debug() << "There are no reservations. Transaction closed.";
+        return resultDone();
+    }
+
+    mStep = Stages::IntermediateNode_ReservationProlongation;
+    return resultWaitForMessageTypes( {
+        Message::Payments_FinalAmountsConfiguration,
+        Message::Payments_TransactionPublicKeyHash,
+        Message::Payments_IntermediateNodeReservationRequest,
+        Message::Payments_TTLProlongationResponse},
+    maxNetworkDelay((kMaxPathLength - 2) * 4));
+}
+
+bool IntermediateNodeExchangePaymentTransaction::canCompleteTransaction() const
+{
+    // Completion is possible only when reservations and cached context are both fully cleared.
+    return mReservations.empty()
+        && mContextExchangeRates.empty()
+        && mContextCommissions.empty()
+        && mChargedCommissionEquivalents.empty();
+}
+
+void IntermediateNodeExchangePaymentTransaction::clearContextIfTransactionIdle()
+{
+    // Drop cached context once all reservations disappear to prevent stale values on future paths.
+    if (!mReservations.empty()) {
+        return;
+    }
+    mContextExchangeRates.clear();
+    mContextCommissions.clear();
+    mChargedCommissionEquivalents.clear();
 }
 
 BaseAddress::Shared IntermediateNodeExchangePaymentTransaction::coordinatorAddress() const
