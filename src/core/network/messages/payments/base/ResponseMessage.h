@@ -16,7 +16,9 @@ public:
         RejectedDueAuditPending = 5,
         // used for immediately closing transaction
         Closed = 6,
-        NextNodeInaccessible = 7
+        NextNodeInaccessible = 7,
+        // New: rejection due to exchange rate or commission change during payment execution
+        RejectedDueConditionsChanged = 12
     };
 
 public:
