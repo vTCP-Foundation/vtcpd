@@ -271,6 +271,7 @@ protected:
             storage.get(),
             resourcesManager.get(),
             pathsManager.get(),
+            ratesManager.get(),
             keystore.get(),
             true, // isPaymentTransactionsAllowedDueToObserving
             eventsManager.get(),

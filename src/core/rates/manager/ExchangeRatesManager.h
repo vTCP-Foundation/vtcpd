@@ -58,13 +58,18 @@ public:
 
     vector<pair<ContractorID, ExchangeRate::Shared>> listExternalRates() const;
 
+    void removeExternal(
+        const ContractorID contractorID,
+        const SerializedEquivalent equivFrom,
+        const SerializedEquivalent equivTo);
+
     TrustLineAmount calculateConvertedAmount(
         const SerializedEquivalent equivFrom,
         const SerializedEquivalent equivTo,
         const TrustLineAmount &amountInEquivFrom) const;
 
     // Prints the contents of mExternalExchangeRates via debug() logger
-    void printExtqrnalRates() const;
+    void printExternalRates() const;
 
 private:
     void scheduleExpiryTimer();

@@ -91,16 +91,22 @@ const pair<BaseAddress::Shared, SerializedPositionInPath> OptimalPathResult::nex
         "no unprocessed nodes are left.");
 }
 
+const SerializedEquivalent OptimalPathResult::firstPathEquivalent() const
+{
+    if (flows.empty()) {
+        throw NotFoundError(
+            "OptimalPathResult::firstPathEquivalent: "
+            "no flows are present.");
+    }
+    return flows.front().second;
+}
+
 const SerializedEquivalent OptimalPathResult::currentPathEquivalent() const
 {
-    for (SerializedPositionInPath idx = 0; idx < mIntermediateNodesStates.size(); ++idx)
-        if (mIntermediateNodesStates[idx] != OptimalPathResult::ReservationApproved &&
-                mIntermediateNodesStates[idx] != OptimalPathResult::ReservationRejected)
-            return mPath.equivalents[idx];
-
-    throw NotFoundError(
-        "OptimalPathResult::currentPathEquivalent: "
-        "no unprocessed nodes are left.");
+    if (isLastIntermediateNodeProcessed()) {
+        return flows.back().second;
+    }
+    return currentPathFlow().second;
 }
 
 const pair<TrustLineAmount, SerializedEquivalent> OptimalPathResult::currentPathFlow() const
@@ -111,8 +117,7 @@ const pair<TrustLineAmount, SerializedEquivalent> OptimalPathResult::currentPath
             return flows[idx+1];
 
     throw NotFoundError(
-        "OptimalPathResult::currentPathFlow: "
-        "no unprocessed nodes are left.");
+        "OptimalPathResult::currentPathFlow: no unprocessed nodes are left.");
 }
 
 const pair<TrustLineAmount, SerializedEquivalent> OptimalPathResult::previousPathFlow() const

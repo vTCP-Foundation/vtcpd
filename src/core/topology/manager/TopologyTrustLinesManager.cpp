@@ -393,6 +393,20 @@ Commission::Shared TopologyTrustLinesManager::getCommission(
     return it->second.first;
 }
 
+void TopologyTrustLinesManager::removeCommission(
+    const ContractorID contractorID,
+    const SerializedEquivalent equivalent)
+{
+    auto key = make_pair(contractorID, equivalent);
+    auto it = mCommissionsCache.find(key);
+
+    if (it != mCommissionsCache.end()) {
+        mCommissionsCache.erase(it);
+        debug() << "Removed commission from cache for contractor " << contractorID
+                << " equivalent " << equivalent;
+    }
+}
+
 void TopologyTrustLinesManager::cleanupExpiredCommissions()
 {
     auto now = utc_now();

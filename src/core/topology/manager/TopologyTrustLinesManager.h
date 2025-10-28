@@ -82,6 +82,10 @@ public:
         const ContractorID contractorID,
         const SerializedEquivalent equivalent) const;
 
+    void removeCommission(
+        const ContractorID contractorID,
+        const SerializedEquivalent equivalent);
+
     void printCommissions() const;
 
 public:

@@ -1,5 +1,8 @@
 #include "CoordinatorExchangePaymentTransaction.h"
 #include "../../../network/messages/payments/FinalPathExchangeConfigurationMessage.h"
+#include "../../../rates/Commission.h"
+#include "../../../rates/ExchangeRate.h"
+#include "../../../rates/manager/ExchangeRatesManager.h"
 
 #include <map>
 #include <algorithm>
@@ -178,6 +181,7 @@ CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
     ExchangePathsManager *exchangePathsManager,
+    ExchangeRatesManager *exchangeRatesManager,
     Keystore *keystore,
     bool isPaymentTransactionsAllowedDueToObserving,
     EventsInterfaceManager *eventsInterfaceManager,
@@ -195,6 +199,7 @@ CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
         log,
         subsystemsController),
     mExchangePathsManager(exchangePathsManager),
+    mExchangeRatesManager(exchangeRatesManager),
     mCommand(command),
     mAmount(command->amount()),
     mCommandUUID(command->UUID()),
@@ -207,7 +212,9 @@ CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
     mDirectPathIsAlreadyProcessed(false),
     mIsAuditPendingPathsOccurred(false),
     mCountReceiverInaccessible(0),
-    mIsWaitingForExchangePathsResource(false)
+    mIsWaitingForExchangePathsResource(false),
+    mParticipantsKeysProblem(false),
+    mNeighborsKeysProblem(false)
 {
     mStep = Stages::Coordinator_Initialization;
     mContractor = make_shared<Contractor>(command->contractorAddresses());
@@ -684,7 +691,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runDirectA
     // todo : check if sender is really receiver
 
     // Get sender equivalent from path
-    const auto senderEquivalent = pathStats->mPath.equivalents.empty() ? mEquivalent : pathStats->mPath.equivalents.front();
+    const auto senderEquivalent = pathStats->currentPathEquivalent();
 
     if (kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueContractorKeysAbsence ||
             kMessage->state() == IntermediateNodeReservationResponseMessage::RejectedDueOwnKeysAbsence) {
@@ -1242,6 +1249,7 @@ void CoordinatorExchangePaymentTransaction::initAmountsReservationOnNextPath()
 
                 // Update path capacity
                 pathStats->received_amount = remainingNeeded;
+                pathStats->optimal_flow = truncatedInput;
 
                 // Recalculate flows for reservation
                 pathStats->calculateFlows(truncatedInput);
@@ -1310,7 +1318,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryReserve
     }
 
     // For exchange transactions, use sender equivalent from path (first equivalent)
-    const auto senderEquivalent = pathStats->mPath.equivalents.empty() ? mEquivalent : pathStats->mPath.equivalents.front();
+    const auto senderEquivalent = pathStats->currentPathEquivalent();
     auto senderTrustLines = trustLinesManager(senderEquivalent);
 
     if (!senderTrustLines->trustLineIsActive(receiverID)) {
@@ -1433,7 +1441,8 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
     debug() << "askNeighborToReserveAmount " << neighbor->fullAddress();
 
     // Get sender equivalent from path (first equivalent)
-    const auto senderEquivalent = path->currentPathEquivalent();
+    const auto senderEquivalent = path->firstPathEquivalent();
+    debug() << "Sender equivalent: " << senderEquivalent;
     auto senderTrustLines = trustLinesManager(senderEquivalent);
 
     auto neighborID = mContractorsManager->contractorIDByAddress(neighbor);
@@ -1533,6 +1542,9 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
         mTransactionUUID,
         reservations);
 
+    debug() << "Amount reservation request sent to the neighbor node (" << neighbor->fullAddress() << ") ["
+        << kReservationAmount << ", " << senderEquivalent << "])";
+
     return resultWaitForMessageTypes( {
         Message::Payments_IntermediateNodeReservationResponse,
         Message::Payments_TTLProlongationRequest,
@@ -1577,19 +1589,151 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
     }
     debug() << "Prepared for sending reservations size: " << reservations.size();
 
+    // Determine expected conditions for neighbor node
+    optional<pair<TrustLineAmount, int16_t>> expectedRate;
+    optional<TrustLineAmount> expectedCommission;
+
+    const auto &path = pathStats->path();
+
+    // IMPORTANT: path.nodes is deduplicated, but path.ids/path.equivalents can have duplicates for exchanges.
+    // Neighbor is the first intermediate node (position 0 in path.nodes).
+
+    // Use flows to determine incoming equivalent to neighbor
+    // For neighbor (first intermediate node), previousPathFlow() returns flows[0] which is the incoming flow
+    const auto incomingFlow = pathStats->previousPathFlow();
+    SerializedEquivalent incomingEquiv = incomingFlow.second;
+
+    debug() << "Neighbor " << neighbor->fullAddress()
+            << ", neighborPositionInPath=" << static_cast<int>(kFirstIntermediateNodeIndex)
+            << ", incoming equiv from flows=" << incomingEquiv;
+
+    // Build mapping from path.nodes indices to path.ids indices
+    // This simulates the deduplication process used in addPathForFurtherProcessing
+    vector<SerializedPositionInPath> nodeToIdsMapping;
+    ContractorID lastAddedID = 0; // sender
+
+    for (SerializedPositionInPath idx = 1; idx < path.ids.size(); ++idx) {
+        ContractorID currentID = path.ids[idx];
+        if (currentID == 0) continue; // skip sender if appears again
+
+        // Check if this is a consecutive duplicate (for in-place exchange)
+        bool isDuplicate = (currentID == lastAddedID);
+
+        if (!isDuplicate) {
+            // This position in path.ids corresponds to a new entry in path.nodes
+            nodeToIdsMapping.push_back(idx);
+            lastAddedID = currentID;
+        }
+    }
+
+    debug() << "Built nodeToIdsMapping with " << nodeToIdsMapping.size() << " entries";
+
+    // Map neighbor position (kFirstIntermediateNodeIndex = 0) to position in path.ids
+    SerializedPositionInPath positionInIds = 0;
+    bool foundPosition = false;
+
+    if (kFirstIntermediateNodeIndex < nodeToIdsMapping.size()) {
+        positionInIds = nodeToIdsMapping[kFirstIntermediateNodeIndex];
+        foundPosition = true;
+        debug() << "Mapped neighborPositionInPath=" << static_cast<int>(kFirstIntermediateNodeIndex)
+                << " to positionInIds=" << static_cast<int>(positionInIds)
+                << ", ids[" << positionInIds << "]=" << path.ids[positionInIds];
+    }
+
+    if (!foundPosition) {
+        warning() << "Could not find neighbor position in path.ids";
+        // Send request without expected conditions
+        sendMessage<CoordinatorReservationRequestMessage>(
+            neighbor,
+            pathFlow.second,
+            mContractorsManager->ownAddresses(),
+            mTransactionUUID,
+            reservations,
+            kNextAfterNeighborNode);
+
+        debug() << "Further amount reservation request sent to the node (" << neighbor->fullAddress() << ") ["
+                << pathFlow.first << ", " << pathFlow.second << "]"
+                << ", next node - (" << kNextAfterNeighborNode->fullAddress() << ")";
+
+        pathStats->setNodeState(
+            kFirstIntermediateNodeIndex,
+            OptimalPathResult::ReservationRequestSent);
+
+        return resultWaitForMessageTypes( {
+            Message::Payments_CoordinatorReservationResponse,
+            Message::Payments_TTLProlongationRequest},
+        maxNetworkDelay(4));
+    }
+
+    // Get outgoing equivalent at neighbor from path.equivalents
+    SerializedEquivalent outgoingEquiv = path.equivalents[positionInIds + 1];
+    // Get neighbor's ContractorID from path.ids
+    ContractorID neighborID = path.ids[positionInIds];
+
+    debug() << "Neighbor " << neighbor->fullAddress() << " at position "
+            << static_cast<int>(positionInIds) << " in path.ids"
+            << ", neighborID=" << neighborID
+            << ", incoming equiv=" << incomingEquiv
+            << ", outgoing equiv=" << outgoingEquiv;
+
+    // Check if neighbor is exchanger (different equivalents)
+    if (incomingEquiv != outgoingEquiv) {
+        // Neighbor is exchanger - find exchange rate
+        const auto *exchangeStep = findExchangeStep(
+            path, neighborID, incomingEquiv, outgoingEquiv);
+
+        if (exchangeStep) {
+            expectedRate = make_pair(exchangeStep->exchangeRate, exchangeStep->exchangeRateShift);
+            debug() << "Expected exchange rate: " << exchangeStep->exchangeRate
+                    << " * 10^" << exchangeStep->exchangeRateShift;
+        }
+    }
+    // Check if neighbor charges commission (same equivalent)
+    else {
+        const auto *commissionStep = findExchangeStep(
+            path, neighborID, incomingEquiv, incomingEquiv);
+
+        if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
+            expectedCommission = commissionStep->commission;
+            debug() << "Expected commission: " << commissionStep->commission;
+        }
+    }
+
 #ifdef TESTS
     mSubsystemsController->testForbidSendMessageToCoordinatorOnReservationStage(
         neighbor,
         pathFlow.first);
 #endif
 
-    sendMessage<CoordinatorReservationRequestMessage>(
-        neighbor,
-        pathFlow.second,
-        mContractorsManager->ownAddresses(),
-        mTransactionUUID,
-        reservations,
-        kNextAfterNeighborNode);
+    // Create request message with expected conditions
+    if (expectedRate) {
+        sendMessage<CoordinatorReservationRequestMessage>(
+            neighbor,
+            pathFlow.second,
+            mContractorsManager->ownAddresses(),
+            mTransactionUUID,
+            reservations,
+            kNextAfterNeighborNode,
+            expectedRate->first,
+            expectedRate->second);
+    } else if (expectedCommission) {
+        sendMessage<CoordinatorReservationRequestMessage>(
+            neighbor,
+            pathFlow.second,
+            mContractorsManager->ownAddresses(),
+            mTransactionUUID,
+            reservations,
+            kNextAfterNeighborNode,
+            *expectedCommission);
+    } else {
+        sendMessage<CoordinatorReservationRequestMessage>(
+            neighbor,
+            pathFlow.second,
+            mContractorsManager->ownAddresses(),
+            mTransactionUUID,
+            reservations,
+            kNextAfterNeighborNode);
+    }
 
     debug() << "Further amount reservation request sent to the node (" << neighbor->fullAddress() << ") ["
             << pathFlow.first << ", " << pathFlow.second << "]" 
@@ -1635,19 +1779,151 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askRemoteN
     // Get sender equivalent from path
     const auto senderEquivalent = pathFlow.second;
 
+    // Determine expected conditions for remote node
+    optional<pair<TrustLineAmount, int16_t>> expectedRate;
+    optional<TrustLineAmount> expectedCommission;
+
+    const auto &path = pathStats->path();
+
+    // IMPORTANT: remoteNodePositionInPath is an index into path.nodes (deduplicated array),
+    // but path.equivalents corresponds to path.ids (which can have duplicates for exchanges).
+
+    // Use flows to determine incoming equivalent to remote node
+    // previousPathFlow() returns the INCOMING flow to the current remote node
+    const auto incomingFlow = pathStats->previousPathFlow();
+    SerializedEquivalent incomingEquiv = incomingFlow.second;
+
+    debug() << "Remote node " << remoteNode->fullAddress()
+            << ", remoteNodePositionInPath=" << static_cast<int>(remoteNodePositionInPath)
+            << ", incoming equiv from flows=" << incomingEquiv;
+
+    // Build mapping from path.nodes indices to path.ids indices
+    // This simulates the deduplication process used in addPathForFurtherProcessing
+    vector<SerializedPositionInPath> nodeToIdsMapping;
+    ContractorID lastAddedID = 0; // sender
+
+    for (SerializedPositionInPath idx = 1; idx < path.ids.size(); ++idx) {
+        ContractorID currentID = path.ids[idx];
+        if (currentID == 0) continue; // skip sender if appears again
+
+        // Check if this is a consecutive duplicate (for in-place exchange)
+        bool isDuplicate = (currentID == lastAddedID);
+
+        if (!isDuplicate) {
+            // This position in path.ids corresponds to a new entry in path.nodes
+            nodeToIdsMapping.push_back(idx);
+            lastAddedID = currentID;
+        }
+    }
+
+    debug() << "Built nodeToIdsMapping with " << nodeToIdsMapping.size() << " entries";
+
+    // Map remoteNodePositionInPath to position in path.ids
+    SerializedPositionInPath positionInIds = 0;
+    bool foundPosition = false;
+
+    if (remoteNodePositionInPath < nodeToIdsMapping.size()) {
+        positionInIds = nodeToIdsMapping[remoteNodePositionInPath];
+        foundPosition = true;
+        debug() << "Mapped remoteNodePositionInPath=" << static_cast<int>(remoteNodePositionInPath)
+                << " to positionInIds=" << static_cast<int>(positionInIds)
+                << ", ids[" << positionInIds << "]=" << path.ids[positionInIds];
+    }
+
+    if (!foundPosition) {
+        warning() << "Could not find remote node position in path.ids";
+        // Send request without expected conditions
+        sendMessage<CoordinatorReservationRequestMessage>(
+            remoteNode,
+            senderEquivalent,
+            mContractorsManager->ownAddresses(),
+            mTransactionUUID,
+            reservations,
+            nextAfterRemoteNode);
+
+        pathStats->setNodeState(
+            remoteNodePositionInPath,
+            OptimalPathResult::ReservationRequestSent);
+
+        debug() << "Further amount reservation request sent to the node (" << remoteNode->fullAddress() << ") ["
+                << pathFlow.first << ", " << pathFlow.second << "]"
+                << ", next node - (" << nextAfterRemoteNode->fullAddress() << ")]";
+
+        return resultWaitForMessageTypes( {
+            Message::Payments_CoordinatorReservationResponse,
+            Message::Payments_TTLProlongationRequest},
+        maxNetworkDelay(4));
+    }
+
+    // Get outgoing equivalent at remote node from path.equivalents
+    SerializedEquivalent outgoingEquiv = path.equivalents[positionInIds + 1];
+    // Get remote node's ContractorID from path.ids
+    ContractorID remoteNodeID = path.ids[positionInIds];
+
+    debug() << "Remote node " << remoteNode->fullAddress() << " at position "
+            << static_cast<int>(positionInIds) << " in path.ids"
+            << ", remoteNodeID=" << remoteNodeID
+            << ", incoming equiv=" << incomingEquiv
+            << ", outgoing equiv=" << outgoingEquiv;
+
+    // Check if node is exchanger (different equivalents at same node ID)
+    if (incomingEquiv != outgoingEquiv) {
+        // Node is exchanger - find exchange rate
+        const auto *exchangeStep = findExchangeStep(
+            path, remoteNodeID, incomingEquiv, outgoingEquiv);
+
+        if (exchangeStep) {
+            expectedRate = make_pair(exchangeStep->exchangeRate, exchangeStep->exchangeRateShift);
+            debug() << "Expected exchange rate: " << exchangeStep->exchangeRate
+                    << " * 10^" << exchangeStep->exchangeRateShift;
+        }
+    }
+    // Check if node charges commission (same equivalent, commission present)
+    else {
+        const auto *commissionStep = findExchangeStep(
+            path, remoteNodeID, incomingEquiv, incomingEquiv);
+
+        if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
+            expectedCommission = commissionStep->commission;
+            debug() << "Expected commission: " << commissionStep->commission;
+        }
+    }
+
 #ifdef TESTS
     mSubsystemsController->testForbidSendMessageToCoordinatorOnReservationStage(
         remoteNode,
         pathFlow.first);
 #endif
 
-    sendMessage<CoordinatorReservationRequestMessage>(
-        remoteNode,
-        senderEquivalent,
-        mContractorsManager->ownAddresses(),
-        mTransactionUUID,
-        reservations,
-        nextAfterRemoteNode);
+    // Create request message with expected conditions
+    if (expectedRate) {
+        sendMessage<CoordinatorReservationRequestMessage>(
+            remoteNode,
+            senderEquivalent,
+            mContractorsManager->ownAddresses(),
+            mTransactionUUID,
+            reservations,
+            nextAfterRemoteNode,
+            expectedRate->first,
+            expectedRate->second);
+    } else if (expectedCommission) {
+        sendMessage<CoordinatorReservationRequestMessage>(
+            remoteNode,
+            senderEquivalent,
+            mContractorsManager->ownAddresses(),
+            mTransactionUUID,
+            reservations,
+            nextAfterRemoteNode,
+            *expectedCommission);
+    } else {
+        sendMessage<CoordinatorReservationRequestMessage>(
+            remoteNode,
+            senderEquivalent,
+            mContractorsManager->ownAddresses(),
+            mTransactionUUID,
+            reservations,
+            nextAfterRemoteNode);
+    }
 
     pathStats->setNodeState(
         remoteNodePositionInPath,
@@ -1723,7 +1999,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
 
     // Get sender equivalent from current path
     const auto kPathStats = currentAmountReservationPathStats();
-    const auto senderEquivalent = kPathStats->mPath.equivalents.empty() ? mEquivalent : kPathStats->mPath.equivalents.front();
+    const auto senderEquivalent = kPathStats->currentPathEquivalent();
     auto senderTrustLines = trustLinesManager(senderEquivalent);
 
     if (message->state() == IntermediateNodeReservationResponseMessage::Closed) {
@@ -1958,6 +2234,21 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
         return tryProcessNextPath();
     }
 
+    // Handle condition change rejection (exchange rate or commission mismatch)
+    if (message->state() == CoordinatorReservationResponseMessage::RejectedDueConditionsChanged) {
+        info() << "Condition change detected from neighbor on pathID=" << mCurrentAmountReservingPathIdentifier;
+
+        // Extract actual conditions from response
+        auto actualExchangeRate = message->actualExchangeRate();
+        auto actualCommission = message->actualCommission();
+
+        // Handle the condition change
+        return handleConditionChange(
+            mCurrentAmountReservingPathIdentifier,
+            actualExchangeRate,
+            actualCommission);
+    }
+
     if (message->state() != CoordinatorReservationResponseMessage::Accepted) {
         return reject("Unexpected message state. Protocol error. Transaction closed.");
     }
@@ -2012,7 +2303,9 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
     if (path->isLastIntermediateNodeProcessed()) {
 
         // Get sender equivalent to check total reserved amount
-        const auto senderEquivalent = path->mPath.equivalents.empty() ? mEquivalent : path->mPath.equivalents.front();
+        // TODO: we should take first path equivalent, because it is the one that was used to reserve the amount
+        // but if we will have more than one exchangeEquivalent, we should change this logic
+        const auto senderEquivalent = path->currentPathEquivalent();
         const auto kTotalAmount = totalReservedAmount(
                                       AmountReservation::Outgoing, senderEquivalent);
 
@@ -2139,37 +2432,11 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
      * Nodes scheme:
      * R - remote node;
      */
-
     if (static_cast<size_t>(remoteNodeAndPos.second + 1) >= pathNodes.size()) {
         warning() << "Invalid path position for next node";
         return tryProcessNextPath();
     }
     auto nextAfterRemoteNode = pathNodes[remoteNodeAndPos.second + 1];
-
-    if (0 == message->amountReserved() || message->state() == CoordinatorReservationResponseMessage::Rejected) {
-        warning() << "Remote node rejected reservation. Switching to another path.";
-        dropReservationsOnPath(
-            currentAmountReservationPathStats(),
-            mCurrentAmountReservingPathIdentifier);
-        // processed trustLine was rejected, we add it to Rejected TrustLines
-        mRejectedTrustLines.emplace_back(
-            remoteNodeAndPos.first,
-            nextAfterRemoteNode);
-        // sending message to receiver that transaction continues
-        sendMessage<TTLProlongationResponseMessage>(
-            mContractor->mainAddress(),
-            mEquivalent,
-            mContractorsManager->ownAddresses(),
-            currentTransactionUUID(),
-            TTLProlongationResponseMessage::Continue);
-
-        path->setUnusable();
-        path->setNodeState(
-            remoteNodeAndPos.second,
-            OptimalPathResult::ReservationRejected);
-
-        return tryProcessNextPath();
-    }
 
     if (message->state() == CoordinatorReservationResponseMessage::RejectedDueOwnKeysAbsence or
             message->state() == CoordinatorReservationResponseMessage::RejectedDueContractorKeysAbsence) {
@@ -2210,6 +2477,46 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
         return tryProcessNextPath();
     }
 
+    // Handle condition change rejection (exchange rate or commission mismatch)
+    if (message->state() == CoordinatorReservationResponseMessage::RejectedDueConditionsChanged) {
+        info() << "Condition change detected from remote node on pathID=" << mCurrentAmountReservingPathIdentifier;
+
+        // Extract actual conditions from response
+        auto actualExchangeRate = message->actualExchangeRate();
+        auto actualCommission = message->actualCommission();
+
+        // Handle the condition change
+        return handleConditionChange(
+            mCurrentAmountReservingPathIdentifier,
+            actualExchangeRate,
+            actualCommission);
+    }
+
+    if (0 == message->amountReserved() || message->state() == CoordinatorReservationResponseMessage::Rejected) {
+        warning() << "Remote node rejected reservation. Switching to another path.";
+        dropReservationsOnPath(
+            currentAmountReservationPathStats(),
+            mCurrentAmountReservingPathIdentifier);
+        // processed trustLine was rejected, we add it to Rejected TrustLines
+        mRejectedTrustLines.emplace_back(
+            remoteNodeAndPos.first,
+            nextAfterRemoteNode);
+        // sending message to receiver that transaction continues
+        sendMessage<TTLProlongationResponseMessage>(
+            mContractor->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID(),
+            TTLProlongationResponseMessage::Continue);
+
+        path->setUnusable();
+        path->setNodeState(
+            remoteNodeAndPos.second,
+            OptimalPathResult::ReservationRejected);
+
+        return tryProcessNextPath();
+    }
+
     if (message->state() != CoordinatorReservationResponseMessage::Accepted) {
         return reject("Unexpected message state. Protocol error. Transaction closed.");
     }
@@ -2238,7 +2545,9 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
     if (path->isLastIntermediateNodeProcessed()) {
 
         // Get sender equivalent from path to check total reserved amount
-        const auto senderEquivalent = path->mPath.equivalents.empty() ? mEquivalent : path->mPath.equivalents.front();
+        // TODO: we should take first path equivalent, because it is the one that was used to reserve the amount
+        // but if we will have more than one exchangeEquivalent, we should change this logic
+        const auto senderEquivalent = path->currentPathEquivalent();
         const auto kTotalAmount = totalReservedAmount(
                                       AmountReservation::Outgoing, senderEquivalent);
 
@@ -2287,8 +2596,37 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryProcess
 {
     debug() << "tryProcessNextPath";
 
+    // Check if more capacity needed before taking next path
+    TrustLineAmount totalReserved = calculateTotalReservedAmount();
+    if (totalReserved > mAmount) {
+        debug() << "Total amount: " << mAmount;
+        return reject("Total collected amount is greater than amount. "
+                      "It indicates that some of the nodes doesn't follows the protocol, "
+                      "or that an error is present in protocol itself.");
+    }
+    if (totalReserved == mAmount) {
+        // Sufficient capacity reserved, no more paths needed
+        info() << "Path filtering: sufficient capacity already reserved ("
+               << totalReserved << " >= " << mAmount << "), proceeding to next stage";
+
+        // Request observing block number resource and transition to next stage
+        mResourcesManager->requestObservingBlockNumber(mTransactionUUID);
+        mStep = Stages::Common_ObservingBlockNumberProcessing;
+
+        return resultWaitForResourceTypes(
+            {BaseResource::ObservingBlockNumber},
+            maxNetworkDelay(1));
+    }
+
     // Switch to next path
-    switchToNextPath();
+    try {
+        switchToNextPath();
+    } catch (NotFoundError &e) {
+        debug() << "No another paths are available. Try build new paths.";
+        // TODO: we should build new paths here
+        reject("No another paths are available. Canceling.");
+        return resultInsufficientFundsError();
+    }
 
     // Continue with next path
     mStep = Stages::Coordinator_AmountReservation;
@@ -2313,18 +2651,6 @@ void CoordinatorExchangePaymentTransaction::switchToNextPath()
 
     // Step 1: Check if more capacity needed before taking next path
     TrustLineAmount totalReserved = calculateTotalReservedAmount();
-    if (totalReserved >= mAmount) {
-        // Sufficient capacity reserved, no more paths needed
-        info() << "Path filtering: sufficient capacity already reserved ("
-               << totalReserved << " >= " << mAmount << "), proceeding to next stage";
-
-        // Request observing block number resource and transition to next stage
-        mResourcesManager->requestObservingBlockNumber(mTransactionUUID);
-        mStep = Stages::Common_ObservingBlockNumberProcessing;
-
-        throw CallChainBreakException("Sufficient capacity reserved, proceeding to next stage");
-    }
-
     TrustLineAmount remainingNeeded = mAmount - totalReserved;
     debug() << "Path filtering: remaining needed = " << remainingNeeded
             << " (total reserved: " << totalReserved << ", target: " << mAmount << ")";
@@ -2362,13 +2688,14 @@ void CoordinatorExchangePaymentTransaction::switchToNextPath()
                     *pathStats, remainingNeeded);
 
                 // Update path capacity
+                pathStats->optimal_flow = truncatedInput;
                 pathStats->received_amount = remainingNeeded;
 
                 // Recalculate flows for reservation
                 pathStats->calculateFlows(truncatedInput);
 
-                info() << "Path capacity truncated: input=" << truncatedInput
-                       << ", output=" << remainingNeeded;
+                info() << "Path capacity truncated: input=" << pathStats->optimal_flow
+                       << ", output=" << pathStats->received_amount;
 
             } catch (const std::exception &e) {
                 // Truncation calculation failed, skip this path and try next
@@ -2507,7 +2834,7 @@ void CoordinatorExchangePaymentTransaction::shortageReservationsOnPath(
     }
 
     // Step 4: Update ALL path statistics fields
-    pathStats->mMaxPathFlow = kNewAmount;
+    // pathStats->mMaxPathFlow = kNewAmount; // TODO: remove this
     pathStats->optimal_flow = kNewAmount;
     pathStats->received_amount = newReceivedAmount;
 
@@ -2554,8 +2881,11 @@ void CoordinatorExchangePaymentTransaction::dropReservationsOnPath(
         return;
     }
 
-    // Get equivalent from path
-    const auto senderEquivalent = pathStats->mPath.equivalents.empty() ? mEquivalent : pathStats->mPath.equivalents.front();
+    // Determine equivalences based on precomputed flows
+    const auto &pathFlows = pathStats->flows;
+    const auto senderEquivalent = pathFlows.empty()
+        ? mEquivalent
+        : pathFlows.front().second;
     auto senderTrustLines = trustLinesManager(senderEquivalent);
 
     auto itPathIDAndReservation = nodeReservations->second.begin();
@@ -2588,12 +2918,16 @@ void CoordinatorExchangePaymentTransaction::dropReservationsOnPath(
         const auto lastProcessedNodeAndPos = pathStats->currentIntermediateNodeAndPos();
         const auto lastProcessedNode = lastProcessedNodeAndPos.first;
 
-        // Determine equivalents from path based on node position
+        // Determine flows-based equivalents for all nodes on path
         const auto &pathNodes = pathStats->path().nodes;
-        const auto &pathEquivalents = pathStats->mPath.equivalents;
 
-        if (pathEquivalents.size() != pathNodes.size()) {
-            warning() << "Path equivalents size mismatch: " << pathEquivalents.size()
+        if (pathFlows.empty()) {
+            warning() << "Path has no flows, cannot drop reservations";
+            return;
+        }
+
+        if (pathFlows.size() != pathNodes.size()) {
+            warning() << "Path flows size mismatch: " << pathFlows.size()
                       << " vs nodes size: " << pathNodes.size();
             return;
         }
@@ -2605,10 +2939,12 @@ void CoordinatorExchangePaymentTransaction::dropReservationsOnPath(
                 break;
             }
 
-            // Determine incoming and outgoing equivalents based on node position
-            SerializedEquivalent incomingEquivalent =
-                (nodeIdx > 0) ? pathEquivalents[nodeIdx - 1] : senderEquivalent;
-            SerializedEquivalent outgoingEquivalent = pathEquivalents[nodeIdx];
+            // Determine incoming and outgoing equivalents using flows
+            SerializedEquivalent incomingEquivalent = pathFlows[nodeIdx].second;
+            SerializedEquivalent outgoingEquivalent =
+                (nodeIdx + 1 < pathFlows.size())
+                    ? pathFlows[nodeIdx + 1].second
+                    : incomingEquivalent;
 
             debug() << "send message with drop reservation info for node "
                     << intermediateNode->fullAddress()
@@ -2683,7 +3019,6 @@ void CoordinatorExchangePaymentTransaction::addPathForFurtherProcessing(
     // Skip consecutive duplicates
     size_t pathLength = pathResult.mPath.ids.size();
     pathCopy->mPath.nodes.clear();
-    // pathCopy->mPath.nodes.reserve(pathLength);
 
     for (const auto& contractorID : pathResult.mPath.ids) {
         // skip self contractor
@@ -3057,8 +3392,7 @@ void CoordinatorExchangePaymentTransaction::sendFinalPathConfiguration(
 {
     debug() << "sendFinalPathConfiguration";
 
-    // Determine the sender equivalent (first equivalent in the path, or use mExchangeEquivalent as fallback)
-    const auto senderEquivalent = pathStats->mPath.equivalents.empty() ? mExchangeEquivalent : pathStats->mPath.equivalents.front();
+    const auto senderEquivalent = pathStats->currentPathEquivalent();
 
 #ifdef TESTS
     mSubsystemsController->testForbidSendMessageWithFinalPathConfiguration(
@@ -3145,7 +3479,7 @@ TrustLineAmount CoordinatorExchangePaymentTransaction::calculateTotalReservedAmo
             // For direct paths, mIntermediateNodesStates is empty, so we check differently
             // In this case, we consider path reserved when maxFlow > 0 and path is valid
             // (reservation would have been confirmed during processing)
-            isReserved = (pathStats->mMaxPathFlow > TrustLineAmount(0));
+            isReserved = (pathStats->optimal_flow > TrustLineAmount(0));
         }
 
         if (isReserved) {
@@ -3222,6 +3556,555 @@ bool CoordinatorExchangePaymentTransaction::validatePathForProcessing(
     }
 
     return true;  // Path is valid
+}
+
+/**
+ * Handles condition changes (exchange rate or commission mismatch) detected during payment path reservation.
+ *
+ * This method is invoked when an intermediate node reports different exchange rate or commission values
+ * than what the coordinator expected based on cached information. The method performs several operations:
+ *
+ * 1. Identifies the affected node and its position(s) in the path
+ * 2. Updates the appropriate caches:
+ *    - ExchangeRatesManager for exchange rates (mExternalExchangeRates)
+ *    - TopologyTrustLinesManager for commissions (mCommissionsCache)
+ * 3. Drops all reservations on the affected path
+ * 4. Marks the original path as unusable
+ * 5. Creates a new path with updated conditions and recalculated flows
+ * 6. Inserts the new path into mPathsStats and mPathIDs for processing
+ *
+ * Path structure considerations:
+ * - path.ids may contain duplicate node IDs for in-place exchanges (e.g., [0, 5, 5, 3] where node 5 exchanges)
+ * - path.nodes contains unique node addresses (deduplicated)
+ * - For exchange nodes: first occurrence is incoming side, second is outgoing side
+ * - Commission is charged after exchange (at the second occurrence if node is exchanger)
+ *
+ * @param pathID The identifier of the payment path where condition change was detected
+ * @param actualExchangeRate The actual exchange rate reported by node (mantissa, exponent).
+ *                          If nullopt: rate is no longer available, remove from cache and skip path reconstruction
+ *                          If has_value: update cache and use this rate for new path
+ * @param actualCommission The actual commission reported by node.
+ *                        If nullopt: commission not provided (not changed, skip commission update)
+ *                        If zero: remove commission from cache
+ *                        If non-zero: update cache with this commission value
+ * @return TransactionResult indicating whether to continue with next path or terminate transaction
+ */
+TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleConditionChange(
+    const PathID &pathID,
+    const optional<pair<TrustLineAmount, int16_t>> &actualExchangeRate,
+    const optional<TrustLineAmount> &actualCommission)
+{
+    debug() << "handleConditionChange for pathID=" << pathID;
+
+    // Step 1: Get path stats
+    auto pathStatsIt = mPathsStats.find(pathID);
+    if (pathStatsIt == mPathsStats.end()) {
+        warning() << "Path not found for pathID=" << pathID;
+        return tryProcessNextPath();
+    }
+
+    OptimalPathResult *pathStats = pathStatsIt->second.get();
+
+    // Determine which node triggered the rejection
+    // affectedNodePosition is index in mPath.intermediates() (intermediate nodes vector)
+    auto nodeAndPos = pathStats->currentIntermediateNodeAndPos();
+    SerializedPositionInPath intermediateNodeIndex = nodeAndPos.second;
+    BaseAddress::Shared affectedNodeAddress = nodeAndPos.first;
+
+    const auto &path = pathStats->path();
+
+    // Get affected node ID by searching path.ids for the node that matches affectedNodeAddress
+    // We can't use path.ids[intermediateNodeIndex + 1] because path.nodes is deduplicated
+    // while path.ids may have duplicates for in-place exchanges
+    ContractorID affectedNodeID = 0;
+    for (SerializedPositionInPath idx = 1; idx < path.ids.size(); ++idx) {
+        ContractorID nodeID = path.ids[idx];
+        if (nodeID == 0) continue;  // Skip sender
+
+        auto nodeAddress = mEquivalentsSubsystemsRouter->getParticipantAddress(nodeID);
+        if (nodeAddress && nodeAddress->fullAddress() == affectedNodeAddress->fullAddress()) {
+            affectedNodeID = nodeID;
+            break;
+        }
+    }
+
+    if (affectedNodeID == 0) {
+        error() << "Could not find affected node ID for address " << affectedNodeAddress->fullAddress();
+        return tryProcessNextPath();
+    }
+
+    debug() << "Affected intermediate node index=" << static_cast<int>(intermediateNodeIndex)
+            << ", address=" << affectedNodeAddress->fullAddress()
+            << ", nodeID=" << affectedNodeID;
+
+    // Find the position(s) in path.ids/equivalents where this node performs exchange/commission
+    // path.ids may have duplicates for in-place exchanges (same nodeID appears twice)
+    SerializedPositionInPath affectedPositionInPath = 0;
+    SerializedPositionInPath exchangePositionInPath = 0;
+    SerializedPositionInPath commissionPositionInPath = 0;
+    bool foundPosition = false;
+    bool foundExchangePosition = false;
+    bool foundCommissionPosition = false;
+
+    // Search for the node in path.ids considering it might be duplicated for exchange
+    for (SerializedPositionInPath idx = 0; idx < path.ids.size(); ++idx) {
+        if (path.ids[idx] == affectedNodeID) {
+            // Check if this is an exchange position (same ID at idx and idx+1)
+            if (idx + 1 < path.ids.size() && path.ids[idx + 1] == affectedNodeID) {
+                // This is an in-place exchange at positions [idx, idx+1]
+                // Always set exchange position when node appears twice (even if rate is nullopt - for deletion)
+                exchangePositionInPath = idx;
+                affectedPositionInPath = idx;
+                foundExchangePosition = true;
+                foundPosition = true;
+
+                // If node also has commission, it's charged AFTER the exchange (at idx+1)
+                if (actualCommission) {
+                    commissionPositionInPath = idx + 1;
+                    affectedPositionInPath = idx + 1;  // For commission storage use outgoing equivalent
+                    foundCommissionPosition = true;
+                }
+                break;  // Found duplicate - this is the exchanger
+            }
+            // This position is for commission only (node appears once, no exchange)
+            if (actualCommission && !foundCommissionPosition) {
+                commissionPositionInPath = idx;
+                affectedPositionInPath = idx;
+                foundCommissionPosition = true;
+                foundPosition = true;
+            }
+        }
+    }
+
+    if (!foundPosition) {
+        error() << "Could not find affected node position in path.ids";
+        return tryProcessNextPath();
+    }
+
+    debug() << "Affected position in path.ids=" << static_cast<int>(affectedPositionInPath)
+            << ", exchangePosition=" << static_cast<int>(exchangePositionInPath)
+            << ", commissionPosition=" << static_cast<int>(commissionPositionInPath);
+
+    // Step 2: Update ExchangeRatesManager.mExternalExchangeRates and TopologyTrustLinesManager.mCommissionsCache (R5, R6)
+    if (foundExchangePosition && exchangePositionInPath + 1 < path.equivalents.size()) {
+        SerializedEquivalent incomingEquiv = path.equivalents[exchangePositionInPath];
+        SerializedEquivalent outgoingEquiv = path.equivalents[exchangePositionInPath + 1];
+
+        if (actualExchangeRate) {
+            // Update ExchangeRatesManager.mExternalExchangeRates (R5)
+            // Store as external rate from affected node, don't update TTL
+            try {
+                // Create ExchangeRate object with current timestamp as expiry (won't be used since we don't update TTL)
+                auto now = utc_now();
+                auto expiryTime = now + boost::posix_time::milliseconds(300000);  // 5 minutes TTL
+                ExchangeRate rate(
+                    incomingEquiv,
+                    outgoingEquiv,
+                    actualExchangeRate->first,
+                    actualExchangeRate->second,
+                    expiryTime,
+                    TrustLineAmount(0),  // minExchangeAmount - not provided in response
+                    TrustLineAmount(0)); // maxExchangeAmount - not provided in response
+
+                mExchangeRatesManager->addOrUpdateExternal(
+                    affectedNodeID,
+                    rate);
+
+                info() << "Stored external exchange rate from contractor " << affectedNodeID
+                       << ": " << incomingEquiv << "->" << outgoingEquiv
+                       << " = " << actualExchangeRate->first << " * 10^" << actualExchangeRate->second;
+            } catch (const exception &e) {
+                error() << "Failed to store external exchange rate: " << e.what();
+            }
+        } else {
+            // Exchange rate is no longer available - remove from cache
+            try {
+                mExchangeRatesManager->removeExternal(
+                    affectedNodeID,
+                    incomingEquiv,
+                    outgoingEquiv);
+
+                info() << "Removed external exchange rate from contractor " << affectedNodeID
+                       << " (" << incomingEquiv << "->" << outgoingEquiv << ") - rate no longer available";
+            } catch (const exception &e) {
+                error() << "Failed to remove external exchange rate: " << e.what();
+            }
+        }
+    }
+
+    if (actualCommission && foundCommissionPosition &&
+        commissionPositionInPath < path.equivalents.size()) {
+        // Commission is on the equivalent at the commission position (after exchange if node is exchanger)
+        SerializedEquivalent equivalent = path.equivalents[commissionPositionInPath];
+
+        // Update TopologyTrustLinesManager.mCommissionsCache via EquivalentsSubsystemsRouter (R6)
+        // Don't update TTL
+        try {
+            auto topologyTrustLineManager = mEquivalentsSubsystemsRouter->topologyTrustLineManager(equivalent);
+            if (!topologyTrustLineManager) {
+                error() << "TopologyTrustLinesManager not found for equivalent " << equivalent;
+            } else {
+                if (*actualCommission > TrustLineAmount(0)) {
+                    // Create Commission object
+                    uint64_t commissionValue = static_cast<uint64_t>(*actualCommission);
+                    auto commissionShared = make_shared<Commission>(commissionValue);
+
+                    topologyTrustLineManager->storeCommission(
+                        affectedNodeID,
+                        equivalent,
+                        commissionShared);
+
+                    info() << "Stored commission in cache for contractor " << affectedNodeID
+                           << ", eq=" << equivalent
+                           << ", commission=" << *actualCommission;
+                } else {
+                    // Zero commission received - remove existing commission from cache
+                    topologyTrustLineManager->removeCommission(affectedNodeID, equivalent);
+                    info() << "Removed commission from cache for contractor " << affectedNodeID
+                           << ", eq=" << equivalent << " (zero commission received)";
+                }
+            }
+        } catch (const exception &e) {
+            error() << "Failed to store commission in cache: " << e.what();
+        }
+    }
+
+    // Step 3: Drop reservations on this path
+    debug() << "Dropping reservations on invalidated path " << pathID;
+    dropReservationsOnPath(pathStats, pathID, /* sendToLastProcessedNode */ false);
+
+    // Step 4: Mark path unusable
+    pathStats->setUnusable();
+    info() << "Marked path " << pathID << " as unusable due to condition change";
+
+    // Step 4.5: Check if path can be reconstructed
+    // If exchange rate is no longer available (nullopt) for an exchange node, we cannot create a new path
+    if (foundExchangePosition && !actualExchangeRate) {
+        error() << "Cannot create new path: exchange rate no longer available for contractor "
+                << affectedNodeID;
+        // Try to process next path instead of creating impossible path
+        return tryProcessNextPath();
+    }
+
+    // Step 5: Update or add exchangeSteps in path with actual values
+    ExchangePath updatedPath = path;  // Copy original path
+
+    bool foundExchangeStep = false;
+    bool foundCommissionStep = false;
+
+    // First, try to update existing exchangeSteps
+    for (auto &step : updatedPath.exchangeSteps) {
+        // Check if this is the affected node's exchange step
+        if (step.nodeID == affectedNodeID) {
+            // Update exchange rate if this step matches
+            if (actualExchangeRate && foundExchangePosition &&
+                exchangePositionInPath + 1 < path.equivalents.size() &&
+                step.fromEquivalent == path.equivalents[exchangePositionInPath] &&
+                step.toEquivalent == path.equivalents[exchangePositionInPath + 1]) {
+
+                step.exchangeRate = actualExchangeRate->first;
+                step.exchangeRateShift = actualExchangeRate->second;
+                foundExchangeStep = true;
+                debug() << "Updated exchangeStep: nodeID=" << step.nodeID
+                        << ", rate=" << step.exchangeRate
+                        << ", shift=" << step.exchangeRateShift;
+            }
+
+            // Update commission if this step matches (same equiv on both sides)
+            if (actualCommission && foundCommissionPosition &&
+                step.fromEquivalent == step.toEquivalent &&
+                step.fromEquivalent == path.equivalents[commissionPositionInPath]) {
+
+                step.commission = *actualCommission;
+                foundCommissionStep = true;
+                debug() << "Updated exchangeStep: nodeID=" << step.nodeID
+                        << ", commission=" << step.commission;
+            }
+        }
+    }
+
+    // If commission was not found in existing steps, add a new exchangeStep for it
+    if (actualCommission && foundCommissionPosition && !foundCommissionStep) {
+        SerializedEquivalent equivalent = path.equivalents[commissionPositionInPath];
+
+        ExchangeStep newCommissionStep;
+        newCommissionStep.nodeID = affectedNodeID;
+        newCommissionStep.fromEquivalent = equivalent;
+        newCommissionStep.toEquivalent = equivalent;
+        newCommissionStep.exchangeRate = 0;
+        newCommissionStep.exchangeRateShift = 0;
+        newCommissionStep.commission = *actualCommission;
+        newCommissionStep.minExchangeAmount = 0;
+        newCommissionStep.maxExchangeAmount = 0;
+
+        updatedPath.exchangeSteps.push_back(newCommissionStep);
+        debug() << "Added new commission exchangeStep: nodeID=" << affectedNodeID
+                << ", equiv=" << equivalent
+                << ", commission=" << *actualCommission;
+    }
+
+    // Step 6: Calculate new received amount with updated conditions
+    // Use paymentFlow (actual reserved amount) instead of mMaxPathFlow (which was reset to 0 by dropReservationsOnPath)
+    TrustLineAmount oldPaymentFlow = pathStats->paymentFlow;
+
+    debug() << "Old path paymentFlow=" << oldPaymentFlow
+            << ", mMaxPathFlow=" << pathStats->mMaxPathFlow
+            << ", optimal_flow=" << pathStats->optimal_flow;
+
+    TrustLineAmount newReceivedAmount;
+    try {
+        newReceivedAmount = calculateReceivedAmountWithUpdatedConditions(
+            pathStats,
+            oldPaymentFlow,
+            affectedPositionInPath,
+            actualExchangeRate,
+            actualCommission);
+    } catch (const exception &e) {
+        error() << "Error calculating received amount with updated conditions: " << e.what();
+        return tryProcessNextPath();
+    }
+
+    // Step 7: Create new OptimalPathResult with properly copied state
+    auto newPathStats = make_unique<OptimalPathResult>();
+
+    // Copy all fields from old path
+    newPathStats->mPath = updatedPath;  // Use updated path with new exchangeSteps
+    newPathStats->optimal_flow = oldPaymentFlow;
+    newPathStats->mMaxPathFlow = oldPaymentFlow;
+    newPathStats->received_amount = newReceivedAmount;
+    newPathStats->effective_exchange_rate = pathStats->effective_exchange_rate;
+    newPathStats->path_efficiency = pathStats->path_efficiency;
+    newPathStats->mIsValid = true;  // New path is valid
+
+    // Initialize intermediate nodes states for reservation attempts
+    // Reset all nodes to "not sent" so reservation can start from beginning
+    if (!newPathStats->mPath.nodes.empty()) {
+        // Exclude sender (first) and receiver (last) - only intermediate nodes
+        size_t intermediateNodesCount = newPathStats->mPath.nodes.size() > 1 ?
+                                         newPathStats->mPath.nodes.size() - 1 : 0;
+        newPathStats->mIntermediateNodesStates.resize(
+            intermediateNodesCount,
+            OptimalPathResult::ReservationRequestDoesntSent);
+
+        debug() << "Initialized " << intermediateNodesCount << " intermediate node states for new path";
+    }
+
+    // Recalculate flows using the calculateFlows method
+    try {
+        newPathStats->calculateFlows(oldPaymentFlow);
+    } catch (const exception &e) {
+        error() << "Error calculating flows for new path: " << e.what();
+        return tryProcessNextPath();
+    }
+
+    // Update received_amount to match the last flow (actual amount that reaches receiver)
+    if (!newPathStats->flows.empty()) {
+        newPathStats->received_amount = newPathStats->flows.back().first;
+        debug() << "Updated received_amount to match last flow: " << newPathStats->received_amount;
+    }
+
+    // Step 8: Insert new path and update PathIDs
+    // Find current path index in mPathIDs
+    auto currentIt = std::find(mPathIDs.begin(), mPathIDs.end(), pathID);
+    if (currentIt == mPathIDs.end()) {
+        error() << "PathID " << pathID << " not found in mPathIDs";
+        return tryProcessNextPath();
+    }
+
+    size_t currentIndex = std::distance(mPathIDs.begin(), currentIt);
+
+    // Increment all subsequent PathIDs by 1
+    for (size_t idx = currentIndex + 1; idx < mPathIDs.size(); ++idx) {
+        PathID oldID = mPathIDs[idx];
+        PathID newID = oldID + 1;
+
+        // Move the path stats to the new ID
+        auto nodeHandler = mPathsStats.extract(oldID);
+        if (nodeHandler.empty()) {
+            error() << "Failed to extract pathStats for PathID=" << oldID;
+            continue;
+        }
+        nodeHandler.key() = newID;
+        mPathsStats.insert(std::move(nodeHandler));
+
+        // Update the ID in the vector
+        mPathIDs[idx] = newID;
+    }
+
+    // Create new PathID (current + 1)
+    PathID newPathID = pathID + 1;
+    mPathsStats[newPathID] = std::move(newPathStats);
+
+    // Insert new PathID into vector at position after current
+    mPathIDs.insert(mPathIDs.begin() + currentIndex + 1, newPathID);
+
+    info() << "Created new path " << newPathID
+           << " with optimalFlow=" << oldPaymentFlow
+           << ", receivedAmount=" << newReceivedAmount;
+
+    // Log detailed new path information for debugging
+    auto *logPathStats = mPathsStats[newPathID].get();
+    debug() << "=== New Path " << newPathID << " Details ===";
+    debug() << "optimal_flow=" << logPathStats->optimal_flow;
+    debug() << "received_amount=" << logPathStats->received_amount;
+    debug() << "mMaxPathFlow=" << logPathStats->mMaxPathFlow;
+    debug() << "mIsValid=" << logPathStats->mIsValid;
+
+    debug() << "flows.size()=" << logPathStats->flows.size();
+    for (size_t i = 0; i < logPathStats->flows.size(); ++i) {
+        debug() << "  flows[" << i << "]: amount=" << logPathStats->flows[i].first
+                << ", equiv=" << logPathStats->flows[i].second;
+    }
+
+    debug() << "mIntermediateNodesStates.size()=" << logPathStats->mIntermediateNodesStates.size();
+    for (size_t i = 0; i < logPathStats->mIntermediateNodesStates.size(); ++i) {
+        debug() << "  mIntermediateNodesStates[" << i << "]=" << static_cast<int>(logPathStats->mIntermediateNodesStates[i]);
+    }
+
+    debug() << "mPath.ids.size()=" << logPathStats->mPath.ids.size();
+    for (size_t i = 0; i < logPathStats->mPath.ids.size(); ++i) {
+        debug() << "  mPath.ids[" << i << "]=" << logPathStats->mPath.ids[i];
+    }
+
+    debug() << "mPath.equivalents.size()=" << logPathStats->mPath.equivalents.size();
+    for (size_t i = 0; i < logPathStats->mPath.equivalents.size(); ++i) {
+        debug() << "  mPath.equivalents[" << i << "]=" << logPathStats->mPath.equivalents[i];
+    }
+
+    debug() << "mPath.nodes.size()=" << logPathStats->mPath.nodes.size();
+    for (size_t i = 0; i < logPathStats->mPath.nodes.size(); ++i) {
+        debug() << "  mPath.nodes[" << i << "]=" << logPathStats->mPath.nodes[i]->fullAddress();
+    }
+
+    debug() << "mPath.exchangeSteps.size()=" << logPathStats->mPath.exchangeSteps.size();
+    for (size_t i = 0; i < logPathStats->mPath.exchangeSteps.size(); ++i) {
+        const auto &step = logPathStats->mPath.exchangeSteps[i];
+        debug() << "  exchangeStep[" << i << "]: nodeID=" << step.nodeID
+                << ", fromEquiv=" << step.fromEquivalent
+                << ", toEquiv=" << step.toEquivalent
+                << ", rate=" << step.exchangeRate
+                << ", shift=" << step.exchangeRateShift
+                << ", commission=" << step.commission;
+    }
+    debug() << "=== End Path " << newPathID << " Details ===";
+
+    // Step 9: Continue processing (NOTE: Subsequent paths recalculation is in task 09-04)
+    return tryProcessNextPath();
+}
+
+/**
+ * Calculates the final amount received at the destination after applying updated exchange rates
+ * and/or commissions along a payment path.
+ *
+ * This method performs a forward simulation through the payment path, starting from the coordinator
+ * with the input flow amount and applying all exchanges and commissions step by step. At the affected
+ * position, it uses the updated conditions (rate and/or commission) instead of the original values
+ * from path structure.
+ *
+ * Algorithm:
+ * 1. Start with inputFlow amount at coordinator (position 0)
+ * 2. For each step in path.ids:
+ *    a. If exchange detected (same node ID, different equivalents):
+ *       - Use updated rate if idx == affectedPositionInPath
+ *       - Otherwise use original rate from path.exchangeSteps
+ *       - Apply exchange: amount = amount * rate * 10^shift
+ *    b. If commission detected (same node ID and equivalent, commission > 0):
+ *       - Use updated commission if idx == affectedPositionInPath
+ *       - Otherwise use original commission from path.exchangeSteps
+ *       - Apply commission: amount = amount - commission
+ * 3. Return final amount (what receiver gets)
+ *
+ * Path traversal details:
+ * - Iterate through path.ids pairs: (ids[i], ids[i+1]) with (equivalents[i], equivalents[i+1])
+ * - Exchange occurs when: ids[i] == ids[i+1] && equivalents[i] != equivalents[i+1]
+ * - Commission occurs at any intermediate position (0 < idx < ids.size()-1) where exchangeStep exists
+ *   with fromEquivalent == toEquivalent
+ *
+ * @param pathStats Pointer to OptimalPathResult containing the path structure with nodes, equivalents,
+ *                  and exchangeSteps
+ * @param inputFlow The amount entering the path at the coordinator (before any exchanges/commissions)
+ * @param affectedPositionInPath The index in path.ids where updated conditions should be applied
+ *                              (0-based index corresponding to the node position in path.ids)
+ * @param updatedRate Optional new exchange rate (mantissa, exponent) to use at affectedPositionInPath.
+ *                   If nullopt, use original rate from path.exchangeSteps
+ * @param updatedCommission Optional new commission to use at affectedPositionInPath.
+ *                         If nullopt, use original commission from path.exchangeSteps
+ * @return The final amount that will be received at the destination after all exchanges and commissions
+ * @throws ValueError if exchange step not found or if amount is exhausted by commission
+ */
+TrustLineAmount CoordinatorExchangePaymentTransaction::calculateReceivedAmountWithUpdatedConditions(
+    OptimalPathResult *pathStats,
+    const TrustLineAmount &inputFlow,
+    const SerializedPositionInPath affectedPositionInPath,
+    const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
+    const optional<TrustLineAmount> &updatedCommission)
+{
+    debug() << "calculateReceivedAmountWithUpdatedConditions: inputFlow=" << inputFlow
+            << ", affectedPositionInPath=" << static_cast<int>(affectedPositionInPath);
+
+    TrustLineAmount currentAmount = inputFlow;
+    const auto &path = pathStats->path();
+
+    // Forward simulate through path applying conditions
+    for (size_t idx = 0; idx + 1 < path.ids.size(); ++idx) {
+        const ContractorID currentNode = path.ids[idx];
+        const ContractorID nextNode = path.ids[idx + 1];
+        const SerializedEquivalent currentEquiv = path.equivalents[idx];
+        const SerializedEquivalent nextEquiv = path.equivalents[idx + 1];
+
+        // Check for exchange (same node ID, different equivalents - in-place exchange)
+        if (currentNode == nextNode && currentEquiv != nextEquiv) {
+            const auto *exchangeStep = findExchangeStep(path, currentNode, currentEquiv, nextEquiv);
+
+            if (!exchangeStep) {
+                throw ValueError(
+                    "CoordinatorExchangePaymentTransaction::calculateReceivedAmountWithUpdatedConditions: "
+                    "exchange step not found");
+            }
+
+            // Determine which rate to use - check if this is the affected position
+            ExchangeStep effectiveStep = *exchangeStep;
+            if (updatedRate && idx == affectedPositionInPath) {
+                // Use updated rate for affected position
+                effectiveStep.exchangeRate = updatedRate->first;
+                effectiveStep.exchangeRateShift = updatedRate->second;
+                debug() << "Applying updated exchange rate at position " << idx
+                        << ": " << updatedRate->first << " * 10^" << updatedRate->second;
+            }
+
+            // Apply exchange rate forward
+            currentAmount = applyExchangeForward(currentAmount, effectiveStep);
+            continue;
+        }
+
+        // Check for commission at current position (not at sender or receiver)
+        // Commission is charged when flow passes through a node
+        if (idx > 0 && idx < path.ids.size() - 1) {  // Skip sender (0) and receiver (last)
+            const auto *commissionStep = findExchangeStep(path, currentNode, currentEquiv, currentEquiv);
+
+            if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
+                TrustLineAmount commissionToApply = commissionStep->commission;
+
+                // Use updated commission if this is the affected position
+                if (updatedCommission && idx == affectedPositionInPath) {
+                    commissionToApply = *updatedCommission;
+                    debug() << "Applying updated commission at position " << idx
+                            << ": " << commissionToApply;
+                }
+
+                if (currentAmount < commissionToApply) {
+                    throw ValueError(
+                        "CoordinatorExchangePaymentTransaction::calculateReceivedAmountWithUpdatedConditions: "
+                        "amount exhausted by commission");
+                }
+
+                currentAmount = currentAmount - commissionToApply;
+            }
+        }
+    }
+
+    debug() << "Final received amount with updated conditions: " << currentAmount;
+    return currentAmount;
 }
 
 const string CoordinatorExchangePaymentTransaction::logHeader() const

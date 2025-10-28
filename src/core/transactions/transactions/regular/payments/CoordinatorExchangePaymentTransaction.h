@@ -13,6 +13,8 @@
 
 #include <unordered_map>
 
+class ExchangeRatesManager;
+
 class CoordinatorExchangePaymentTransaction : public BaseExchangePaymentTransaction
 {
 
@@ -28,6 +30,7 @@ public:
         StorageHandler *storageHandler,
         ResourcesManager *resourcesManager,
         ExchangePathsManager *exchangePathsManager,
+        ExchangeRatesManager *exchangeRatesManager,
         Keystore *keystore,
         bool isPaymentTransactionsAllowedDueToObserving,
         EventsInterfaceManager *eventsInterfaceManager,
@@ -135,6 +138,51 @@ protected:
         OptimalPathResult *pathStats,
         const PathID &pathID);
 
+    /**
+     * Handles the detection of condition changes (exchange rate or commission) on a payment path.
+     * When an intermediate node reports different conditions than what the coordinator expected,
+     * this method validates the change, updates the relevant caches (ExchangeRatesManager for rates,
+     * TopologyTrustLinesManager for commissions), drops reservations on the affected path, and marks
+     * the path as unusable.
+     *
+     * @param pathID The identifier of the payment path where condition change was detected
+     * @param actualExchangeRate The actual exchange rate reported by the node (mantissa, exponent pair).
+     *                          If nullopt, it means the exchange rate is no longer available and should
+     *                          be removed from cache.
+     * @param actualCommission The actual commission reported by the node. If nullopt, it means the
+     *                        commission information was not provided in the response (not changed).
+     *                        If set to zero, the commission should be removed from cache.
+     * @return Transaction result indicating whether to continue processing other paths or terminate
+     */
+    TransactionResult::SharedConst handleConditionChange(
+        const PathID &pathID,
+        const optional<pair<TrustLineAmount, int16_t>> &actualExchangeRate,
+        const optional<TrustLineAmount> &actualCommission);
+
+    /**
+     * Calculates the expected received amount at the receiver after applying updated conditions
+     * (exchange rate and/or commission) at a specific node position in the payment path.
+     * This method simulates the flow through the path, applying exchanges and commissions according
+     * to the path structure, and uses the updated conditions at the affected node position.
+     *
+     * @param pathStats Pointer to the optimal path result containing path structure (nodes, equivalents)
+     * @param inputFlow The amount that enters the path (at the coordinator/sender)
+     * @param affectedNodePosition The position in the path where conditions have changed (0-based index
+     *                            in the path.ids vector)
+     * @param updatedRate The new exchange rate to use at the affected node position (mantissa, exponent).
+     *                   If nullopt, the original rate from path structure is used.
+     * @param updatedCommission The new commission to use at the affected node position. If nullopt,
+     *                         the original commission from path structure is used.
+     * @return The calculated amount that would be received at the final receiver node after applying
+     *         all exchanges and commissions, including the updated conditions
+     */
+    TrustLineAmount calculateReceivedAmountWithUpdatedConditions(
+        OptimalPathResult *pathStats,
+        const TrustLineAmount &inputFlow,
+        const SerializedPositionInPath affectedNodePosition,
+        const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
+        const optional<TrustLineAmount> &updatedCommission);
+
 protected:
     EventsInterfaceManager *mEventsInterfaceManager;
 
@@ -146,6 +194,7 @@ protected:
     byte_t mReservationsStage;
 
     ExchangePathsManager *mExchangePathsManager;
+    ExchangeRatesManager *mExchangeRatesManager;
     map<PathID, unique_ptr<OptimalPathResult>> mPathsStats;
     vector<SerializedEquivalent> mExchangeEquivalents;
     SerializedEquivalent mExchangeEquivalent;

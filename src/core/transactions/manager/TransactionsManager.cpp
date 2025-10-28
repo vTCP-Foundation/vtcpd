@@ -1489,6 +1489,7 @@ void TransactionsManager::launchCoordinatorExchangePaymentTransaction(
                                mStorageHandler,
                                mResourcesManager,
                                mExchangePathsManager,
+                               mExchangeRatesManager,
                                mKeysStore,
                                isPaymentTransactionsAllowedDueToObserving,
                                mEventsInterfaceManager,

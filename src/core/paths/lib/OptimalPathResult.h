@@ -72,6 +72,7 @@ struct OptimalPathResult {
     bool containsIntermediateNodes() const;
     const pair<BaseAddress::Shared, SerializedPositionInPath> currentIntermediateNodeAndPos() const;
     const pair<BaseAddress::Shared, SerializedPositionInPath> nextIntermediateNodeAndPos() const;
+    const SerializedEquivalent firstPathEquivalent() const;
     const SerializedEquivalent currentPathEquivalent() const;
     const pair<TrustLineAmount, SerializedEquivalent> currentPathFlow() const;
     const pair<TrustLineAmount, SerializedEquivalent> previousPathFlow() const;

@@ -263,6 +263,7 @@ namespace {
             StorageHandler *storageHandler,
             ResourcesManager *resourcesManager,
             ExchangePathsManager *exchangePathsManager,
+            ExchangeRatesManager *exchangeRatesManager,
             Keystore *keystore,
             bool isPaymentTransactionsAllowedDueToObserving,
             EventsInterfaceManager *eventsInterfaceManager,
@@ -271,7 +272,7 @@ namespace {
             : CoordinatorExchangePaymentTransaction(
                 command, contractorsManager, equivalentsSubsystemsRouter,
                 storageHandler, resourcesManager, exchangePathsManager,
-                keystore, isPaymentTransactionsAllowedDueToObserving,
+                exchangeRatesManager, keystore, isPaymentTransactionsAllowedDueToObserving,
                 eventsInterfaceManager, log, subsystemsController)
         {}
 
@@ -308,6 +309,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnSimplePath_NoExchangeNoCommiss
         env.storage.get(),
         env.resourcesManager.get(),
         env.pathsManager.get(),
+        env.ratesManager.get(),
         env.keystore.get(),
         true,
         env.eventsManager.get(),
@@ -368,6 +370,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_WithExchange) {
         env.storage.get(),
         env.resourcesManager.get(),
         env.pathsManager.get(),
+        env.ratesManager.get(),
         env.keystore.get(),
         true,
         env.eventsManager.get(),
@@ -429,6 +432,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_WithCommission) {
         env.storage.get(),
         env.resourcesManager.get(),
         env.pathsManager.get(),
+        env.ratesManager.get(),
         env.keystore.get(),
         true,
         env.eventsManager.get(),
@@ -490,6 +494,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_CommissionOverflow) {
         env.storage.get(),
         env.resourcesManager.get(),
         env.pathsManager.get(),
+        env.ratesManager.get(),
         env.keystore.get(),
         true,
         env.eventsManager.get(),
@@ -536,6 +541,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_PathNotFound) {
         env.storage.get(),
         env.resourcesManager.get(),
         env.pathsManager.get(),
+        env.ratesManager.get(),
         env.keystore.get(),
         true,
         env.eventsManager.get(),

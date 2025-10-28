@@ -130,7 +130,7 @@ TransactionResult::SharedConst FindPathsByMaxFlowExchangeTransaction::processCol
         mEquivalentsSubsystemsRouter->topologyTrustLineManager(exchangeEquivalent)->printTrustLines();
     }
     debug() << "Exchange rates:";
-    mExchangeRatesManager->printExtqrnalRates();
+    mExchangeRatesManager->printExternalRates();
     debug() << "Participants commissions in receiver equivalent:";
     mEquivalentsSubsystemsRouter->topologyTrustLineManager(mEquivalent)->printCommissions();
     debug() << "Participants commissions in exchange equivalents:";

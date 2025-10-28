@@ -238,7 +238,7 @@ const string ExchangeRatesManager::logHeader() const
     return "[ExchangeRatesManager]";
 }
 
-void ExchangeRatesManager::printExtqrnalRates() const
+void ExchangeRatesManager::printExternalRates() const
 {
     debug() << "External rates dump begin";
     if (mExternalExchangeRates.empty()) {
@@ -309,6 +309,36 @@ void ExchangeRatesManager::addOrUpdateExternal(
     }
 
     scheduleExternalExpiryTimer();
+}
+
+void ExchangeRatesManager::removeExternal(
+    const ContractorID contractorID,
+    const SerializedEquivalent equivFrom,
+    const SerializedEquivalent equivTo)
+{
+    auto key = make_pair(equivFrom, equivTo);
+    auto it = mExternalExchangeRates.find(key);
+
+    if (it != mExternalExchangeRates.end()) {
+        auto &rates = it->second;
+        auto rateIt = std::find_if(
+            rates.begin(),
+            rates.end(),
+            [contractorID](const pair<ContractorID, ExchangeRate::Shared> &rateWithID) {
+                return rateWithID.first == contractorID;
+            });
+
+        if (rateIt != rates.end()) {
+            rates.erase(rateIt);
+            debug() << "Removed external rate from contractor " << contractorID
+                    << " (" << equivFrom << "->" << equivTo << ")";
+
+            // If no more rates for this key, remove the key entirely
+            if (rates.empty()) {
+                mExternalExchangeRates.erase(it);
+            }
+        }
+    }
 }
 
 vector<pair<ContractorID, ExchangeRate::Shared>> ExchangeRatesManager::getExternalRates(
