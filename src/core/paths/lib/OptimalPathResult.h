@@ -4,10 +4,13 @@
 #include "ExchangePath.h"
 #include "../../common/exceptions/ValueError.h"
 #include "../../common/exceptions/NotFoundError.h"
+
+#include <optional>
 #include <utility>
 
 using std::pair;
 using std::make_pair;
+using std::optional;
 
 // Stores result of OR-Tools optimization for a single path
 struct OptimalPathResult {
@@ -97,8 +100,55 @@ struct OptimalPathResult {
     const bool isValid() const;
     void setUnusable();
 
+    const ExchangeStep* findExchangeStep(
+        ContractorID nodeID,
+        SerializedEquivalent fromEquivalent,
+        SerializedEquivalent toEquivalent) const;
+
     // Flow calculation method (Task 06-12)
     void calculateFlows(const TrustLineAmount& paymentAmount);
+
+    /**
+     * Calculates the expected receiver-side amount after applying the path with
+     * optionally updated exchange rate / commission at a specific position.
+     *
+     * Forward-simulates the payment beginning with the coordinator input,
+     * applying exchanges and commissions hop-by-hop. At the affected position
+     * the provided overrides (if any) are used instead of cached values.
+     *
+     * @param inputFlow amount injected at the coordinator (sender-side equivalent)
+     * @param affectedPositionInPath node position in `mPath.ids` where new conditions apply
+     * @param updatedRate optional pair (mantissa, exponent) for the exchange rate override
+     * @param updatedCommission optional commission override to subtract at the affected node
+     * @return amount received at the destination after applying all exchanges/commissions
+     * @throws ValueError when required exchange/commission step is missing or commission exhausts the amount
+     */
+    TrustLineAmount calculateReceivedAmountWithUpdatedConditions(
+        const TrustLineAmount &inputFlow,
+        const SerializedPositionInPath affectedPositionInPath,
+        const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
+        const optional<TrustLineAmount> &updatedCommission) const;
+
+    /**
+     * Calculates the sender-side flow required to deliver a target receiver
+     * amount when conditions may have changed at a particular position.
+     *
+     * Backward-simulates from receiver to sender, inverting exchanges and
+     * adding back commissions, using the updated values (if supplied) at the
+     * affected step.
+     *
+     * @param desiredReceivedAmount target amount to deliver at the receiver
+     * @param affectedNodePosition position in `mPath.ids` where updated rate/commission should apply
+     * @param updatedRate optional replacement rate (mantissa, exponent) for the affected exchange
+     * @param updatedCommission optional replacement commission for the affected node
+     * @return minimal sender-side amount required to satisfy the receiver target
+     * @throws ValueError on missing exchange step, invalid path structure, or arithmetic overflow when adding commission
+     */
+    TrustLineAmount calculateOptimalFlowWithUpdatedConditions(
+        const TrustLineAmount &desiredReceivedAmount,
+        const SerializedPositionInPath affectedNodePosition,
+        const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
+        const optional<TrustLineAmount> &updatedCommission) const;
 };
 
 #endif // VTCPD_OPTIMALPATHRESULT_H

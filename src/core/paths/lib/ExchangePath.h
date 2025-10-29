@@ -2,7 +2,11 @@
 #define VTCPD_EXCHANGEPATH_H
 
 #include "../../common/Types.h"
+#include "../../common/exceptions/ValueError.h"
 #include "../../contractors/addresses/BaseAddress.h"
+
+#include <boost/multiprecision/cpp_int.hpp>
+
 #include <vector>
 #include <sstream>
 
@@ -51,6 +55,99 @@ struct ExchangeStep {
     // equivalent). This field is present for potential future use and is
     // not relied upon by the current algorithms.
     TrustLineAmount commission;
+
+    /**
+     * Applies this exchange step in forward direction (from `fromEquivalent`
+     * to `toEquivalent`).
+     *
+     * @param amount input amount in the `fromEquivalent`
+     * @return converted amount expressed in the `toEquivalent`
+     * @throws ValueError if the resulting amount becomes negative
+     */
+    TrustLineAmount applyExchangeForward(const TrustLineAmount &amount) const
+    {
+        using boost::multiprecision::cpp_int;
+
+        cpp_int result = cpp_int(amount) * cpp_int(exchangeRate);
+
+        if (exchangeRateShift >= 0) {
+            result *= pow10(static_cast<size_t>(exchangeRateShift));
+        } else {
+            const cpp_int divisor = pow10(static_cast<size_t>(-exchangeRateShift));
+            result /= divisor;
+        }
+
+        if (result < 0) {
+            throw ValueError(
+                "ExchangeStep::applyExchangeForward: negative exchange result");
+        }
+
+        return result.convert_to<TrustLineAmount>();
+    }
+
+    /**
+     * Calculates how much input is required to yield the given output when
+     * this exchange step is applied (inverse direction).
+     *
+     * @param outputAmount desired amount at the output side (`toEquivalent`)
+     * @return minimal input amount expressed in the `fromEquivalent`
+     * @throws ValueError when the exchange rate is zero or the division result is invalid
+     */
+    TrustLineAmount invertExchangeForRequiredInput(
+        const TrustLineAmount &outputAmount) const
+    {
+        using boost::multiprecision::cpp_int;
+
+        if (exchangeRate == TrustLineAmount(0)) {
+            throw ValueError(
+                "ExchangeStep::invertExchangeForRequiredInput: zero exchange rate encountered");
+        }
+
+        cpp_int numerator = cpp_int(outputAmount);
+        cpp_int denominator = cpp_int(exchangeRate);
+
+        if (exchangeRateShift >= 0) {
+            denominator *= pow10(static_cast<size_t>(exchangeRateShift));
+        } else {
+            numerator *= pow10(static_cast<size_t>(-exchangeRateShift));
+        }
+
+        return ceilDivideToAmount(numerator, denominator);
+    }
+
+private:
+    static boost::multiprecision::cpp_int pow10(size_t exponent)
+    {
+        using boost::multiprecision::cpp_int;
+
+        cpp_int result = 1;
+        for (size_t idx = 0; idx < exponent; ++idx) {
+            result *= 10;
+        }
+        return result;
+    }
+
+    static TrustLineAmount ceilDivideToAmount(
+        const boost::multiprecision::cpp_int &numerator,
+        const boost::multiprecision::cpp_int &denominator)
+    {
+        if (denominator <= 0) {
+            throw ValueError(
+                "ExchangeStep::ceilDivideToAmount: denominator must be positive");
+        }
+
+        boost::multiprecision::cpp_int quotient = numerator / denominator;
+        if (numerator % denominator != 0) {
+            ++quotient;
+        }
+
+        if (quotient < 0) {
+            throw ValueError(
+                "ExchangeStep::ceilDivideToAmount: negative quotient computed");
+        }
+
+        return quotient.convert_to<TrustLineAmount>();
+    }
 };
 
 // Represents a single feasible payment path through the network

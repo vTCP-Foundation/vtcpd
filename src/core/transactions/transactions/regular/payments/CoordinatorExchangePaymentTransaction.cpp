@@ -7,89 +7,10 @@
 #include <map>
 #include <algorithm>
 #include <string>
-#include <boost/multiprecision/cpp_int.hpp>
 
 #include "../../../../common/exceptions/ValueError.h"
 
-using boost::multiprecision::cpp_int;
-
 namespace {
-
-cpp_int pow10(const size_t exponent)
-{
-    cpp_int result = 1;
-    for (size_t idx = 0; idx < exponent; ++idx) {
-        result *= 10;
-    }
-    return result;
-}
-
-TrustLineAmount ceilDivideToAmount(const cpp_int &numerator, const cpp_int &denominator)
-{
-    if (denominator <= 0) {
-        throw ValueError(
-            "CoordinatorExchangePaymentTransaction::ceilDivideToAmount: "
-            "denominator must be positive");
-    }
-
-    cpp_int quotient = numerator / denominator;
-    if (numerator % denominator != 0) {
-        ++quotient;
-    }
-
-    if (quotient < 0) {
-        throw ValueError(
-            "CoordinatorExchangePaymentTransaction::ceilDivideToAmount: "
-            "negative quotient computed");
-    }
-
-    return quotient.convert_to<TrustLineAmount>();
-}
-
-const ExchangeStep* findExchangeStep(
-    const ExchangePath &path,
-    ContractorID nodeID,
-    SerializedEquivalent fromEquivalent,
-    SerializedEquivalent toEquivalent)
-{
-    const auto it = std::find_if(
-        path.exchangeSteps.begin(),
-        path.exchangeSteps.end(),
-        [nodeID, fromEquivalent, toEquivalent](const ExchangeStep &step) {
-            return step.nodeID == nodeID &&
-                   step.fromEquivalent == fromEquivalent &&
-                   step.toEquivalent == toEquivalent;
-        });
-
-    if (it == path.exchangeSteps.end()) {
-        return nullptr;
-    }
-
-    return &(*it);
-}
-
-TrustLineAmount invertExchangeForRequiredInput(
-    const ExchangeStep &step,
-    const TrustLineAmount &outputAmount)
-{
-    if (step.exchangeRate == TrustLineAmount(0)) {
-        throw ValueError(
-            "CoordinatorExchangePaymentTransaction::invertExchangeForRequiredInput: "
-            "zero exchange rate encountered");
-    }
-
-    cpp_int numerator = cpp_int(outputAmount);
-    cpp_int denominator = cpp_int(step.exchangeRate);
-
-    if (step.exchangeRateShift >= 0) {
-        denominator *= pow10(static_cast<size_t>(step.exchangeRateShift));
-    } else {
-        numerator *= pow10(static_cast<size_t>(-step.exchangeRateShift));
-    }
-
-    return ceilDivideToAmount(numerator, denominator);
-}
-
 TrustLineAmount calculateRequiredInputForPath(
     const OptimalPathResult &pathResult,
     const TrustLineAmount &desiredOutputAmount)
@@ -114,8 +35,7 @@ TrustLineAmount calculateRequiredInputForPath(
         const SerializedEquivalent currentEquivalent = path.equivalents[idx];
 
         if (previousNode == currentNode && previousEquivalent != currentEquivalent) {
-            const auto *exchangeStep = findExchangeStep(
-                path,
+            const auto *exchangeStep = pathResult.findExchangeStep(
                 currentNode,
                 previousEquivalent,
                 currentEquivalent);
@@ -125,13 +45,12 @@ TrustLineAmount calculateRequiredInputForPath(
                     "exchange step not found");
             }
 
-            requiredAmount = invertExchangeForRequiredInput(*exchangeStep, requiredAmount);
+            requiredAmount = exchangeStep->invertExchangeForRequiredInput(requiredAmount);
             continue;
         }
 
         if (idx < path.ids.size() - 1) {
-            const auto *commissionStep = findExchangeStep(
-                path,
+            const auto *commissionStep = pathResult.findExchangeStep(
                 currentNode,
                 currentEquivalent,
                 currentEquivalent);
@@ -149,29 +68,6 @@ TrustLineAmount calculateRequiredInputForPath(
 
     return requiredAmount;
 }
-
-TrustLineAmount applyExchangeForward(
-    const TrustLineAmount &amount,
-    const ExchangeStep &step)
-{
-    cpp_int result = cpp_int(amount) * cpp_int(step.exchangeRate);
-
-    if (step.exchangeRateShift >= 0) {
-        result *= pow10(static_cast<size_t>(step.exchangeRateShift));
-    } else {
-        const cpp_int divisor = pow10(static_cast<size_t>(-step.exchangeRateShift));
-        result /= divisor;
-    }
-
-    if (result < 0) {
-        throw ValueError(
-            "CoordinatorExchangePaymentTransaction::applyExchangeForward: "
-            "negative exchange result");
-    }
-
-    return result.convert_to<TrustLineAmount>();
-}
-
 }
 
 CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
@@ -1679,8 +1575,10 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
     // Check if neighbor is exchanger (different equivalents)
     if (incomingEquiv != outgoingEquiv) {
         // Neighbor is exchanger - find exchange rate
-        const auto *exchangeStep = findExchangeStep(
-            path, neighborID, incomingEquiv, outgoingEquiv);
+        const auto *exchangeStep = pathStats->findExchangeStep(
+            neighborID,
+            incomingEquiv,
+            outgoingEquiv);
 
         if (exchangeStep) {
             expectedRate = make_pair(exchangeStep->exchangeRate, exchangeStep->exchangeRateShift);
@@ -1690,8 +1588,10 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askNeighbo
     }
     // Check if neighbor charges commission (same equivalent)
     else {
-        const auto *commissionStep = findExchangeStep(
-            path, neighborID, incomingEquiv, incomingEquiv);
+        const auto *commissionStep = pathStats->findExchangeStep(
+            neighborID,
+            incomingEquiv,
+            incomingEquiv);
 
         if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
             expectedCommission = commissionStep->commission;
@@ -1869,8 +1769,10 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askRemoteN
     // Check if node is exchanger (different equivalents at same node ID)
     if (incomingEquiv != outgoingEquiv) {
         // Node is exchanger - find exchange rate
-        const auto *exchangeStep = findExchangeStep(
-            path, remoteNodeID, incomingEquiv, outgoingEquiv);
+        const auto *exchangeStep = pathStats->findExchangeStep(
+            remoteNodeID,
+            incomingEquiv,
+            outgoingEquiv);
 
         if (exchangeStep) {
             expectedRate = make_pair(exchangeStep->exchangeRate, exchangeStep->exchangeRateShift);
@@ -1880,8 +1782,10 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::askRemoteN
     }
     // Check if node charges commission (same equivalent, commission present)
     else {
-        const auto *commissionStep = findExchangeStep(
-            path, remoteNodeID, incomingEquiv, incomingEquiv);
+        const auto *commissionStep = pathStats->findExchangeStep(
+            remoteNodeID,
+            incomingEquiv,
+            incomingEquiv);
 
         if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
             expectedCommission = commissionStep->commission;
@@ -2783,7 +2687,7 @@ void CoordinatorExchangePaymentTransaction::shortageReservationsOnPath(
     try {
         // Forward simulate through path: apply exchanges and subtract commissions
         // Note: We use path.ids and path.equivalents for iteration (NOT path.nodes)
-        // because findExchangeStep expects ContractorID, not BaseAddress
+        // because OptimalPathResult::findExchangeStep expects ContractorID, not BaseAddress
 
         TrustLineAmount currentAmount = kNewAmount;
 
@@ -2796,8 +2700,10 @@ void CoordinatorExchangePaymentTransaction::shortageReservationsOnPath(
             // Check for exchange (same node, different equivalent)
             if (fromNode == toNode && currentEquiv != nextEquiv) {
                 // Find exchange step
-                const auto *exchangeStep = findExchangeStep(
-                    path, fromNode, currentEquiv, nextEquiv);
+                const auto *exchangeStep = pathStats->findExchangeStep(
+                    fromNode,
+                    currentEquiv,
+                    nextEquiv);
 
                 if (!exchangeStep) {
                     warning() << "Exchange step not found during shortage calculation";
@@ -2805,14 +2711,16 @@ void CoordinatorExchangePaymentTransaction::shortageReservationsOnPath(
                 }
 
                 // Apply exchange forward
-                currentAmount = applyExchangeForward(currentAmount, *exchangeStep);
+                currentAmount = exchangeStep->applyExchangeForward(currentAmount);
                 continue;  // Don't add to flows, this is in-place exchange
             }
 
             // Check for commission at arrival node (if not receiver)
             if (idx + 1 < path.ids.size() - 1) {  // Not last node (receiver)
-                const auto *commissionStep = findExchangeStep(
-                    path, toNode, nextEquiv, nextEquiv);
+                const auto *commissionStep = pathStats->findExchangeStep(
+                    toNode,
+                    nextEquiv,
+                    nextEquiv);
 
                 if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
                     if (currentAmount < commissionStep->commission) {
@@ -3880,8 +3788,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleCond
     // Step 6.1: Calculate required optimal_flow to deliver mMaxPathReceivedAmount with updated conditions
     TrustLineAmount newOptimalFlow;
     try {
-        newOptimalFlow = calculateOptimalFlowWithUpdatedConditions(
-            pathStats,
+        newOptimalFlow = pathStats->calculateOptimalFlowWithUpdatedConditions(
             savedMaxPathReceivedAmount,
             affectedPositionInPath,
             actualExchangeRate,
@@ -3912,8 +3819,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleCond
         finalOptimalFlow = savedMaxPathFlow;
 
         try {
-            finalReceivedAmount = calculateReceivedAmountWithUpdatedConditions(
-                pathStats,
+            finalReceivedAmount = pathStats->calculateReceivedAmountWithUpdatedConditions(
                 savedMaxPathFlow,
                 affectedPositionInPath,
                 actualExchangeRate,
@@ -4104,171 +4010,6 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleCond
  * @return The final amount that will be received at the destination after all exchanges and commissions
  * @throws ValueError if exchange step not found or if amount is exhausted by commission
  */
-TrustLineAmount CoordinatorExchangePaymentTransaction::calculateReceivedAmountWithUpdatedConditions(
-    OptimalPathResult *pathStats,
-    const TrustLineAmount &inputFlow,
-    const SerializedPositionInPath affectedPositionInPath,
-    const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
-    const optional<TrustLineAmount> &updatedCommission)
-{
-    debug() << "calculateReceivedAmountWithUpdatedConditions: inputFlow=" << inputFlow
-            << ", affectedPositionInPath=" << static_cast<int>(affectedPositionInPath);
-
-    TrustLineAmount currentAmount = inputFlow;
-    const auto &path = pathStats->path();
-
-    // Forward simulate through path applying conditions
-    for (size_t idx = 0; idx + 1 < path.ids.size(); ++idx) {
-        const ContractorID currentNode = path.ids[idx];
-        const ContractorID nextNode = path.ids[idx + 1];
-        const SerializedEquivalent currentEquiv = path.equivalents[idx];
-        const SerializedEquivalent nextEquiv = path.equivalents[idx + 1];
-
-        // Check for exchange (same node ID, different equivalents - in-place exchange)
-        if (currentNode == nextNode && currentEquiv != nextEquiv) {
-            const auto *exchangeStep = findExchangeStep(path, currentNode, currentEquiv, nextEquiv);
-
-            if (!exchangeStep) {
-                throw ValueError(
-                    "CoordinatorExchangePaymentTransaction::calculateReceivedAmountWithUpdatedConditions: "
-                    "exchange step not found");
-            }
-
-            // Determine which rate to use - check if this is the affected position
-            ExchangeStep effectiveStep = *exchangeStep;
-            if (updatedRate && idx == affectedPositionInPath) {
-                // Use updated rate for affected position
-                effectiveStep.exchangeRate = updatedRate->first;
-                effectiveStep.exchangeRateShift = updatedRate->second;
-                debug() << "Applying updated exchange rate at position " << idx
-                        << ": " << updatedRate->first << " * 10^" << updatedRate->second;
-            }
-
-            // Apply exchange rate forward
-            currentAmount = applyExchangeForward(currentAmount, effectiveStep);
-            continue;
-        }
-
-        // Check for commission at current position (not at sender or receiver)
-        // Commission is charged when flow passes through a node
-        if (idx > 0 && idx < path.ids.size() - 1) {  // Skip sender (0) and receiver (last)
-            const auto *commissionStep = findExchangeStep(path, currentNode, currentEquiv, currentEquiv);
-
-            if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
-                TrustLineAmount commissionToApply = commissionStep->commission;
-
-                // Use updated commission if this is the affected position
-                if (updatedCommission && idx == affectedPositionInPath) {
-                    commissionToApply = *updatedCommission;
-                    debug() << "Applying updated commission at position " << idx
-                            << ": " << commissionToApply;
-                }
-
-                if (currentAmount < commissionToApply) {
-                    throw ValueError(
-                        "CoordinatorExchangePaymentTransaction::calculateReceivedAmountWithUpdatedConditions: "
-                        "amount exhausted by commission");
-                }
-
-                currentAmount = currentAmount - commissionToApply;
-            }
-        }
-    }
-
-    debug() << "Final received amount with updated conditions: " << currentAmount;
-    return currentAmount;
-}
-
-TrustLineAmount CoordinatorExchangePaymentTransaction::calculateOptimalFlowWithUpdatedConditions(
-    OptimalPathResult *pathStats,
-    const TrustLineAmount &desiredReceivedAmount,
-    const SerializedPositionInPath affectedNodePosition,
-    const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
-    const optional<TrustLineAmount> &updatedCommission)
-{
-    debug() << "calculateOptimalFlowWithUpdatedConditions: desiredReceivedAmount=" << desiredReceivedAmount
-            << ", affectedNodePosition=" << static_cast<int>(affectedNodePosition);
-
-    // Start with the desired amount at receiver and work backward to sender
-    TrustLineAmount requiredAmount = desiredReceivedAmount;
-    const auto &path = pathStats->path();
-
-    if (path.ids.empty() || path.ids.size() != path.equivalents.size()) {
-        throw ValueError(
-            "CoordinatorExchangePaymentTransaction::calculateOptimalFlowWithUpdatedConditions: "
-            "invalid path structure");
-    }
-
-    // Backward iteration: from receiver (last) to sender (first)
-    // Process each hop in reverse, undoing exchanges and adding back commissions
-    for (size_t idx = path.ids.size() - 1; idx > 0; --idx) {
-        const ContractorID previousNode = path.ids[idx - 1];
-        const ContractorID currentNode = path.ids[idx];
-        const SerializedEquivalent previousEquiv = path.equivalents[idx - 1];
-        const SerializedEquivalent currentEquiv = path.equivalents[idx];
-
-        // Check for exchange at current position (same node ID, different equivalents - in-place exchange)
-        // When going backward, we need to invert the exchange: if forward was prev->curr with rate R,
-        // backward is curr->prev with rate 1/R
-        if (previousNode == currentNode && previousEquiv != currentEquiv) {
-            // This is an exchange position: previousNode performs exchange from previousEquiv to currentEquiv
-            const auto *exchangeStep = findExchangeStep(path, currentNode, previousEquiv, currentEquiv);
-
-            if (!exchangeStep) {
-                throw ValueError(
-                    "CoordinatorExchangePaymentTransaction::calculateOptimalFlowWithUpdatedConditions: "
-                    "exchange step not found");
-            }
-
-            // Create effective exchange step (use updated rate if this is affected position)
-            ExchangeStep effectiveStep = *exchangeStep;
-            if (updatedRate && (idx - 1) == affectedNodePosition) {
-                // Use updated rate for affected position
-                effectiveStep.exchangeRate = updatedRate->first;
-                effectiveStep.exchangeRateShift = updatedRate->second;
-                debug() << "Applying updated exchange rate at position " << (idx - 1)
-                        << ": " << updatedRate->first << " * 10^" << updatedRate->second;
-            }
-
-            // Invert the exchange rate to compute required input
-            // Forward: input * rate * 10^shift = output
-            // Backward: output / (rate * 10^shift) = input (with ceiling division for safety)
-            requiredAmount = invertExchangeForRequiredInput(effectiveStep, requiredAmount);
-            continue;
-        }
-
-        // Check for commission at current node (not at sender or receiver)
-        // When going backward, we need to add the commission back to required amount
-        // Commission is charged when flow passes through intermediate node
-        if (idx < path.ids.size() - 1 && idx > 0) {  // Skip sender (0) and receiver (last)
-            const auto *commissionStep = findExchangeStep(path, currentNode, currentEquiv, currentEquiv);
-
-            if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
-                TrustLineAmount commissionToAdd = commissionStep->commission;
-
-                // Use updated commission if this is the affected position
-                if (updatedCommission && idx == affectedNodePosition) {
-                    commissionToAdd = *updatedCommission;
-                    debug() << "Applying updated commission at position " << idx
-                            << ": " << commissionToAdd;
-                }
-
-                // Add commission back to required amount (going backward)
-                try {
-                    requiredAmount = requiredAmount + commissionToAdd;
-                } catch (const std::exception &e) {
-                    throw ValueError(
-                        "CoordinatorExchangePaymentTransaction::calculateOptimalFlowWithUpdatedConditions: "
-                        "commission addition overflow: " + std::string(e.what()));
-                }
-            }
-        }
-    }
-
-    debug() << "Required optimal flow with updated conditions: " << requiredAmount;
-    return requiredAmount;
-}
-
 const string CoordinatorExchangePaymentTransaction::logHeader() const
 {
     stringstream s;

@@ -1,7 +1,6 @@
 #include "OptimalPathResult.h"
 
 #include <algorithm>
-#include <boost/multiprecision/cpp_int.hpp>
 
 /**
  * Increases node state to the "state".
@@ -205,63 +204,27 @@ void OptimalPathResult::setUnusable()
     mMaxPathFlow = 0;
 }
 
-namespace {
 
-using boost::multiprecision::cpp_int;
-
-cpp_int pow10(const size_t exponent)
-{
-    cpp_int result = 1;
-    for (size_t idx = 0; idx < exponent; ++idx) {
-        result *= 10;
-    }
-    return result;
-}
-
-const ExchangeStep* findExchangeStep(
-    const ExchangePath &path,
+const ExchangeStep* OptimalPathResult::findExchangeStep(
     ContractorID nodeID,
     SerializedEquivalent fromEquivalent,
-    SerializedEquivalent toEquivalent)
+    SerializedEquivalent toEquivalent) const
 {
     const auto it = std::find_if(
-        path.exchangeSteps.begin(),
-        path.exchangeSteps.end(),
+        mPath.exchangeSteps.begin(),
+        mPath.exchangeSteps.end(),
         [nodeID, fromEquivalent, toEquivalent](const ExchangeStep &step) {
             return step.nodeID == nodeID &&
                    step.fromEquivalent == fromEquivalent &&
                    step.toEquivalent == toEquivalent;
         });
 
-    if (it == path.exchangeSteps.end()) {
+    if (it == mPath.exchangeSteps.end()) {
         return nullptr;
     }
 
     return &(*it);
 }
-
-TrustLineAmount applyExchangeForward(
-    const TrustLineAmount &amount,
-    const ExchangeStep &step)
-{
-    cpp_int result = cpp_int(amount) * cpp_int(step.exchangeRate);
-
-    if (step.exchangeRateShift >= 0) {
-        result *= pow10(static_cast<size_t>(step.exchangeRateShift));
-    } else {
-        const cpp_int divisor = pow10(static_cast<size_t>(-step.exchangeRateShift));
-        result /= divisor;
-    }
-
-    if (result < 0) {
-        throw ValueError(
-            "OptimalPathResult::calculateFlows: negative exchange result");
-    }
-
-    return result.convert_to<TrustLineAmount>();
-}
-
-} // namespace
 
 /**
  * Calculates flow amounts between each pair of nodes along the path
@@ -298,7 +261,6 @@ void OptimalPathResult::calculateFlows(const TrustLineAmount& paymentAmount)
 
         if (fromNode == toNode && currentEquivalent != nextEquivalent) {
             const auto *exchangeStep = findExchangeStep(
-                mPath,
                 fromNode,
                 currentEquivalent,
                 nextEquivalent);
@@ -322,7 +284,7 @@ void OptimalPathResult::calculateFlows(const TrustLineAmount& paymentAmount)
                     "Amount exceeds maximum exchange limit");
             }
 
-            currentAmount = applyExchangeForward(currentAmount, *exchangeStep);
+            currentAmount = exchangeStep->applyExchangeForward(currentAmount);
             continue;
         }
 
@@ -330,7 +292,6 @@ void OptimalPathResult::calculateFlows(const TrustLineAmount& paymentAmount)
 
         if (idx + 1 < mPath.ids.size() - 1) {
             const auto *commissionStep = findExchangeStep(
-                mPath,
                 toNode,
                 nextEquivalent,
                 nextEquivalent);
@@ -344,4 +305,179 @@ void OptimalPathResult::calculateFlows(const TrustLineAmount& paymentAmount)
             }
         }
     }
+}
+
+/**
+ * Performs forward simulation of a payment path using optional overrides for
+ * exchange rate / commission at a single path position.
+ *
+ * Algorithm overview:
+ *  1. Start with the coordinator input amount.
+ *  2. Iterate pairs of consecutive entries in `mPath.ids` / `mPath.equivalents`.
+ *     a. If the pair represents an in-place exchange (same node, different
+ *        equivalents) – apply the exchange rate, using the updated value for
+ *        the affected position when provided.
+ *     b. Otherwise check if the current node charges a commission (same
+ *        equivalent on both sides). Subtract the commission, applying the
+ *        override when the position matches the affected one.
+ *  3. The amount remaining after the loop is what the receiver would obtain.
+ *
+ * @param inputFlow amount injected at the coordinator (sender-side equivalent)
+ * @param affectedPositionInPath node position in `mPath.ids` where new conditions apply
+ * @param updatedRate optional pair (mantissa, exponent) for the exchange rate override
+ * @param updatedCommission optional commission override to subtract at the affected node
+ * @return amount received at the destination after applying all exchanges/commissions
+ * @throws ValueError when the relevant exchange/commission step is missing or commission exceeds the available amount
+ */
+TrustLineAmount OptimalPathResult::calculateReceivedAmountWithUpdatedConditions(
+    const TrustLineAmount &inputFlow,
+    const SerializedPositionInPath affectedPositionInPath,
+    const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
+    const optional<TrustLineAmount> &updatedCommission) const
+{
+    TrustLineAmount currentAmount = inputFlow;
+
+    for (size_t idx = 0; idx + 1 < mPath.ids.size(); ++idx) {
+        const ContractorID currentNode = mPath.ids[idx];
+        const ContractorID nextNode = mPath.ids[idx + 1];
+        const SerializedEquivalent currentEquiv = mPath.equivalents[idx];
+        const SerializedEquivalent nextEquiv = mPath.equivalents[idx + 1];
+
+        if (currentNode == nextNode && currentEquiv != nextEquiv) {
+            const auto *exchangeStep = findExchangeStep(
+                currentNode,
+                currentEquiv,
+                nextEquiv);
+
+            if (!exchangeStep) {
+                throw ValueError(
+                    "OptimalPathResult::calculateReceivedAmountWithUpdatedConditions: "
+                    "exchange step not found");
+            }
+
+            ExchangeStep effectiveStep = *exchangeStep;
+            if (updatedRate && idx == affectedPositionInPath) {
+                effectiveStep.exchangeRate = updatedRate->first;
+                effectiveStep.exchangeRateShift = updatedRate->second;
+            }
+
+            currentAmount = effectiveStep.applyExchangeForward(currentAmount);
+            continue;
+        }
+
+        if (idx > 0 && idx < mPath.ids.size() - 1) {
+            const auto *commissionStep = findExchangeStep(
+                currentNode,
+                currentEquiv,
+                currentEquiv);
+
+            if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
+                TrustLineAmount commissionToApply = commissionStep->commission;
+
+                if (updatedCommission && idx == affectedPositionInPath) {
+                    commissionToApply = *updatedCommission;
+                }
+
+                if (currentAmount < commissionToApply) {
+                    throw ValueError(
+                        "OptimalPathResult::calculateReceivedAmountWithUpdatedConditions: "
+                        "amount exhausted by commission");
+                }
+
+                currentAmount = currentAmount - commissionToApply;
+            }
+        }
+    }
+
+    return currentAmount;
+}
+
+/**
+ * Backward simulation that determines how much input at the sender is needed
+ * to deliver a target receiver amount when conditions may have changed at one
+ * position.
+ *
+ * Steps:
+ *  1. Start from the desired receiver amount.
+ *  2. Walk the path in reverse order.
+ *     a. For exchange entries, invert the rate (using the updated value when
+ *        the current position matches the affected index).
+ *     b. For commission entries, add the commission back to the amount,
+ *        substituting the provided override when supplied.
+ *  3. The resulting amount is the required sender-side flow.
+ *
+ * @param desiredReceivedAmount target amount to deliver at the receiver
+ * @param affectedNodePosition position in `mPath.ids` where updated rate/commission should apply
+ * @param updatedRate optional replacement rate (mantissa, exponent) for the affected exchange
+ * @param updatedCommission optional replacement commission for the affected node
+ * @return minimal sender-side amount required to satisfy the receiver target
+ * @throws ValueError if the path structure is invalid, exchange step is missing, or commission addition overflows
+ */
+TrustLineAmount OptimalPathResult::calculateOptimalFlowWithUpdatedConditions(
+    const TrustLineAmount &desiredReceivedAmount,
+    const SerializedPositionInPath affectedNodePosition,
+    const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
+    const optional<TrustLineAmount> &updatedCommission) const
+{
+    TrustLineAmount requiredAmount = desiredReceivedAmount;
+
+    if (mPath.ids.empty() || mPath.ids.size() != mPath.equivalents.size()) {
+        throw ValueError(
+            "OptimalPathResult::calculateOptimalFlowWithUpdatedConditions: "
+            "invalid path structure");
+    }
+
+    for (size_t idx = mPath.ids.size() - 1; idx > 0; --idx) {
+        const ContractorID previousNode = mPath.ids[idx - 1];
+        const ContractorID currentNode = mPath.ids[idx];
+        const SerializedEquivalent previousEquiv = mPath.equivalents[idx - 1];
+        const SerializedEquivalent currentEquiv = mPath.equivalents[idx];
+
+        if (previousNode == currentNode && previousEquiv != currentEquiv) {
+            const auto *exchangeStep = findExchangeStep(
+                currentNode,
+                previousEquiv,
+                currentEquiv);
+
+            if (!exchangeStep) {
+                throw ValueError(
+                    "OptimalPathResult::calculateOptimalFlowWithUpdatedConditions: "
+                    "exchange step not found");
+            }
+
+            ExchangeStep effectiveStep = *exchangeStep;
+            if (updatedRate && (idx - 1) == affectedNodePosition) {
+                effectiveStep.exchangeRate = updatedRate->first;
+                effectiveStep.exchangeRateShift = updatedRate->second;
+            }
+
+            requiredAmount = effectiveStep.invertExchangeForRequiredInput(requiredAmount);
+            continue;
+        }
+
+        if (idx < mPath.ids.size() - 1 && idx > 0) {
+            const auto *commissionStep = findExchangeStep(
+                currentNode,
+                currentEquiv,
+                currentEquiv);
+
+            if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
+                TrustLineAmount commissionToAdd = commissionStep->commission;
+
+                if (updatedCommission && idx == affectedNodePosition) {
+                    commissionToAdd = *updatedCommission;
+                }
+
+                try {
+                    requiredAmount = requiredAmount + commissionToAdd;
+                } catch (const std::exception &e) {
+                    throw ValueError(
+                        "OptimalPathResult::calculateOptimalFlowWithUpdatedConditions: "
+                        "commission addition overflow: " + std::string(e.what()));
+                }
+            }
+        }
+    }
+
+    return requiredAmount;
 }
