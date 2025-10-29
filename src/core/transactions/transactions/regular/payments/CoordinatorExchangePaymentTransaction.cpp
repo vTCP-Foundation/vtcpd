@@ -2834,7 +2834,12 @@ void CoordinatorExchangePaymentTransaction::shortageReservationsOnPath(
     }
 
     // Step 4: Update ALL path statistics fields
-    // pathStats->mMaxPathFlow = kNewAmount; // TODO: remove this
+    // During shortage (capacity reduction from intermediate node), we update both
+    // mMaxPathFlow and mMaxPathReceivedAmount because the actual maximum capacities
+    // on both sender and receiver sides have been reduced.
+    // This is different from handleConditionChange where these bounds are preserved.
+    pathStats->mMaxPathFlow = kNewAmount;
+    pathStats->mMaxPathReceivedAmount = newReceivedAmount;
     pathStats->optimal_flow = kNewAmount;
     pathStats->received_amount = newReceivedAmount;
 
@@ -3055,7 +3060,14 @@ void CoordinatorExchangePaymentTransaction::addPathForFurtherProcessing(
 
     // Step 4: Add to mPathsStats and mPathIDs
     pathCopy->calculateFlows(pathAmount);
+
+    // Initialize maximum flow and received amount constraints for this path.
+    // mMaxPathFlow: maximum sender-side amount that can be paid on this path
+    // mMaxPathReceivedAmount: maximum receiver-side amount that can be delivered on this path
+    // Both values represent upper bounds and may be reduced during reservation processing.
     pathCopy->mMaxPathFlow = pathResult.optimal_flow;
+    pathCopy->mMaxPathReceivedAmount = pathResult.received_amount;
+
     mPathsStats[pathID] = std::move(pathCopy);
     mPathIDs.push_back(pathID);
 
@@ -3769,11 +3781,22 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleCond
         }
     }
 
-    // Step 3: Drop reservations on this path
+    // Step 3: Save critical path parameters before they are reset
+    // IMPORTANT: Save mMaxPathFlow and mMaxPathReceivedAmount BEFORE dropReservationsOnPath
+    // because setUnusable() will reset mMaxPathFlow to 0
+    TrustLineAmount savedMaxPathFlow = pathStats->mMaxPathFlow;
+    TrustLineAmount savedMaxPathReceivedAmount = pathStats->mMaxPathReceivedAmount;
+    TrustLineAmount savedPaymentFlow = pathStats->paymentFlow;
+
+    debug() << "Saved path parameters: mMaxPathFlow=" << savedMaxPathFlow
+            << ", mMaxPathReceivedAmount=" << savedMaxPathReceivedAmount
+            << ", paymentFlow=" << savedPaymentFlow;
+
+    // Step 4: Drop reservations on this path
     debug() << "Dropping reservations on invalidated path " << pathID;
     dropReservationsOnPath(pathStats, pathID, /* sendToLastProcessedNode */ false);
 
-    // Step 4: Mark path unusable
+    // Step 5: Mark path unusable
     pathStats->setUnusable();
     info() << "Marked path " << pathID << " as unusable due to condition change";
 
@@ -3843,25 +3866,65 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleCond
                 << ", commission=" << *actualCommission;
     }
 
-    // Step 6: Calculate new received amount with updated conditions
-    // Use paymentFlow (actual reserved amount) instead of mMaxPathFlow (which was reset to 0 by dropReservationsOnPath)
-    TrustLineAmount oldPaymentFlow = pathStats->paymentFlow;
+    // Step 6: Calculate new optimal flow and received amount with updated conditions
+    // Strategy: Try to preserve maximum receiver-side capacity (mMaxPathReceivedAmount) by
+    // recalculating required sender-side flow. If new flow exceeds sender capacity (mMaxPathFlow),
+    // fall back to preserving sender capacity and recalculating receiver amount.
+    //
+    // Use SAVED values because pathStats fields were reset by dropReservationsOnPath/setUnusable
 
-    debug() << "Old path paymentFlow=" << oldPaymentFlow
-            << ", mMaxPathFlow=" << pathStats->mMaxPathFlow
-            << ", optimal_flow=" << pathStats->optimal_flow;
+    debug() << "Starting recalculation with saved values: mMaxPathFlow=" << savedMaxPathFlow
+            << ", mMaxPathReceivedAmount=" << savedMaxPathReceivedAmount
+            << ", paymentFlow=" << savedPaymentFlow;
 
-    TrustLineAmount newReceivedAmount;
+    // Step 6.1: Calculate required optimal_flow to deliver mMaxPathReceivedAmount with updated conditions
+    TrustLineAmount newOptimalFlow;
     try {
-        newReceivedAmount = calculateReceivedAmountWithUpdatedConditions(
+        newOptimalFlow = calculateOptimalFlowWithUpdatedConditions(
             pathStats,
-            oldPaymentFlow,
+            savedMaxPathReceivedAmount,
             affectedPositionInPath,
             actualExchangeRate,
             actualCommission);
+
+        debug() << "Calculated new optimal_flow=" << newOptimalFlow
+                << " to deliver mMaxPathReceivedAmount=" << savedMaxPathReceivedAmount;
     } catch (const exception &e) {
-        error() << "Error calculating received amount with updated conditions: " << e.what();
+        error() << "Error calculating optimal flow with updated conditions: " << e.what();
         return tryProcessNextPath();
+    }
+
+    // Step 6.2: Determine final flow and received amount based on sender capacity constraint
+    TrustLineAmount finalOptimalFlow;
+    TrustLineAmount finalReceivedAmount;
+
+    if (newOptimalFlow <= savedMaxPathFlow) {
+        // New conditions are acceptable: required flow fits within sender capacity.
+        // Use the full receiver capacity (mMaxPathReceivedAmount) as target.
+        finalOptimalFlow = newOptimalFlow;
+        finalReceivedAmount = savedMaxPathReceivedAmount;
+
+        info() << "New optimal_flow (" << newOptimalFlow << ") <= mMaxPathFlow (" << savedMaxPathFlow
+               << "): using full receiver capacity (" << savedMaxPathReceivedAmount << ")";
+    } else {
+        // New conditions require more sender resources than available.
+        // Constrain by sender capacity (mMaxPathFlow) and recalculate receiver amount.
+        finalOptimalFlow = savedMaxPathFlow;
+
+        try {
+            finalReceivedAmount = calculateReceivedAmountWithUpdatedConditions(
+                pathStats,
+                savedMaxPathFlow,
+                affectedPositionInPath,
+                actualExchangeRate,
+                actualCommission);
+
+            info() << "New optimal_flow (" << newOptimalFlow << ") > mMaxPathFlow (" << savedMaxPathFlow
+                   << "): constraining to mMaxPathFlow, receivedAmount=" << finalReceivedAmount;
+        } catch (const exception &e) {
+            error() << "Error calculating received amount with sender capacity constraint: " << e.what();
+            return tryProcessNextPath();
+        }
     }
 
     // Step 7: Create new OptimalPathResult with properly copied state
@@ -3869,9 +3932,16 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleCond
 
     // Copy all fields from old path
     newPathStats->mPath = updatedPath;  // Use updated path with new exchangeSteps
-    newPathStats->optimal_flow = oldPaymentFlow;
-    newPathStats->mMaxPathFlow = oldPaymentFlow;
-    newPathStats->received_amount = newReceivedAmount;
+    newPathStats->optimal_flow = finalOptimalFlow;
+
+    // Set maximum flow constraints for the new path using SAVED values.
+    // mMaxPathFlow: preserve the original sender-side capacity (what coordinator can pay)
+    // mMaxPathReceivedAmount: preserve the original receiver-side capacity (what receiver can obtain)
+    // These values represent the upper bounds and are independent of current flow calculations.
+    newPathStats->mMaxPathFlow = savedMaxPathFlow;
+    newPathStats->mMaxPathReceivedAmount = savedMaxPathReceivedAmount;
+
+    newPathStats->received_amount = finalReceivedAmount;
     newPathStats->effective_exchange_rate = pathStats->effective_exchange_rate;
     newPathStats->path_efficiency = pathStats->path_efficiency;
     newPathStats->mIsValid = true;  // New path is valid
@@ -3889,9 +3959,10 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleCond
         debug() << "Initialized " << intermediateNodesCount << " intermediate node states for new path";
     }
 
-    // Recalculate flows using the calculateFlows method
+    // Recalculate flows using the calculateFlows method with final optimal flow
     try {
-        newPathStats->calculateFlows(oldPaymentFlow);
+        newPathStats->calculateFlows(finalOptimalFlow);
+        debug() << "Calculated flows for new path with finalOptimalFlow=" << finalOptimalFlow;
     } catch (const exception &e) {
         error() << "Error calculating flows for new path: " << e.what();
         return tryProcessNextPath();
@@ -3939,8 +4010,8 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleCond
     mPathIDs.insert(mPathIDs.begin() + currentIndex + 1, newPathID);
 
     info() << "Created new path " << newPathID
-           << " with optimalFlow=" << oldPaymentFlow
-           << ", receivedAmount=" << newReceivedAmount;
+           << " with optimalFlow=" << finalOptimalFlow
+           << ", receivedAmount=" << finalReceivedAmount;
 
     // Log detailed new path information for debugging
     auto *logPathStats = mPathsStats[newPathID].get();
@@ -3948,6 +4019,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::handleCond
     debug() << "optimal_flow=" << logPathStats->optimal_flow;
     debug() << "received_amount=" << logPathStats->received_amount;
     debug() << "mMaxPathFlow=" << logPathStats->mMaxPathFlow;
+    debug() << "mMaxPathReceivedAmount=" << logPathStats->mMaxPathReceivedAmount;
     debug() << "mIsValid=" << logPathStats->mIsValid;
 
     debug() << "flows.size()=" << logPathStats->flows.size();
@@ -4105,6 +4177,96 @@ TrustLineAmount CoordinatorExchangePaymentTransaction::calculateReceivedAmountWi
 
     debug() << "Final received amount with updated conditions: " << currentAmount;
     return currentAmount;
+}
+
+TrustLineAmount CoordinatorExchangePaymentTransaction::calculateOptimalFlowWithUpdatedConditions(
+    OptimalPathResult *pathStats,
+    const TrustLineAmount &desiredReceivedAmount,
+    const SerializedPositionInPath affectedNodePosition,
+    const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
+    const optional<TrustLineAmount> &updatedCommission)
+{
+    debug() << "calculateOptimalFlowWithUpdatedConditions: desiredReceivedAmount=" << desiredReceivedAmount
+            << ", affectedNodePosition=" << static_cast<int>(affectedNodePosition);
+
+    // Start with the desired amount at receiver and work backward to sender
+    TrustLineAmount requiredAmount = desiredReceivedAmount;
+    const auto &path = pathStats->path();
+
+    if (path.ids.empty() || path.ids.size() != path.equivalents.size()) {
+        throw ValueError(
+            "CoordinatorExchangePaymentTransaction::calculateOptimalFlowWithUpdatedConditions: "
+            "invalid path structure");
+    }
+
+    // Backward iteration: from receiver (last) to sender (first)
+    // Process each hop in reverse, undoing exchanges and adding back commissions
+    for (size_t idx = path.ids.size() - 1; idx > 0; --idx) {
+        const ContractorID previousNode = path.ids[idx - 1];
+        const ContractorID currentNode = path.ids[idx];
+        const SerializedEquivalent previousEquiv = path.equivalents[idx - 1];
+        const SerializedEquivalent currentEquiv = path.equivalents[idx];
+
+        // Check for exchange at current position (same node ID, different equivalents - in-place exchange)
+        // When going backward, we need to invert the exchange: if forward was prev->curr with rate R,
+        // backward is curr->prev with rate 1/R
+        if (previousNode == currentNode && previousEquiv != currentEquiv) {
+            // This is an exchange position: previousNode performs exchange from previousEquiv to currentEquiv
+            const auto *exchangeStep = findExchangeStep(path, currentNode, previousEquiv, currentEquiv);
+
+            if (!exchangeStep) {
+                throw ValueError(
+                    "CoordinatorExchangePaymentTransaction::calculateOptimalFlowWithUpdatedConditions: "
+                    "exchange step not found");
+            }
+
+            // Create effective exchange step (use updated rate if this is affected position)
+            ExchangeStep effectiveStep = *exchangeStep;
+            if (updatedRate && (idx - 1) == affectedNodePosition) {
+                // Use updated rate for affected position
+                effectiveStep.exchangeRate = updatedRate->first;
+                effectiveStep.exchangeRateShift = updatedRate->second;
+                debug() << "Applying updated exchange rate at position " << (idx - 1)
+                        << ": " << updatedRate->first << " * 10^" << updatedRate->second;
+            }
+
+            // Invert the exchange rate to compute required input
+            // Forward: input * rate * 10^shift = output
+            // Backward: output / (rate * 10^shift) = input (with ceiling division for safety)
+            requiredAmount = invertExchangeForRequiredInput(effectiveStep, requiredAmount);
+            continue;
+        }
+
+        // Check for commission at current node (not at sender or receiver)
+        // When going backward, we need to add the commission back to required amount
+        // Commission is charged when flow passes through intermediate node
+        if (idx < path.ids.size() - 1 && idx > 0) {  // Skip sender (0) and receiver (last)
+            const auto *commissionStep = findExchangeStep(path, currentNode, currentEquiv, currentEquiv);
+
+            if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
+                TrustLineAmount commissionToAdd = commissionStep->commission;
+
+                // Use updated commission if this is the affected position
+                if (updatedCommission && idx == affectedNodePosition) {
+                    commissionToAdd = *updatedCommission;
+                    debug() << "Applying updated commission at position " << idx
+                            << ": " << commissionToAdd;
+                }
+
+                // Add commission back to required amount (going backward)
+                try {
+                    requiredAmount = requiredAmount + commissionToAdd;
+                } catch (const std::exception &e) {
+                    throw ValueError(
+                        "CoordinatorExchangePaymentTransaction::calculateOptimalFlowWithUpdatedConditions: "
+                        "commission addition overflow: " + std::string(e.what()));
+                }
+            }
+        }
+    }
+
+    debug() << "Required optimal flow with updated conditions: " << requiredAmount;
+    return requiredAmount;
 }
 
 const string CoordinatorExchangePaymentTransaction::logHeader() const

@@ -183,6 +183,43 @@ protected:
         const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
         const optional<TrustLineAmount> &updatedCommission);
 
+    /**
+     * Calculates the required optimal flow (sender-side input amount) needed to deliver a target
+     * received amount at the receiver, taking into account updated conditions (exchange rate and/or
+     * commission) at a specific node position in the payment path.
+     *
+     * This method performs backward simulation from receiver to sender, inverting exchange rates
+     * and adding back commissions. It uses updated conditions at the affected node position to
+     * compute how much the sender needs to pay to achieve the target delivery amount.
+     *
+     * The calculation flows backward through the path:
+     * 1. Start with desired receiver amount (mMaxPathReceivedAmount)
+     * 2. For each node moving backward toward sender:
+     *    - If commission charged at this node: add commission to required amount
+     *    - If exchange at this node: invert exchange rate to compute required input
+     *    - Use updated rate/commission if this is the affected position
+     * 3. Return the computed sender-side flow requirement
+     *
+     * @param pathStats Pointer to the optimal path result containing path structure (nodes, equivalents)
+     * @param desiredReceivedAmount The target amount to be received at the receiver node (typically
+     *                             mMaxPathReceivedAmount - the maximum receiver-side capacity)
+     * @param affectedNodePosition The position in the path where conditions have changed (0-based index
+     *                            in the path.ids vector)
+     * @param updatedRate The new exchange rate to use at the affected node position (mantissa, exponent).
+     *                   If nullopt, the original rate from path structure is used.
+     * @param updatedCommission The new commission to use at the affected node position. If nullopt,
+     *                         the original commission from path structure is used.
+     * @return The calculated optimal flow (sender-side amount) required to deliver the desired amount
+     *         at the receiver, accounting for all exchanges, commissions, and updated conditions
+     * @throws ValueError if calculation fails (e.g., zero exchange rate, arithmetic overflow, invalid path)
+     */
+    TrustLineAmount calculateOptimalFlowWithUpdatedConditions(
+        OptimalPathResult *pathStats,
+        const TrustLineAmount &desiredReceivedAmount,
+        const SerializedPositionInPath affectedNodePosition,
+        const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
+        const optional<TrustLineAmount> &updatedCommission);
+
 protected:
     EventsInterfaceManager *mEventsInterfaceManager;
 

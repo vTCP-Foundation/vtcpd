@@ -132,6 +132,7 @@ namespace {
             pathResult.optimal_flow = capacity;
             pathResult.received_amount = capacity;
             pathResult.mMaxPathFlow = capacity;
+            pathResult.mMaxPathReceivedAmount = capacity;
             pathResult.mIsValid = true;
             pathResult.effective_exchange_rate = 1.0;
             pathResult.path_efficiency = 1.0;
@@ -206,6 +207,7 @@ namespace {
             pathResult.optimal_flow = senderCapacity;
             pathResult.received_amount = receivedAmount;
             pathResult.mMaxPathFlow = senderCapacity;
+            pathResult.mMaxPathReceivedAmount = receivedAmount;
             pathResult.mIsValid = true;
             pathResult.effective_exchange_rate = exchangeRate.convert_to<double>() * pow(10, exchangeRateShift);
             pathResult.path_efficiency = receivedAmount.convert_to<double>() / senderCapacity.convert_to<double>();
@@ -336,6 +338,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnSimplePath_NoExchangeNoCommiss
     auto &updated = tx.mPathsStats[pathID];
     ASSERT_NE(updated, nullptr);
     EXPECT_EQ(updated->mMaxPathFlow, TrustLineAmount(700));
+    EXPECT_EQ(updated->mMaxPathReceivedAmount, TrustLineAmount(700));
     EXPECT_EQ(updated->optimal_flow, TrustLineAmount(700));
     EXPECT_EQ(updated->received_amount, TrustLineAmount(700));
 }
@@ -396,6 +399,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_WithExchange) {
     auto &updated = tx.mPathsStats[pathID];
     ASSERT_NE(updated, nullptr);
     EXPECT_EQ(updated->mMaxPathFlow, TrustLineAmount(1400));
+    EXPECT_EQ(updated->mMaxPathReceivedAmount, TrustLineAmount(700));
     EXPECT_EQ(updated->optimal_flow, TrustLineAmount(1400));
     EXPECT_EQ(updated->received_amount, TrustLineAmount(700));
 }
@@ -457,6 +461,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_WithCommission) {
     auto &updated = tx.mPathsStats[pathID];
     ASSERT_NE(updated, nullptr);
     EXPECT_EQ(updated->mMaxPathFlow, TrustLineAmount(700));
+    EXPECT_EQ(updated->mMaxPathReceivedAmount, TrustLineAmount(690));
     EXPECT_EQ(updated->optimal_flow, TrustLineAmount(700));
     EXPECT_EQ(updated->received_amount, TrustLineAmount(690));
 }

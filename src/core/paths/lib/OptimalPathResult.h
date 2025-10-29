@@ -53,7 +53,17 @@ struct OptimalPathResult {
     // simulation (to compute deliverable amounts and efficiency) and for
     // tracking reservation state across intermediate nodes.
     ExchangePath mPath;
+
+    // Maximum sender-side flow that can be injected into this path (sender's equivalent).
+    // Represents the upper bound on what the coordinator can pay on this path.
+    // May be reduced during reservation if intermediate nodes return lower amounts.
     TrustLineAmount mMaxPathFlow;
+
+    // Maximum receiver-side amount that can be delivered through this path (receiver's equivalent).
+    // Represents the upper bound on what the receiver can obtain on this path.
+    // Used for recalculating optimal_flow when conditions (exchange rates/commissions) change.
+    TrustLineAmount mMaxPathReceivedAmount;
+
     bool mIsValid;
     vector<NodeState> mIntermediateNodesStates;
 
@@ -62,7 +72,7 @@ struct OptimalPathResult {
     vector<pair<TrustLineAmount, SerializedEquivalent>> flows;
 
     // Constructor
-    OptimalPathResult() : mMaxPathFlow(0), mIsValid(true), paymentFlow(0) {}
+    OptimalPathResult() : mMaxPathFlow(0), mMaxPathReceivedAmount(0), mIsValid(true), paymentFlow(0) {}
 
     // Methods from PathStats
     void setNodeState(const SerializedPositionInPath positionInPath, const NodeState state);
