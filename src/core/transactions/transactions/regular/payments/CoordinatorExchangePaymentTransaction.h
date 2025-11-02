@@ -12,6 +12,7 @@
 #include "../../../../common/exceptions/CallChainBreakException.h"
 
 #include <unordered_map>
+#include <set>
 
 class ExchangeRatesManager;
 
@@ -44,6 +45,8 @@ public:
     const CommandUUID &commandUUID() const;
 
 protected:
+    using CommissionKey = pair<ContractorID, SerializedEquivalent>;
+
     // Stage handlers
     TransactionResult::SharedConst runPaymentInitializationStage();
     TransactionResult::SharedConst runPathsResourceProcessingStage();
@@ -138,6 +141,14 @@ protected:
         OptimalPathResult *pathStats,
         const PathID &pathID);
 
+    void prepareCommissionsForPath(
+        OptimalPathResult *pathStats,
+        const PathID &pathID);
+    void commitPathCommissions(const PathID &pathID);
+    void releasePathCommissions(
+        const PathID &pathID,
+        bool releaseCommitted);
+
     /**
      * Handles the detection of condition changes (exchange rate or commission) on a payment path.
      * When an intermediate node reports different conditions than what the coordinator expected,
@@ -158,6 +169,39 @@ protected:
         const PathID &pathID,
         const optional<pair<TrustLineAmount, int16_t>> &actualExchangeRate,
         const optional<TrustLineAmount> &actualCommission);
+
+    /**
+     * Updates all subsequent paths that contain the node affected by condition changes.
+     * This method recalculates optimal_flow and received_amount for each affected path using
+     * the updated exchange rate or commission, ensuring paths remain consistent with new conditions.
+     *
+     * Unlike handleConditionChange, this method:
+     * - Does NOT create new paths (modifies existing paths in-place)
+     * - Does NOT update ExchangeRatesManager or TopologyTrustLinesManager
+     * - Does NOT drop reservations (reservations haven't been made yet)
+     * - Marks paths as invalid if exchange rate no longer exists
+     *
+     * @param pathID The identifier of the current path where condition change was detected
+     * @param affectedNodeAddress The address of the node whose conditions changed
+     * @param actualExchangeRate The new exchange rate (mantissa, exponent pair). nullopt means rate removed.
+     * @param actualCommission The new commission amount. nullopt means no commission change.
+     */
+    void updateSubsequentPathsWithChangedConditions(
+        const PathID &pathID,
+        BaseAddress::Shared affectedNodeAddress,
+        const optional<pair<TrustLineAmount, int16_t>> &actualExchangeRate,
+        const optional<TrustLineAmount> &actualCommission);
+
+    /**
+     * Checks if a given path contains the specified node by comparing addresses.
+     *
+     * @param pathStats The path to check
+     * @param targetNode The node address to search for
+     * @return true if the path contains the node, false otherwise
+     */
+    bool pathContainsNode(
+        OptimalPathResult *pathStats,
+        BaseAddress::Shared targetNode) const;
 
 protected:
     EventsInterfaceManager *mEventsInterfaceManager;
@@ -211,6 +255,11 @@ protected:
 
     // List of inaccessible nodes
     vector<BaseAddress::Shared> mInaccessibleNodes;
+
+    // Commission consumption tracking
+    set<CommissionKey> mConsumedCommissions;
+    map<PathID, set<CommissionKey>> mPathPendingCommissions;
+    map<PathID, set<CommissionKey>> mPathCommittedCommissions;
 
     uint8_t mCountPathsRecollecting;
 

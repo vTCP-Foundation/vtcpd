@@ -1676,6 +1676,9 @@ ExchangePathsManager::MaxFlowResult ExchangePathsManager::calculateMaxFlow(
                         if (aNodes != bNodes) {
                             return aNodes < bNodes;
                         }
+                        if (a.optimal_flow != b.optimal_flow) {
+                            return a.optimal_flow > b.optimal_flow;
+                        }
                         return false;
                     });
 
