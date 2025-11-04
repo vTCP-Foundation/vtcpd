@@ -80,6 +80,7 @@ protected:
     TransactionResult::SharedConst resultInsufficientFundsError();
     TransactionResult::SharedConst resultNoConsensusError();
     TransactionResult::SharedConst resultUnexpectedError();
+    TransactionResult::SharedConst resultAllowablePaymentAmountExceeded();
 
 protected:
     TransactionResult::SharedConst propagateVotesListAndWaitForVotingResult();

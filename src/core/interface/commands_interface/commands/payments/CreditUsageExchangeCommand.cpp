@@ -15,6 +15,8 @@ CreditUsageExchangeCommand::CreditUsageExchangeCommand(
     std::string addressType;
     size_t contractorAddressesCount;
     uint32_t amountDigitsCounter = 0;
+    std::string maxAllowableAmount;
+    uint32_t maxAllowableAmountDigitsCounter = 0;
 
     auto check = [&](auto &ctx) {
         if (_attr(ctx) == kCommandsSeparator || _attr(ctx) == kTokensSeparator) {
@@ -72,6 +74,13 @@ CreditUsageExchangeCommand::CreditUsageExchangeCommand(
     auto payloadParse = [&](auto &ctx) {
         mPayload += _attr(ctx);
     };
+    auto maxAllowableAmountAddNumber = [&](auto &ctx) {
+        maxAllowableAmount += _attr(ctx);
+        maxAllowableAmountDigitsCounter++;
+        if (maxAllowableAmountDigitsCounter == 1 && _attr(ctx) == '0') {
+            throw ValueError("CreditUsageExchangeCommand: maxAllowablePaymentAmount contains leading zero.");
+        }
+    };
 
     try {
         parse(
@@ -116,6 +125,7 @@ CreditUsageExchangeCommand::CreditUsageExchangeCommand(
                 > char_(kTokensSeparator)
                 > +(int_[equivalentParse])
                 > *(char_(kTokensSeparator) > int_[exchangeEquivalentParse])
+                > -(char_(kTokensSeparator) > +(digit[maxAllowableAmountAddNumber]))
                 > -(char_(kTokensSeparator) > *(char_[payloadParse] - eol))
                 > eol > eoi));
 
@@ -129,6 +139,10 @@ CreditUsageExchangeCommand::CreditUsageExchangeCommand(
         }
 
         mAmount = TrustLineAmount(amount);
+
+        if (!maxAllowableAmount.empty()) {
+            mMaxAllowablePaymentAmount = TrustLineAmount(maxAllowableAmount);
+        }
 
         if (mPayload.length() > std::numeric_limits<PayloadLength>::max()) {
             throw ValueError("Payload length is too big");
@@ -169,6 +183,11 @@ const std::string CreditUsageExchangeCommand::payload() const
     return mPayload;
 }
 
+const optional<TrustLineAmount>& CreditUsageExchangeCommand::maxAllowablePaymentAmount() const
+{
+    return mMaxAllowablePaymentAmount;
+}
+
 CommandResult::SharedConst CreditUsageExchangeCommand::responseOK(
     string &transactionUUID) const
 {
@@ -178,4 +197,14 @@ CommandResult::SharedConst CreditUsageExchangeCommand::responseOK(
             UUID(),
             201,
             transactionUUID));
+}
+
+CommandResult::SharedConst CreditUsageExchangeCommand::responseAllowablePaymentAmountExceeded() const
+{
+    return CommandResult::SharedConst(
+        new CommandResult(
+            identifier(),
+            UUID(),
+            415,
+            "Allowable payment amount has been exceeded"));
 }

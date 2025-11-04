@@ -3147,6 +3147,12 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::resultUnex
                mCommand->responseUnexpectedError());
 }
 
+TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::resultAllowablePaymentAmountExceeded()
+{
+    return transactionResultFromCommand(
+               mCommand->responseAllowablePaymentAmountExceeded());
+}
+
 TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::approve()
 {
 #ifdef TESTS
