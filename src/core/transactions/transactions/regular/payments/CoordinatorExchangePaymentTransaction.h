@@ -122,6 +122,7 @@ protected:
 
     // Helper functions for path filtering and capacity management
     TrustLineAmount calculateTotalReservedAmount();
+    TrustLineAmount calculateTotalReservedPaymentAmount() const;
     TransactionResult::SharedConst proceedToNextStage();
     bool validatePathForProcessing(const OptimalPathResult *pathStats);
 

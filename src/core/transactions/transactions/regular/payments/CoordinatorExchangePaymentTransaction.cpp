@@ -408,6 +408,19 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPathsRe
         return resultProtocolError();
     }
 
+    // Step 0.4: Check maxAllowablePaymentAmount (if provided)
+    if (mCommand->maxAllowablePaymentAmount().has_value()) {
+        if (mExchangeAmount > *mCommand->maxAllowablePaymentAmount()) {
+            warning() << "Calculated exchange amount " << mExchangeAmount
+                      << " exceeds maximum allowable payment amount "
+                      << *mCommand->maxAllowablePaymentAmount();
+            return resultAllowablePaymentAmountExceeded();
+        }
+
+        info() << "Exchange amount " << mExchangeAmount
+               << " within allowable limit " << *mCommand->maxAllowablePaymentAmount();
+    }
+
     // Check if total outgoing possibilities of this node are not smaller,
     // than total exchange amount (amount to be paid in sender equivalent).
     // In case if so - there is no reason to begin the operation:
@@ -2291,7 +2304,28 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
             return reject("Internal payment error: flow calculation mismatch");
         }
 
-        // do not need to send final path exchange configuration message, 
+        // Check maxAllowablePaymentAmount after path completion
+        if (mCommand->maxAllowablePaymentAmount().has_value()) {
+            TrustLineAmount totalReserved = calculateTotalReservedPaymentAmount();
+
+            if (totalReserved > *mCommand->maxAllowablePaymentAmount()) {
+                warning() << "Total reserved payment amount " << totalReserved
+                          << " exceeds maximum allowable payment amount "
+                          << *mCommand->maxAllowablePaymentAmount()
+                          << " after processing path " << mCurrentAmountReservingPathIdentifier << " via neighbor";
+
+                // Call reject() without return - triggers rollBack() in base class
+                reject("Allowable payment amount exceeded");
+
+                // Return specific error code
+                return resultAllowablePaymentAmountExceeded();
+            }
+
+            debug() << "Total reserved amount " << totalReserved
+                    << " within allowable limit " << *mCommand->maxAllowablePaymentAmount();
+        }
+
+        // do not need to send final path exchange configuration message,
         // because this path contains only one intermediate node and it already has final configuration
 
         if (kTotalAmount == mExchangeAmount) {
@@ -2532,6 +2566,27 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
         } catch (const ValueError& e) {
             error() << "Failed to add final configuration: " << e.what();
             return reject("Internal payment error: flow calculation mismatch");
+        }
+
+        // Check maxAllowablePaymentAmount after path completion
+        if (mCommand->maxAllowablePaymentAmount().has_value()) {
+            TrustLineAmount totalReserved = calculateTotalReservedPaymentAmount();
+
+            if (totalReserved > *mCommand->maxAllowablePaymentAmount()) {
+                warning() << "Total reserved payment amount " << totalReserved
+                          << " exceeds maximum allowable payment amount "
+                          << *mCommand->maxAllowablePaymentAmount()
+                          << " after processing path " << mCurrentAmountReservingPathIdentifier;
+
+                // Call reject() without return - triggers rollBack() in base class
+                reject("Allowable payment amount exceeded");
+
+                // Return specific error code
+                return resultAllowablePaymentAmountExceeded();
+            }
+
+            debug() << "Total reserved amount " << totalReserved
+                    << " within allowable limit " << *mCommand->maxAllowablePaymentAmount();
         }
 
         // send final path configuration to all intermediate nodes on path
@@ -3613,6 +3668,24 @@ TrustLineAmount CoordinatorExchangePaymentTransaction::calculateTotalReservedAmo
 
     debug() << "Total reserved amount: " << total;
     return total;
+}
+
+TrustLineAmount CoordinatorExchangePaymentTransaction::calculateTotalReservedPaymentAmount() const
+{
+    TrustLineAmount totalReserved = TrustLineAmount(0);
+
+    // Iterate through all exchange equivalents
+    for (const auto equivalent : mCommand->exchangeEquivalents()) {
+        // Get reserved amount for this equivalent using existing API
+        const auto reservedForEquivalent = totalReservedAmount(
+            AmountReservation::Outgoing,
+            equivalent);
+
+        // Add to total
+        totalReserved = totalReserved + reservedForEquivalent;
+    }
+
+    return totalReserved;
 }
 
 TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::proceedToNextStage()
