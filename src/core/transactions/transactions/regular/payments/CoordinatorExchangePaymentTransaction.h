@@ -90,6 +90,9 @@ protected:
         const TrustLineAmount& pathAmount);
     PathID generateNextPathID();
 
+    bool exceedsAllowablePaymentAmount(
+        const TrustLineAmount &amount) const;
+
     /**
      * send messages to all transaction participants with their final amount configuration
      */

@@ -68,6 +68,7 @@ add_executable(unit_tests
     transactions/TestIntermediateNodeConditionValidation.cpp
     transactions/TestCoordinatorConditionChangeHandling.cpp
     transactions/TestExchangePaymentConditionsRegression.cpp
+    transactions/CoordinatorExchangePaymentAllowableAmountTest.cpp
     payments/TestAmountReservation.cpp
     payments/TestAmountReservationsHandler.cpp
     core/CoreORToolsStartupTest.cpp

@@ -408,18 +408,16 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPathsRe
         return resultProtocolError();
     }
 
-    // Step 0.4: Check maxAllowablePaymentAmount (if provided)
-    if (mCommand->maxAllowablePaymentAmount().has_value()) {
-        if (mExchangeAmount > *mCommand->maxAllowablePaymentAmount()) {
-            warning() << "Calculated exchange amount " << mExchangeAmount
-                      << " exceeds maximum allowable payment amount "
-                      << *mCommand->maxAllowablePaymentAmount();
-            return resultAllowablePaymentAmountExceeded();
-        }
-
-        info() << "Exchange amount " << mExchangeAmount
-               << " within allowable limit " << *mCommand->maxAllowablePaymentAmount();
+    // Step 0.4: Check maxAllowablePaymentAmount
+    if (exceedsAllowablePaymentAmount(mExchangeAmount)) {
+        warning() << "Calculated exchange amount " << mExchangeAmount
+                  << " exceeds maximum allowable payment amount "
+                  << mCommand->maxAllowablePaymentAmount();
+        return resultAllowablePaymentAmountExceeded();
     }
+
+    info() << "Exchange amount " << mExchangeAmount
+           << " within allowable limit " << mCommand->maxAllowablePaymentAmount();
 
     // Check if total outgoing possibilities of this node are not smaller,
     // than total exchange amount (amount to be paid in sender equivalent).
@@ -2305,25 +2303,23 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
         }
 
         // Check maxAllowablePaymentAmount after path completion
-        if (mCommand->maxAllowablePaymentAmount().has_value()) {
-            TrustLineAmount totalReserved = calculateTotalReservedPaymentAmount();
+        TrustLineAmount totalReserved = calculateTotalReservedPaymentAmount();
 
-            if (totalReserved > *mCommand->maxAllowablePaymentAmount()) {
-                warning() << "Total reserved payment amount " << totalReserved
-                          << " exceeds maximum allowable payment amount "
-                          << *mCommand->maxAllowablePaymentAmount()
-                          << " after processing path " << mCurrentAmountReservingPathIdentifier << " via neighbor";
+        if (exceedsAllowablePaymentAmount(totalReserved)) {
+            warning() << "Total reserved payment amount " << totalReserved
+                      << " exceeds maximum allowable payment amount "
+                      << mCommand->maxAllowablePaymentAmount()
+                      << " after processing path " << mCurrentAmountReservingPathIdentifier << " via neighbor";
 
-                // Call reject() without return - triggers rollBack() in base class
-                reject("Allowable payment amount exceeded");
+            // Call reject() without return - triggers rollBack() in base class
+            reject("Allowable payment amount exceeded");
 
-                // Return specific error code
-                return resultAllowablePaymentAmountExceeded();
-            }
-
-            debug() << "Total reserved amount " << totalReserved
-                    << " within allowable limit " << *mCommand->maxAllowablePaymentAmount();
+            // Return specific error code
+            return resultAllowablePaymentAmountExceeded();
         }
+
+        debug() << "Total reserved amount " << totalReserved
+                << " within allowable limit " << mCommand->maxAllowablePaymentAmount();
 
         // do not need to send final path exchange configuration message,
         // because this path contains only one intermediate node and it already has final configuration
@@ -2569,25 +2565,23 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
         }
 
         // Check maxAllowablePaymentAmount after path completion
-        if (mCommand->maxAllowablePaymentAmount().has_value()) {
-            TrustLineAmount totalReserved = calculateTotalReservedPaymentAmount();
+        TrustLineAmount totalReserved = calculateTotalReservedPaymentAmount();
 
-            if (totalReserved > *mCommand->maxAllowablePaymentAmount()) {
-                warning() << "Total reserved payment amount " << totalReserved
-                          << " exceeds maximum allowable payment amount "
-                          << *mCommand->maxAllowablePaymentAmount()
-                          << " after processing path " << mCurrentAmountReservingPathIdentifier;
+        if (exceedsAllowablePaymentAmount(totalReserved)) {
+            warning() << "Total reserved payment amount " << totalReserved
+                      << " exceeds maximum allowable payment amount "
+                      << mCommand->maxAllowablePaymentAmount()
+                      << " after processing path " << mCurrentAmountReservingPathIdentifier;
 
-                // Call reject() without return - triggers rollBack() in base class
-                reject("Allowable payment amount exceeded");
+            // Call reject() without return - triggers rollBack() in base class
+            reject("Allowable payment amount exceeded");
 
-                // Return specific error code
-                return resultAllowablePaymentAmountExceeded();
-            }
-
-            debug() << "Total reserved amount " << totalReserved
-                    << " within allowable limit " << *mCommand->maxAllowablePaymentAmount();
+            // Return specific error code
+            return resultAllowablePaymentAmountExceeded();
         }
+
+        debug() << "Total reserved amount " << totalReserved
+                << " within allowable limit " << mCommand->maxAllowablePaymentAmount();
 
         // send final path configuration to all intermediate nodes on path
         sendFinalPathConfiguration(
@@ -3747,6 +3741,12 @@ bool CoordinatorExchangePaymentTransaction::validatePathForProcessing(
     }
 
     return true;  // Path is valid
+}
+
+bool CoordinatorExchangePaymentTransaction::exceedsAllowablePaymentAmount(
+    const TrustLineAmount &amount) const
+{
+    return amount > mCommand->maxAllowablePaymentAmount();
 }
 
 /**

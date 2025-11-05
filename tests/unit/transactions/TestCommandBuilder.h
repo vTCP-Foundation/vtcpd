@@ -23,7 +23,8 @@ public:
         const std::vector<BaseAddress::Shared> &addresses,
         const TrustLineAmount &amount,
         SerializedEquivalent receiverEquivalent,
-        const std::vector<SerializedEquivalent> &exchangeEquivalents)
+        const std::vector<SerializedEquivalent> &exchangeEquivalents,
+        const TrustLineAmount &maxAllowablePaymentAmount = TrustLineAmount(0))
     {
         // Create a "shell" command object that will throw but we'll catch it
         CommandUUID uuid;
@@ -88,7 +89,10 @@ public:
         for (const auto& equiv : exchangeEquivalents) {
             cmd << "\t" << equiv;
         }
-        
+
+        // maxAllowablePaymentAmount (mandatory, add as limit token)
+        cmd << "\tlimit=" << maxAllowablePaymentAmount;
+
         // End
         cmd << "\n";
         
@@ -112,4 +116,3 @@ public:
 };
 
 #endif // VTCPD_TESTS_TESTCOMMANDBUILDER_H
-

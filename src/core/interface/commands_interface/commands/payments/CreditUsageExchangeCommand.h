@@ -5,8 +5,6 @@
 #include "../../../../common/multiprecision/MultiprecisionUtils.h"
 #include "../../../../common/exceptions/MemoryError.h"
 
-#include <optional>
-
 class CreditUsageExchangeCommand :
     public BaseUserCommand
 {
@@ -30,7 +28,7 @@ public:
 
     const std::string payload() const;
 
-    const optional<TrustLineAmount>& maxAllowablePaymentAmount() const;
+    const TrustLineAmount& maxAllowablePaymentAmount() const;
 
 public:
     CommandResult::SharedConst responseOK(
@@ -44,7 +42,7 @@ private:
     SerializedEquivalent mEquivalent;
     vector<SerializedEquivalent> mExchangeEquivalents;
     std::string mPayload;
-    optional<TrustLineAmount> mMaxAllowablePaymentAmount;
+    TrustLineAmount mMaxAllowablePaymentAmount;
 };
 
 #endif // VTCPD_CREDITUSAGEEXCHANGECOMMAND_H
