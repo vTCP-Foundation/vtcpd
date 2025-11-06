@@ -9,6 +9,11 @@
 #include <vector>
 #include <algorithm>
 #include <string>
+#include <sstream>
+#include <exception>
+
+#include "../../../../topology/manager/TopologyTrustLinesManager.h"
+#include "../../../../topology/manager/TopologyTrustLineWithPtr.h"
 
 #include "../../../../common/exceptions/ValueError.h"
 
@@ -3085,6 +3090,212 @@ void CoordinatorExchangePaymentTransaction::buildPathsAgain()
     debug() << "buildPathsAgain";
     auto startTime = utc_now();
     
+    // Collect every equivalent that participates in the exchange (including the receiver's).
+    // The vector is deduplicated to avoid redundant topology traversals when the receiver
+    // equivalent is already present in the exchange list.
+    std::vector<SerializedEquivalent> equivalentsToSanitize = mCommand->exchangeEquivalents();
+    equivalentsToSanitize.push_back(mCommand->equivalent());
+    std::sort(equivalentsToSanitize.begin(), equivalentsToSanitize.end());
+    equivalentsToSanitize.erase(
+        std::unique(equivalentsToSanitize.begin(), equivalentsToSanitize.end()),
+        equivalentsToSanitize.end());
+
+    // Resolve contractor IDs for inaccessible nodes upfront so we can reuse them for each equivalent.
+    struct InaccessibleNodeDescriptor {
+        BaseAddress::Shared address;
+        optional<ContractorID> contractorID;
+    };
+
+    std::vector<InaccessibleNodeDescriptor> inaccessibleNodes;
+    inaccessibleNodes.reserve(mInaccessibleNodes.size());
+
+    for (const auto &nodeAddress : mInaccessibleNodes) {
+        InaccessibleNodeDescriptor descriptor{nodeAddress, std::nullopt};
+        if (nodeAddress) {
+            const auto contractorID = mEquivalentsSubsystemsRouter->resolveParticipantID(nodeAddress);
+            if (!contractorID) {
+                warning() << "buildPathsAgain: unable to resolve ContractorID for inaccessible node "
+                          << nodeAddress->fullAddress();
+            } else {
+                descriptor.contractorID = contractorID;
+            }
+        } else {
+            warning() << "buildPathsAgain: encountered empty address in mInaccessibleNodes";
+        }
+        inaccessibleNodes.push_back(descriptor);
+    }
+
+    // Prepare descriptors for rejected trust lines in the same manner.
+    struct RejectedTrustLineDescriptor {
+        BaseAddress::Shared sourceAddress;
+        BaseAddress::Shared targetAddress;
+        optional<ContractorID> sourceID;
+        optional<ContractorID> targetID;
+    };
+
+    std::vector<RejectedTrustLineDescriptor> rejectedTrustLines;
+    rejectedTrustLines.reserve(mRejectedTrustLines.size());
+
+    for (const auto &[source, target] : mRejectedTrustLines) {
+        RejectedTrustLineDescriptor descriptor{source, target, std::nullopt, std::nullopt};
+        if (source) {
+            descriptor.sourceID = mEquivalentsSubsystemsRouter->resolveParticipantID(source);
+            if (!descriptor.sourceID) {
+                warning() << "buildPathsAgain: unable to resolve ContractorID for rejected TL source "
+                          << source->fullAddress();
+            }
+        } else {
+            warning() << "buildPathsAgain: encountered empty source address in mRejectedTrustLines";
+        }
+
+        if (target) {
+            descriptor.targetID = mEquivalentsSubsystemsRouter->resolveParticipantID(target);
+            if (!descriptor.targetID) {
+                warning() << "buildPathsAgain: unable to resolve ContractorID for rejected TL target "
+                          << target->fullAddress();
+            }
+        } else {
+            warning() << "buildPathsAgain: encountered empty target address in mRejectedTrustLines";
+        }
+
+        rejectedTrustLines.push_back(descriptor);
+    }
+
+    // We only need participant IDs when we actually sanitise inaccessible nodes.
+    const auto participantsIDs = mInaccessibleNodes.empty()
+        ? std::vector<ContractorID>{}
+        : mEquivalentsSubsystemsRouter->participantsIDs();
+
+    for (const auto equivalent : equivalentsToSanitize) {
+        TopologyTrustLinesManager *topologyManager = nullptr;
+        try {
+            topologyManager = mEquivalentsSubsystemsRouter->topologyTrustLineManager(equivalent);
+        } catch (const std::exception &e) {
+            warning() << "buildPathsAgain: failed to obtain topology manager for equivalent "
+                      << equivalent << ": " << e.what();
+            continue;
+        }
+
+        if (topologyManager == nullptr) {
+            warning() << "buildPathsAgain: topology manager is null for equivalent " << equivalent;
+            continue;
+        }
+
+        size_t removedOutgoingEdges = 0;
+        size_t removedIncomingEdges = 0;
+
+        if (!inaccessibleNodes.empty()) {
+            for (const auto &nodeDescriptor : inaccessibleNodes) {
+                if (!nodeDescriptor.contractorID) {
+                    continue;
+                }
+
+                const auto nodeID = *nodeDescriptor.contractorID;
+
+                // Remove every outgoing edge sourced from the inaccessible node.
+                const auto outgoingSet = topologyManager->trustLinePtrsSet(nodeID);
+                if (!outgoingSet.empty()) {
+                    std::vector<ContractorID> targets;
+                    targets.reserve(outgoingSet.size());
+                    for (auto *trustLinePtr : outgoingSet) {
+                        if (trustLinePtr == nullptr) {
+                            continue;
+                        }
+                        targets.push_back(trustLinePtr->topologyTrustLine()->targetID());
+                    }
+                    for (const auto targetID : targets) {
+                        topologyManager->removeTrustLine(nodeID, targetID);
+                        ++removedOutgoingEdges;
+                    }
+                }
+
+                // Remove every incoming edge that finishes at the inaccessible node.
+                for (const auto participantID : participantsIDs) {
+                    if (participantID == nodeID || participantID == TopologyTrustLinesManager::kCurrentNodeID) {
+                        continue;
+                    }
+
+                    const auto incomingSet = topologyManager->trustLinePtrsSet(participantID);
+                    if (incomingSet.empty()) {
+                        continue;
+                    }
+
+                    for (auto *trustLinePtr : incomingSet) {
+                        if (trustLinePtr == nullptr) {
+                            continue;
+                        }
+                        if (trustLinePtr->topologyTrustLine()->targetID() == nodeID) {
+                            topologyManager->removeTrustLine(participantID, nodeID);
+                            ++removedIncomingEdges;
+                        }
+                    }
+                }
+            }
+
+            if (removedOutgoingEdges > 0 || removedIncomingEdges > 0) {
+                info() << "buildPathsAgain: equivalent " << equivalent
+                       << " sanitised due to inaccessible nodes (outgoing removed="
+                       << removedOutgoingEdges << ", incoming removed="
+                       << removedIncomingEdges << ")";
+            }
+        }
+
+        if (!rejectedTrustLines.empty()) {
+            size_t removedRejectedEdges = 0;
+            std::vector<std::string> removedDescriptions;
+
+            for (const auto &tlDescriptor : rejectedTrustLines) {
+                if (!tlDescriptor.sourceID || !tlDescriptor.targetID) {
+                    continue;
+                }
+
+                const auto sourceID = *tlDescriptor.sourceID;
+                const auto targetID = *tlDescriptor.targetID;
+
+                const auto candidates = topologyManager->trustLinePtrsSet(sourceID);
+                bool edgeExists = false;
+                for (auto *trustLinePtr : candidates) {
+                    if (trustLinePtr == nullptr) {
+                        continue;
+                    }
+                    if (trustLinePtr->topologyTrustLine()->targetID() == targetID) {
+                        edgeExists = true;
+                        break;
+                    }
+                }
+
+                if (!edgeExists) {
+                    continue;
+                }
+
+                topologyManager->removeTrustLine(sourceID, targetID);
+                ++removedRejectedEdges;
+
+                if (tlDescriptor.sourceAddress && tlDescriptor.targetAddress) {
+                    std::ostringstream oss;
+                    oss << tlDescriptor.sourceAddress->fullAddress()
+                        << " -> "
+                        << tlDescriptor.targetAddress->fullAddress();
+                    removedDescriptions.push_back(oss.str());
+                }
+            }
+
+            if (removedRejectedEdges > 0) {
+                std::ostringstream summary;
+                for (size_t idx = 0; idx < removedDescriptions.size(); ++idx) {
+                    if (idx > 0) {
+                        summary << ", ";
+                    }
+                    summary << removedDescriptions[idx];
+                }
+
+                info() << "buildPathsAgain: equivalent " << equivalent
+                       << " removed " << removedRejectedEdges
+                       << " rejected trust lines [" << summary.str() << "]";
+            }
+        }
+    }
+
     debug() << "buildPathsAgain method time: " << utc_now() - startTime;
 }
 
