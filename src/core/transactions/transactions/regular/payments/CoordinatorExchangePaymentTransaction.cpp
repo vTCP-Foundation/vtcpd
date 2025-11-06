@@ -3294,6 +3294,156 @@ void CoordinatorExchangePaymentTransaction::buildPathsAgain()
                        << " rejected trust lines [" << summary.str() << "]";
             }
         }
+
+        size_t appliedIncomingReservations = 0;
+        TrustLineAmount totalIncomingReserved = TrustLineAmount(0);
+
+        if (!mNodesFinalAmountsConfiguration.empty()) {
+            for (const auto &nodeConfig : mNodesFinalAmountsConfiguration) {
+                const auto paymentNodeIdIt = mPaymentNodesIds.find(nodeConfig.first);
+                if (paymentNodeIdIt == mPaymentNodesIds.end()) {
+                    warning() << "buildPathsAgain: node " << nodeConfig.first
+                              << " not present in mPaymentNodesIds";
+                    continue;
+                }
+
+                const auto participantIt = mPaymentParticipants.find(paymentNodeIdIt->second);
+                if (participantIt == mPaymentParticipants.end() || !participantIt->second) {
+                    warning() << "buildPathsAgain: participant missing for node " << nodeConfig.first;
+                    continue;
+                }
+
+                const auto nodeAddress = participantIt->second->mainAddress();
+                if (!nodeAddress) {
+                    warning() << "buildPathsAgain: node " << nodeConfig.first
+                              << " has no main address";
+                    continue;
+                }
+
+                ContractorID targetID;
+                try {
+                    targetID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(nodeAddress);
+                } catch (const std::exception &e) {
+                    warning() << "buildPathsAgain: unable to resolve ContractorID for node "
+                              << nodeConfig.first << ": " << e.what();
+                    continue;
+                }
+
+                for (const auto &reservation : nodeConfig.second) {
+                    if (reservation.direction != PathReservation::Incoming ||
+                        reservation.equivalent != equivalent) {
+                        continue;
+                    }
+
+                    if (!reservation.amount) {
+                        warning() << "buildPathsAgain: reservation for node " << nodeConfig.first
+                                  << " has null amount";
+                        continue;
+                    }
+
+                    const auto pathIt = mPathsStats.find(reservation.pathID);
+                    if (pathIt == mPathsStats.end() || !(pathIt->second)) {
+                        warning() << "buildPathsAgain: pathID " << reservation.pathID
+                                  << " not found while applying reservation for node "
+                                  << nodeConfig.first;
+                        continue;
+                    }
+
+                    auto *pathStats = pathIt->second.get();
+                    const int nodePosition = pathStats->path().positionOfNode(nodeAddress);
+                    if (nodePosition < 0) {
+                        warning() << "buildPathsAgain: node " << nodeConfig.first
+                                  << " not present in path " << reservation.pathID;
+                        continue;
+                    }
+
+                    if (nodePosition == 0) {
+                        debug() << "buildPathsAgain: skipping reservation for node "
+                                << nodeConfig.first
+                                << " at position 0 (no previous hop)";
+                        continue;
+                    }
+
+                    const auto &pathNodes = pathStats->path().nodes;
+                    if (static_cast<size_t>(nodePosition) >= pathNodes.size()) {
+                        warning() << "buildPathsAgain: inconsistent node position "
+                                  << nodePosition << " for node " << nodeConfig.first
+                                  << " in path " << reservation.pathID;
+                        continue;
+                    }
+
+                    const auto previousNodeAddress = pathNodes.at(static_cast<size_t>(nodePosition - 1));
+                    if (!previousNodeAddress) {
+                        warning() << "buildPathsAgain: previous node address missing for node "
+                                  << nodeConfig.first << " in path " << reservation.pathID;
+                        continue;
+                    }
+
+                    ContractorID sourceID;
+                    try {
+                        sourceID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(previousNodeAddress);
+                    } catch (const std::exception &e) {
+                        warning() << "buildPathsAgain: unable to resolve ContractorID for previous node "
+                                  << previousNodeAddress->fullAddress() << " in path "
+                                  << reservation.pathID << ": " << e.what();
+                        continue;
+                    }
+
+                    const auto outgoingEdges = topologyManager->trustLinePtrsSet(sourceID);
+                    TopologyTrustLineWithPtr *matchedEdge = nullptr;
+                    for (auto *edgePtr : outgoingEdges) {
+                        if (edgePtr == nullptr) {
+                            continue;
+                        }
+                        if (edgePtr->topologyTrustLine()->targetID() == targetID) {
+                            matchedEdge = edgePtr;
+                            break;
+                        }
+                    }
+
+                    if (matchedEdge == nullptr) {
+                        warning() << "buildPathsAgain: trust line " << previousNodeAddress->fullAddress()
+                                  << " -> " << nodeConfig.first
+                                  << " not found in topology for equivalent " << equivalent;
+                        continue;
+                    }
+
+                    TrustLineAmount reservedAmount = *reservation.amount;
+                    if (reservedAmount == TrustLineAmount(0)) {
+                        debug() << "buildPathsAgain: skipping zero reservation on "
+                                << previousNodeAddress->fullAddress() << " -> " << nodeConfig.first;
+                        continue;
+                    }
+
+                    const auto hopCapacityPtr = matchedEdge->topologyTrustLine()->amount();
+                    if (!hopCapacityPtr) {
+                        warning() << "buildPathsAgain: trust line "
+                                  << previousNodeAddress->fullAddress() << " -> " << nodeConfig.first
+                                  << " has null capacity pointer";
+                        continue;
+                    }
+
+                    const TrustLineAmount maxHopCapacity = *hopCapacityPtr;
+                    if (reservedAmount >= maxHopCapacity) {
+                        topologyManager->makeFullyUsed(sourceID, targetID);
+                    } else {
+                        topologyManager->addUsedAmount(sourceID, targetID, reservedAmount);
+                    }
+
+                    try {
+                        totalIncomingReserved += reservedAmount;
+                    } catch (const std::exception &e) {
+                        warning() << "buildPathsAgain: overflow while accumulating reservation amount: "
+                                  << e.what();
+                    }
+                    ++appliedIncomingReservations;
+                }
+            }
+        }
+
+        info() << "buildPathsAgain: equivalent " << equivalent
+               << " applied " << appliedIncomingReservations
+               << " incoming reservations, total=" << totalIncomingReserved;
     }
 
     debug() << "buildPathsAgain method time: " << utc_now() - startTime;
