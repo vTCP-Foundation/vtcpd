@@ -136,6 +136,9 @@ CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
     mIsPaymentTransactionsAllowedDueToObserving(isPaymentTransactionsAllowedDueToObserving),
     mCountParticipantKeysResending(0),
     mDirectPathIsAlreadyProcessed(false),
+    mPreviousInaccessibleNodesCount(0),
+    mPreviousRejectedTrustLinesCount(0),
+    mRebuildingAttemptsCount(0),
     mIsAuditPendingPathsOccurred(false),
     mCountReceiverInaccessible(0),
     mIsWaitingForExchangePathsResource(false),
@@ -2635,7 +2638,52 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryProcess
         switchToNextPath();
     } catch (NotFoundError &e) {
         debug() << "No another paths are available. Try build new paths.";
-        // TODO: we should build new paths here
+        mRebuildingAttemptsCount++;
+        if (mRebuildingAttemptsCount > kMaxRebuildingAttemptsCount) {
+            reject("Count rebuilding attempts reaches maximal number. Canceling.");
+            return resultInsufficientFundsError();
+        }
+
+        if (mInaccessibleNodes.size() != mPreviousInaccessibleNodesCount ||
+                mRejectedTrustLines.size() != mPreviousRejectedTrustLinesCount) {
+            auto countPathsBeforeBuilding = mPathsStats.size();
+            buildPathsAgain();
+
+            if (mPathsStats.size() > countPathsBeforeBuilding) {
+                debug() << "New paths was built " << to_string(mPathsStats.size() - countPathsBeforeBuilding);
+                mPreviousInaccessibleNodesCount = mInaccessibleNodes.size();
+                mPreviousRejectedTrustLinesCount = mRejectedTrustLines.size();
+                // in case if amount on direct paths changed, we can process it again
+                mDirectPathIsAlreadyProcessed = false;
+                initAmountsReservationOnNextPath();
+                mIsAuditPendingPathsOccurred = false;
+                return runAmountReservationStage();
+            }
+            debug() << "New paths was not built";
+        }
+
+        if (mIsAuditPendingPathsOccurred) {
+            debug() << "try to build new paths due to audit pending TLs";
+            auto countPathsBeforeBuilding = mPathsStats.size();
+            mRejectedTrustLines.clear();
+            buildPathsAgain();
+
+            if (mPathsStats.size() > countPathsBeforeBuilding) {
+                debug() << "New paths was built " << to_string(mPathsStats.size() - countPathsBeforeBuilding);
+                mPreviousInaccessibleNodesCount = mInaccessibleNodes.size();
+                mPreviousRejectedTrustLinesCount = mRejectedTrustLines.size();
+                // in case if amount on direct paths changed, we can process it again
+                mDirectPathIsAlreadyProcessed = false;
+                initAmountsReservationOnNextPath();
+                mIsAuditPendingPathsOccurred = false;
+                return resultWaitForMessageTypes( {
+                    Message::Payments_IntermediateNodeReservationResponse,
+                    Message::Payments_TTLProlongationRequest,
+                    Message::General_NoEquivalent},
+                kAuditRetryingIntervalInMilliseconds);
+            }
+            debug() << "New paths was not built";
+        }
         reject("No another paths are available. Canceling.");
         return resultInsufficientFundsError();
     }
@@ -3030,6 +3078,14 @@ void CoordinatorExchangePaymentTransaction::savePaymentOperationIntoHistory(
             mCommand->UUID(),
             mCommand->payload()));
     debug() << "Operation saved";
+}
+
+void CoordinatorExchangePaymentTransaction::buildPathsAgain()
+{
+    debug() << "buildPathsAgain";
+    auto startTime = utc_now();
+    
+    debug() << "buildPathsAgain method time: " << utc_now() - startTime;
 }
 
 bool CoordinatorExchangePaymentTransaction::checkReservationsDirections() const

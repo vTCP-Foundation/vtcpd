@@ -208,6 +208,11 @@ protected:
         OptimalPathResult *pathStats,
         BaseAddress::Shared targetNode) const;
 
+    /**
+     * try build new paths if reserved amount on previously built paths is less then required
+     */
+    void buildPathsAgain();
+
 protected:
     EventsInterfaceManager *mEventsInterfaceManager;
 
@@ -257,9 +262,13 @@ protected:
 
     // List of rejected trust lines (sender, receiver) pairs
     vector<pair<BaseAddress::Shared, BaseAddress::Shared>> mRejectedTrustLines;
+    size_t mPreviousRejectedTrustLinesCount;
 
     // List of inaccessible nodes
     vector<BaseAddress::Shared> mInaccessibleNodes;
+    size_t mPreviousInaccessibleNodesCount;
+
+    uint16_t mRebuildingAttemptsCount;
 
     // Commission consumption tracking
     set<CommissionKey> mConsumedCommissions;
@@ -279,6 +288,7 @@ protected:
     static const SerializedPositionInPath kFirstIntermediateNodeIndex = 0;
     static const uint16_t kMaxCountParticipantKeysResending = 5;
     static const uint8_t kMaxReceiverInaccessible = 5;
+    static const uint16_t kMaxRebuildingAttemptsCount = 3;
     static const uint8_t kMaxCountPathsRecollecting = 3;
     static const uint32_t kPathsRecollectingIntervalInMilliseconds = 1000;
     static const uint32_t kAuditRetryingIntervalInMilliseconds = 5000;

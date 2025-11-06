@@ -28,6 +28,7 @@ add_executable(unit_tests
     rates/ExchangeRateTest.cpp
     rates/ExchangeRatesManagerTest.cpp
     equivalents/EquivalentsSubsystemsRouterTest.cpp
+    equivalents/EquivalentsSubsystemsRouterParticipantsTest.cpp
     network/TailManagerTest.cpp
     network/IncomingRemoteNodeTest.cpp
     network/messages/IntermediateNodeReservationRequestMessageTest.cpp
@@ -38,6 +39,7 @@ add_executable(unit_tests
     network/messages/CoordinatorReservationConditionsMessageTest.cpp
     commissions/CommissionsManagerTest.cpp
     commissions/TopologyTrustLinesManagerCommissionsTest.cpp
+    topology/TopologyTrustLinesManagerMutationTest.cpp
     commands/InitiateMaxFlowExchangeCalculationCommandTest.cpp
     transactions/InitiateMaxFlowExchangeCalculationTransactionORToolsTest.cpp
     transactions/InitiateMaxFlowExchangeCalculationApplyLogicTest.cpp

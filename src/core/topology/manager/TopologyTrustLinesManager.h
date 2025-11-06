@@ -36,6 +36,17 @@ public:
     TrustLineWithPtrHashSet trustLinePtrsSet(
         ContractorID nodeID);
 
+    /**
+     * Removes a trust line between the given source and target contractors from the cached topology.
+     *
+     * The method ensures full cleanup of the associated bookkeeping structures (hash sets and
+     * time-indexed maps) so callers never hold dangling pointers. If the last trust line for the
+     * source node is removed, the node entry is purged as well.
+     */
+    void removeTrustLine(
+        ContractorID sourceID,
+        ContractorID targetID);
+
     void resetAllUsedAmounts();
 
     bool deleteLegacyTrustLines();

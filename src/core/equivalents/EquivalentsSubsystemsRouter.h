@@ -154,6 +154,15 @@ public:
      * @param address Base address to resolve or assign ContractorID for
      * @return ContractorID for the address (existing or newly created)
      */
+    /**
+     * Returns a snapshot of all known participant IDs without exposing internal containers.
+     *
+     * The IDs are returned in the deterministic order in which participants were registered,
+     * starting with the current node (ID 0). The method never duplicates IDs, even if the
+     * backing storage contained redundant entries due to future refactors.
+     */
+    std::vector<ContractorID> participantsIDs() const;
+
     ContractorID getOrCreateParticipantID(
         const BaseAddress::Shared &address);
 

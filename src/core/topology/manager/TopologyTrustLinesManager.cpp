@@ -124,6 +124,63 @@ unordered_set<TopologyTrustLineWithPtr*> TopologyTrustLinesManager::trustLinePtr
     return *nodeIDAndSetFlows->second;
 }
 
+void TopologyTrustLinesManager::removeTrustLine(
+    ContractorID sourceID,
+    ContractorID targetID)
+{
+    // Locate the hash set that owns all outgoing trust lines for the source contractor.
+    auto nodeIt = msTrustLines.find(sourceID);
+    if (nodeIt == msTrustLines.end()) {
+        debug() << "removeTrustLine: no trust lines found for source " << sourceID
+                << ", skipping removal for target " << targetID;
+        return;
+    }
+
+    auto hashSet = nodeIt->second;
+    if (hashSet == nullptr) {
+        debug() << "removeTrustLine: hash set pointer is null for source " << sourceID
+                << ", skipping removal for target " << targetID;
+        return;
+    }
+
+    // Find the exact trust line instance that matches the requested target contractor.
+    TopologyTrustLineWithPtr *matchedPtr = nullptr;
+    for (auto trustLinePtr : *hashSet) {
+        if (trustLinePtr->topologyTrustLine()->targetID() == targetID) {
+            matchedPtr = trustLinePtr;
+            break;
+        }
+    }
+
+    if (matchedPtr == nullptr) {
+        debug() << "removeTrustLine: trust line not found for source " << sourceID
+                << " and target " << targetID;
+        return;
+    }
+
+    // Remove the pointer from the time-indexed map to avoid dangling references in GC routines.
+    for (auto timeIt = mtTrustLines.begin(); timeIt != mtTrustLines.end(); ++timeIt) {
+        if (timeIt->second == matchedPtr) {
+            mtTrustLines.erase(timeIt);
+            break;
+        }
+    }
+
+    // Detach the trust line from the owning hash set and delete the wrapper to free memory.
+    hashSet->erase(matchedPtr);
+    delete matchedPtr;
+
+    // If the source contractor no longer has outgoing trust lines, release the container completely.
+    if (hashSet->empty()) {
+        msTrustLines.erase(nodeIt);
+        delete hashSet;
+        debug() << "removeTrustLine: removed last trust line for source " << sourceID;
+    } else {
+        debug() << "removeTrustLine: removed trust line " << sourceID
+                << " -> " << targetID;
+    }
+}
+
 void TopologyTrustLinesManager::resetAllUsedAmounts()
 {
 #ifdef DEBUG_LOG_MAX_FLOW_CALCULATION

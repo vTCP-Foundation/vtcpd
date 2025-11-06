@@ -1,5 +1,7 @@
 #include "EquivalentsSubsystemsRouter.h"
 
+#include <unordered_set>
+
 EquivalentsSubsystemsRouter::EquivalentsSubsystemsRouter(
     StorageHandler *storageHandler,
     Keystore *keystore,
@@ -385,6 +387,26 @@ void EquivalentsSubsystemsRouter::clearContractorsShouldBePinged()
 {
     mContractorsShouldBePinged.clear();
     debug() << "Contractors should be pinged list cleared";
+}
+
+std::vector<ContractorID> EquivalentsSubsystemsRouter::participantsIDs() const
+{
+    // Pre-size the result container and a guard set to minimise reallocations on large topologies.
+    std::vector<ContractorID> ids;
+    ids.reserve(mParticipantsAddresses.size());
+
+    std::unordered_set<ContractorID> seen;
+    seen.reserve(mParticipantsAddresses.size());
+
+    // Preserve registration order while filtering out potential duplicates defensively.
+    for (const auto &entry : mParticipantsAddresses) {
+        const auto contractorID = entry.second;
+        if (seen.insert(contractorID).second) {
+            ids.push_back(contractorID);
+        }
+    }
+
+    return ids;
 }
 
 ContractorID EquivalentsSubsystemsRouter::getOrCreateParticipantID(
