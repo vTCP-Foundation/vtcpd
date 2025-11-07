@@ -90,8 +90,8 @@ public:
             cmd << "\t" << equiv;
         }
 
-        // maxAllowablePaymentAmount (mandatory, add as limit token)
-        cmd << "\tlimit=" << maxAllowablePaymentAmount;
+        // maxAllowablePaymentAmount (mandatory)
+        cmd << "\t" << maxAllowablePaymentAmount;
 
         // End
         cmd << "\n";

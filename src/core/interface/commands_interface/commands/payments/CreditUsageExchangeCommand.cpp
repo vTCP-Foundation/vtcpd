@@ -17,8 +17,6 @@ CreditUsageExchangeCommand::CreditUsageExchangeCommand(
     std::string addressType;
     size_t contractorAddressesCount;
     uint32_t amountDigitsCounter = 0;
-    std::string maxAllowableAmount;
-    std::string limitToken;
 
     auto check = [&](auto &ctx) {
         if (_attr(ctx) == kCommandsSeparator || _attr(ctx) == kTokensSeparator) {
@@ -76,10 +74,6 @@ CreditUsageExchangeCommand::CreditUsageExchangeCommand(
     auto payloadParse = [&](auto &ctx) {
         mPayload += _attr(ctx);
     };
-    auto limitTokenParse = [&](auto &ctx) {
-        limitToken += _attr(ctx);
-    };
-
     std::string commandTail;
 
     try {
@@ -143,7 +137,7 @@ CreditUsageExchangeCommand::CreditUsageExchangeCommand(
         const auto &amountToken = tokens[0];
         const auto &equivalentToken = tokens[1];
 
-        auto findLimitTokenIndex = [&tokens]() -> size_t {
+        const auto findLegacyLimitTokenIndex = [&tokens]() -> size_t {
             for (size_t idx = tokens.size(); idx-- > 2;) {
                 if (tokens[idx].rfind("limit=", 0) == 0) {
                     return idx;
@@ -152,10 +146,38 @@ CreditUsageExchangeCommand::CreditUsageExchangeCommand(
             return std::string::npos;
         };
 
-        const size_t limitIndex = findLimitTokenIndex();
-        if (limitIndex == std::string::npos) {
-            throw ValueError(
-                "CreditUsageExchangeCommand: maxAllowablePaymentAmount token is missing.");
+        const auto isDigits = [](const std::string &value) {
+            return !value.empty() &&
+                std::all_of(value.begin(), value.end(), ::isdigit);
+        };
+
+        bool payloadProvided = false;
+        std::string payloadToken;
+        size_t limitIndex = std::string::npos;
+        bool legacyLimitFormat = false;
+
+        const size_t legacyIndex = findLegacyLimitTokenIndex();
+        if (legacyIndex != std::string::npos) {
+            legacyLimitFormat = true;
+            limitIndex = legacyIndex;
+            if (limitIndex + 1 < tokens.size()) {
+                payloadProvided = true;
+                payloadToken = tokens.back();
+            }
+        } else {
+            const auto &lastToken = tokens.back();
+            if (!isDigits(lastToken)) {
+                payloadProvided = true;
+                payloadToken = lastToken;
+
+                if (tokens.size() < 5) {
+                    throw ValueError(
+                        "CreditUsageExchangeCommand: maxAllowablePaymentAmount token is missing.");
+                }
+                limitIndex = tokens.size() - 2;
+            } else {
+                limitIndex = tokens.size() - 1;
+            }
         }
 
         if (limitIndex <= 2) {
@@ -212,38 +234,43 @@ CreditUsageExchangeCommand::CreditUsageExchangeCommand(
                 "CreditUsageExchangeCommand: exchangeEquivalents limit exceeded (maximum 5 elements).");
         }
 
-        std::string maxAllowableToken = tokens[limitIndex];
-        if (maxAllowableToken.rfind("limit=", 0) != 0) {
-            throw ValueError(
-                "CreditUsageExchangeCommand: maxAllowablePaymentAmount token must start with 'limit='.");
+        const std::string &maxAllowableToken = tokens[limitIndex];
+        std::string maxAllowableAmountValue;
+        if (legacyLimitFormat) {
+            if (maxAllowableToken.rfind("limit=", 0) != 0) {
+                throw ValueError(
+                    "CreditUsageExchangeCommand: maxAllowablePaymentAmount token must start with 'limit='.");
+            }
+            maxAllowableAmountValue = maxAllowableToken.substr(6);
+        } else {
+            maxAllowableAmountValue = maxAllowableToken;
         }
 
-        maxAllowableAmount = maxAllowableToken.substr(6);
-        if (maxAllowableAmount.empty()) {
+        if (maxAllowableAmountValue.empty()) {
             throw ValueError(
                 "CreditUsageExchangeCommand: maxAllowablePaymentAmount must not be empty.");
         }
-        if (!std::all_of(maxAllowableAmount.begin(), maxAllowableAmount.end(), ::isdigit)) {
+        if (!isDigits(maxAllowableAmountValue)) {
             throw ValueError(
                 "CreditUsageExchangeCommand: maxAllowablePaymentAmount must contain digits only.");
         }
-        if (maxAllowableAmount.size() > 1 && maxAllowableAmount.front() == '0') {
+        if (maxAllowableAmountValue.size() > 1 && maxAllowableAmountValue.front() == '0') {
             throw ValueError(
                 "CreditUsageExchangeCommand: maxAllowablePaymentAmount contains leading zero.");
         }
 
-        if (limitIndex + 1 < tokens.size()) {
-            mPayload = tokens[limitIndex + 1];
+        if (payloadProvided) {
+            mPayload = payloadToken;
         }
 
         if (mPayload.length() > std::numeric_limits<PayloadLength>::max()) {
             throw ValueError("Payload length is too big");
         }
 
-        if (maxAllowableAmount == "0") {
+        if (maxAllowableAmountValue == "0") {
             mMaxAllowablePaymentAmount = std::numeric_limits<TrustLineAmount>::max();
         } else {
-            mMaxAllowablePaymentAmount = TrustLineAmount(maxAllowableAmount);
+            mMaxAllowablePaymentAmount = TrustLineAmount(maxAllowableAmountValue);
         }
     } catch (const ValueError &) {
         throw;

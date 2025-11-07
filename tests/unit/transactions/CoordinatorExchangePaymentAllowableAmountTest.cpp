@@ -74,7 +74,7 @@ TEST_F(CreditUsageExchangeCommandAllowableAmountTest, ParseWithMaxAllowableAmoun
 // Test 2: Parse command with maxAllowablePaymentAmount = 0 (unlimited, converted to max)
 TEST_F(CreditUsageExchangeCommandAllowableAmountTest, ParseWithUnlimitedAmount) {
     // Setup command string with maxAllowablePaymentAmount = 0 (no limit)
-    // Format: ...:1:limit=0 (0 => unlimited)
+    // Format: ...:1:0 (0 => unlimited)
     std::vector<BaseAddress::Shared> addresses = {
         std::make_shared<IPv4WithPortAddress>("127.0.0.1:2003")
     };
@@ -113,7 +113,7 @@ TEST_F(CreditUsageExchangeCommandAllowableAmountTest, ParseWithoutMaxAllowableAm
 
 // Test 3: Parse command with invalid maxAllowablePaymentAmount (leading zero)
 TEST_F(CreditUsageExchangeCommandAllowableAmountTest, ParseWithInvalidMaxAllowableAmount) {
-    std::string commandStr = "1\t12\t127.0.0.1:2003\t1000\t2\t1\tlimit=0150\n";
+    std::string commandStr = "1\t12\t127.0.0.1:2003\t1000\t2\t1\t0150\n";
 
     EXPECT_THROW(
         {
@@ -650,9 +650,9 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, E2E_RollbackMec
         << "Reject should translate to 'no consensus' response";
 }
 
-// Test 14: E2E - Payment workflow with limit=0 (legacy unlimited behavior)
+// Test 14: E2E - Payment workflow with limit value 0 (legacy unlimited behavior)
 TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, E2E_PaymentLegacyUnlimitedBehavior) {
-    // Create command with limit=0 (interpreted as unlimited)
+    // Create command with limit value 0 (interpreted as unlimited)
     vector<BaseAddress::Shared> addresses = {contractorAddress};
     auto command = TestCommandBuilder::buildExchangeCommand(
         addresses,
@@ -697,7 +697,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, E2E_PaymentLega
     EXPECT_FALSE(transaction->exceedsAllowablePaymentAmount(transaction->mExchangeAmount))
         << "Unlimited mode should never exceed allowable payment";
 
-    // This demonstrates backward compatibility - by using limit=0 the coordinator
+    // This demonstrates backward compatibility - by using limit 0 the coordinator
     // treats the payment as having no practical ceiling (max amount)
 }
 
