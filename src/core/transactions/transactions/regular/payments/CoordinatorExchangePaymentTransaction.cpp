@@ -2655,6 +2655,20 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryProcess
             buildPathsAgain();
 
             if (mPathsStats.size() > countPathsBeforeBuilding) {
+                const TrustLineAmount totalReservedAfterRebuild = calculateTotalReservedAmount();
+                const TrustLineAmount remainingReceive = mAmount - totalReservedAfterRebuild;
+                const TrustLineAmount totalCapacity = calculateTotalPathCapacityForReceive();
+                info() << "Rebuilt paths capacity check: remainingReceive=" << remainingReceive
+                       << ", totalCapacity=" << totalCapacity;
+
+                if (totalCapacity < remainingReceive) {
+                    warning() << "Rebuilt paths insufficient capacity: remainingReceive=" << remainingReceive
+                              << ", totalCapacity=" << totalCapacity;
+                    reject("Rebuilt paths have insufficient capacity");
+                    return resultInsufficientFundsError();
+                }
+
+                info() << "Rebuilt paths capacity is sufficient; resuming reservation stage";
                 debug() << "New paths was built " << to_string(mPathsStats.size() - countPathsBeforeBuilding);
                 mPreviousInaccessibleNodesCount = mInaccessibleNodes.size();
                 mPreviousRejectedTrustLinesCount = mRejectedTrustLines.size();
@@ -2674,6 +2688,20 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryProcess
             buildPathsAgain();
 
             if (mPathsStats.size() > countPathsBeforeBuilding) {
+                const TrustLineAmount totalReservedAfterRebuild = calculateTotalReservedAmount();
+                const TrustLineAmount remainingReceive = mAmount - totalReservedAfterRebuild;
+                const TrustLineAmount totalCapacity = calculateTotalPathCapacityForReceive();
+                info() << "Rebuilt paths capacity check: remainingReceive=" << remainingReceive
+                       << ", totalCapacity=" << totalCapacity;
+
+                if (totalCapacity < remainingReceive) {
+                    warning() << "Rebuilt paths insufficient capacity after audit retry: remainingReceive="
+                              << remainingReceive << ", totalCapacity=" << totalCapacity;
+                    reject("Rebuilt paths have insufficient capacity");
+                    return resultInsufficientFundsError();
+                }
+
+                info() << "Rebuilt paths capacity is sufficient after audit retry; resuming reservation stage";
                 debug() << "New paths was built " << to_string(mPathsStats.size() - countPathsBeforeBuilding);
                 mPreviousInaccessibleNodesCount = mInaccessibleNodes.size();
                 mPreviousRejectedTrustLinesCount = mRejectedTrustLines.size();
