@@ -3446,6 +3446,99 @@ void CoordinatorExchangePaymentTransaction::buildPathsAgain()
                << " incoming reservations, total=" << totalIncomingReserved;
     }
 
+    // Recalculate paths only after topology has been fully sanitised across all equivalents.
+    // This ensures OR-Tools sees a coherent snapshot without inaccessible nodes or exhausted edges.
+    if (mExchangePathsManager == nullptr) {
+        warning() << "buildPathsAgain: ExchangePathsManager is null, cannot rebuild paths";
+        debug() << "buildPathsAgain method time: " << utc_now() - startTime;
+        return;
+    }
+
+    // Attempt to reuse cached contractor ID; resolve again as a safety net when missing.
+    if (mContractorID == 0 && mContractor) {
+        try {
+            mContractorID = mEquivalentsSubsystemsRouter->getOrCreateParticipantID(
+                mContractor->mainAddress());
+        } catch (const std::exception &e) {
+            warning() << "buildPathsAgain: unable to resolve contractor ID for "
+                      << mContractor->mainAddress()->fullAddress() << ": " << e.what();
+        }
+    }
+
+    if (mContractorID == 0) {
+        warning() << "buildPathsAgain: contractor ID remains unresolved, skipping path rebuild";
+        debug() << "buildPathsAgain method time: " << utc_now() - startTime;
+        return;
+    }
+
+    try {
+        // Use special constant to mark the coordinator as the sender in topology graphs.
+        const ContractorID senderID = TopologyTrustLinesManager::kCurrentNodeID;
+        const auto hopsLimit = static_cast<uint8_t>(kMaxPathLength);
+
+        auto maxFlowResult = mExchangePathsManager->calculateMaxFlow(
+            mContractorID,
+            mCommand->equivalent(),
+            mCommand->exchangeEquivalents(),
+            senderID,
+            hopsLimit);
+
+        info() << "buildPathsAgain: calculateMaxFlow returned "
+               << maxFlowResult.optimalPaths.size() << " paths, max flow "
+               << maxFlowResult.maxFlow;
+
+        size_t successfullyRegistered = 0;
+
+        for (const auto &rebuiltPath : maxFlowResult.optimalPaths) {
+            // Skip zero-capacity paths to avoid polluting mPathsStats with unusable entries.
+            if (rebuiltPath.received_amount == TrustLineAmount(0) ||
+                rebuiltPath.optimal_flow == TrustLineAmount(0)) {
+                debug() << "buildPathsAgain: skipping zero-capacity rebuilt path";
+                continue;
+            }
+
+            const auto previousPathIDsSize = mPathIDs.size();
+
+            try {
+                addPathForFurtherProcessing(rebuiltPath, rebuiltPath.optimal_flow);
+            } catch (const std::exception &e) {
+                warning() << "buildPathsAgain: failed to register rebuilt path: "
+                          << e.what();
+                continue;
+            }
+
+            if (mPathIDs.size() <= previousPathIDsSize) {
+                warning() << "buildPathsAgain: rebuilt path was not appended to path processing queue";
+                continue;
+            }
+
+            const auto newPathID = mPathIDs.back();
+            auto pathIt = mPathsStats.find(newPathID);
+            if (pathIt == mPathsStats.end()) {
+                warning() << "buildPathsAgain: path stats missing for rebuilt path " << newPathID;
+                mPathIDs.pop_back();
+                continue;
+            }
+
+            auto &pathStats = pathIt->second;
+            debug() << "buildPathsAgain: added rebuilt path " << newPathID
+                    << " with input capacity " << pathStats->optimal_flow
+                    << " and receive capacity " << pathStats->received_amount;
+
+            ++successfullyRegistered;
+        }
+
+        if (successfullyRegistered == 0) {
+            warning() << "buildPathsAgain: path rebuilding produced no new usable paths";
+        } else {
+            info() << "buildPathsAgain: registered " << successfullyRegistered
+                   << " rebuilt paths";
+        }
+
+    } catch (const std::exception &e) {
+        warning() << "buildPathsAgain: calculateMaxFlow failed: " << e.what();
+    }
+
     debug() << "buildPathsAgain method time: " << utc_now() - startTime;
 }
 
