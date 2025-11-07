@@ -124,7 +124,15 @@ protected:
     void informAllNodesAboutTransactionFinish();
 
     // Helper functions for path filtering and capacity management
-    TrustLineAmount calculateTotalReservedAmount();
+    TrustLineAmount calculateTotalReservedAmount() const;
+    /**
+     * Calculates aggregated receive-side capacity that is still available after the
+     * currently processed path. Only paths with identifiers greater than
+     * mCurrentAmountReservingPathIdentifier that remain valid and have not finished
+     * intermediate processing are counted. Used right after path rebuilding to
+     * determine whether attempting more reservations makes sense.
+     */
+    TrustLineAmount calculateTotalPathCapacityForReceive() const;
     TrustLineAmount calculateTotalReservedPaymentAmount() const;
     TransactionResult::SharedConst proceedToNextStage();
     bool validatePathForProcessing(const OptimalPathResult *pathStats);

@@ -4138,7 +4138,7 @@ void CoordinatorExchangePaymentTransaction::releasePathCommissions(
     mPathCommittedCommissions.erase(committedIt);
 }
 
-TrustLineAmount CoordinatorExchangePaymentTransaction::calculateTotalReservedAmount()
+TrustLineAmount CoordinatorExchangePaymentTransaction::calculateTotalReservedAmount() const
 {
     // Calculate total amount already successfully reserved across all processed paths
     // Only count paths where reservation is actually approved (not just valid/added)
@@ -4172,6 +4172,79 @@ TrustLineAmount CoordinatorExchangePaymentTransaction::calculateTotalReservedAmo
 
     debug() << "Total reserved amount: " << total;
     return total;
+}
+
+/**
+ * Aggregates the receive-side capacity that still can be used after the currently processed path.
+ *
+ * The helper is invoked after path rebuilding to decide if continuing with reservations makes
+ * sense. It performs the following steps:
+ *  1. Determines how much of the target amount (`mAmount`) is still unfulfilled.
+ *  2. Iterates over `mPathsStats` and considers only paths with identifiers greater than the
+ *     current reservation path (`mCurrentAmountReservingPathIdentifier`).
+ *  3. Skips paths that were invalidated or already had their last intermediate node processed.
+ *  4. Sums `received_amount` for each eligible path with detailed debug logging, guarding against
+ *     arithmetic overflow/underflow exceptions thrown by `TrustLineAmount`.
+ *  5. Logs a final info-level summary containing both the remaining needed amount and the total
+ *     capacity identified by the helper.
+ */
+TrustLineAmount CoordinatorExchangePaymentTransaction::calculateTotalPathCapacityForReceive() const
+{
+    const TrustLineAmount totalReserved = calculateTotalReservedAmount();
+    TrustLineAmount remainingNeeded = TrustLineAmount(0);
+
+    if (totalReserved < mAmount) {
+        remainingNeeded = mAmount - totalReserved;
+    } else {
+        info() << "Capacity helper: target already satisfied (reserved " << totalReserved
+                << ") - remainingNeeded set to 0";
+    }
+
+    TrustLineAmount totalCapacity = TrustLineAmount(0);
+
+    for (const auto &[pathID, pathStatsPtr] : mPathsStats) {
+        if (pathID <= mCurrentAmountReservingPathIdentifier) {
+            debug() << "Capacity helper: skip path " << pathID
+                    << " (processed pathID <= current "
+                    << mCurrentAmountReservingPathIdentifier << ")";
+            continue;
+        }
+
+        if (pathStatsPtr == nullptr) {
+            warning() << "Capacity helper: missing path stats for pathID " << pathID;
+            continue;
+        }
+
+        const OptimalPathResult *pathStats = pathStatsPtr.get();
+
+        if (!pathStats->isValid()) {
+            debug() << "Capacity helper: skip path " << pathID << " because it is invalid";
+            continue;
+        }
+
+        if (pathStats->isLastIntermediateNodeProcessed()) {
+            debug() << "Capacity helper: skip path " << pathID
+                    << " because its last intermediate node is already processed";
+            continue;
+        }
+
+        const TrustLineAmount contribution = pathStats->received_amount;
+        debug() << "Capacity helper: path " << pathID
+                << " contributes receive capacity " << contribution;
+
+        try {
+            totalCapacity = totalCapacity + contribution;
+        } catch (const std::exception &e) {
+            warning() << "Capacity helper: failed to accumulate contribution from path "
+                      << pathID << ": " << e.what();
+        }
+    }
+
+    info() << "Capacity helper: aggregated receive capacity " << totalCapacity
+            << " for remaining " << remainingNeeded
+            << " (current pathID " << mCurrentAmountReservingPathIdentifier << ")";
+
+    return totalCapacity;
 }
 
 TrustLineAmount CoordinatorExchangePaymentTransaction::calculateTotalReservedPaymentAmount() const
