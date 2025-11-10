@@ -303,6 +303,10 @@ protected:
 
     // Maximum age (in seconds) for cached paths to be considered fresh for payment execution
     static constexpr uint32_t kExchangePathsCacheTTLSeconds = 150;
+
+    // Test helper: allows unit tests to bypass amount reservation after
+    // rebuilt capacity validation succeeds. Default is false in production.
+    bool mTestShortCircuitAfterCapacityValidation;
 };
 
 #endif //VTCPD_COORDINATOREXCHANGEPAYMENTTRANSACTION_H

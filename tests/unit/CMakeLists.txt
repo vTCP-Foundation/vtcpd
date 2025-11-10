@@ -66,6 +66,7 @@ add_executable(unit_tests
     transactions/TestIntermediateNodeCheckReservations.cpp
     transactions/TestBasePaymentTransactionSerialization.cpp
     transactions/TestCoordinatorExchangePaymentCapacityAdjustment.cpp
+    transactions/CoordinatorExchangePaymentPathRebuildingTest.cpp
     transactions/TestIntermediateNodeExchangePaymentIncoming.cpp
     transactions/TestIntermediateNodeConditionValidation.cpp
     transactions/TestCoordinatorConditionChangeHandling.cpp

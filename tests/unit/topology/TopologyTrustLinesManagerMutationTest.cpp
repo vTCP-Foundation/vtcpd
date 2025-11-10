@@ -71,3 +71,17 @@ TEST_F(TopologyTrustLinesManagerMutationTest, removeTrustLineGracefullyHandlesMi
 
     EXPECT_EQ(manager->trustLinesCounts(), 1);
 }
+
+TEST_F(TopologyTrustLinesManagerMutationTest, removeTrustLineIsIdempotentForSameEdge) {
+    auto amount = std::make_shared<TrustLineAmount>(75);
+    manager->addTrustLine(std::make_shared<TopologyTrustLine>(6, 8, amount));
+
+    manager->removeTrustLine(6, 8);
+    ASSERT_EQ(manager->trustLinesCounts(), 0);
+
+    // A second removal of the same edge must be a no-op and leave the topology intact.
+    manager->removeTrustLine(6, 8);
+    EXPECT_EQ(manager->trustLinesCounts(), 0);
+    auto snapshot = manager->trustLinePtrsSet(6);
+    EXPECT_TRUE(snapshot.empty());
+}

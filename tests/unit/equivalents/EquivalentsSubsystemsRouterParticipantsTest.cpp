@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <filesystem>
 #include <vector>
 
@@ -94,4 +95,19 @@ TEST_F(EquivalentsSubsystemsRouterParticipantsTest, participantsIDsDoesNotDuplic
     auto ids = router->participantsIDs();
     std::vector<ContractorID> expected{0, id};
     EXPECT_EQ(ids, expected);
+}
+
+TEST_F(EquivalentsSubsystemsRouterParticipantsTest, participantsIDsReturnsSnapshotCopy) {
+    auto firstBatch = router->participantsIDs();
+    ASSERT_FALSE(firstBatch.empty());
+
+    // Mutate caller-owned copy to ensure router's internal storage is unaffected.
+    firstBatch.push_back(9999);
+
+    auto addr = std::make_shared<IPv4WithPortAddress>("10.30.0.6:3006");
+    auto newId = router->getOrCreateParticipantID(addr);
+
+    auto secondBatch = router->participantsIDs();
+    EXPECT_NE(std::find(secondBatch.begin(), secondBatch.end(), newId), secondBatch.end());
+    EXPECT_EQ(std::find(secondBatch.begin(), secondBatch.end(), 9999), secondBatch.end());
 }

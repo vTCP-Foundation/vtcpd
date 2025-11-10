@@ -148,7 +148,8 @@ CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
     mCountReceiverInaccessible(0),
     mIsWaitingForExchangePathsResource(false),
     mParticipantsKeysProblem(false),
-    mNeighborsKeysProblem(false)
+    mNeighborsKeysProblem(false),
+    mTestShortCircuitAfterCapacityValidation(false)
 {
     mStep = Stages::Coordinator_Initialization;
     mContractor = make_shared<Contractor>(command->contractorAddresses());
@@ -2674,6 +2675,9 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryProcess
                 mPreviousRejectedTrustLinesCount = mRejectedTrustLines.size();
                 // in case if amount on direct paths changed, we can process it again
                 mDirectPathIsAlreadyProcessed = false;
+                if (mTestShortCircuitAfterCapacityValidation) {
+                    return resultAwakeAsFastAsPossible();
+                }
                 initAmountsReservationOnNextPath();
                 mIsAuditPendingPathsOccurred = false;
                 return runAmountReservationStage();
@@ -2707,6 +2711,9 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryProcess
                 mPreviousRejectedTrustLinesCount = mRejectedTrustLines.size();
                 // in case if amount on direct paths changed, we can process it again
                 mDirectPathIsAlreadyProcessed = false;
+                if (mTestShortCircuitAfterCapacityValidation) {
+                    return resultAwakeAsFastAsPossible();
+                }
                 initAmountsReservationOnNextPath();
                 mIsAuditPendingPathsOccurred = false;
                 return resultWaitForMessageTypes( {
