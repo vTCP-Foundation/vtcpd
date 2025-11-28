@@ -111,30 +111,13 @@ BasePaymentTransaction::BasePaymentTransaction(
 {
     auto bytesBufferOffset = BaseTransaction::kOffsetToInheritedBytes();
 
-    // Check if this is new format (with magic number) or old format (without)
-    const uint32_t kReservationsFormatMagic = 0x52455356; // "RESV" in ASCII
-    uint32_t possibleMagic;
-    memcpy(
-        &possibleMagic,
-        buffer.get() + bytesBufferOffset,
-        sizeof(uint32_t));
-
-    bool isNewFormat = (possibleMagic == kReservationsFormatMagic);
-
+    // mReservations count
     SerializedRecordsCount reservationsCount;
-    if (isNewFormat) {
-        // New format: skip magic number and read count
-        bytesBufferOffset += sizeof(uint32_t);
-        memcpy(
-            &reservationsCount,
-            buffer.get() + bytesBufferOffset,
-            sizeof(SerializedRecordsCount));
-        bytesBufferOffset += sizeof(SerializedRecordsCount);
-    } else {
-        // Old format: first 4 bytes are the count (no magic number)
-        reservationsCount = possibleMagic; // reuse already read value
-        bytesBufferOffset += sizeof(SerializedRecordsCount);
-    }
+    memcpy(
+        &reservationsCount,
+        buffer.get() + bytesBufferOffset,
+        sizeof(SerializedRecordsCount));
+    bytesBufferOffset += sizeof(SerializedRecordsCount);
 
     bool isReserveAmounts = !mTrustLinesManager->isReservationsPresentConsiderTransaction(
                                 mTransactionUUID);
@@ -186,20 +169,11 @@ BasePaymentTransaction::BasePaymentTransaction(
 
             // Equivalent (only in new format)
             SerializedEquivalent stepEquivalent;
-            if (isNewFormat) {
-                // New format: read equivalent from buffer
-                memcpy(
-                    &stepEquivalent,
-                    buffer.get() + bytesBufferOffset,
-                    sizeof(SerializedEquivalent));
-                bytesBufferOffset += sizeof(SerializedEquivalent);
-            } else {
-                // Old format: use mEquivalent for backward compatibility
-                stepEquivalent = mEquivalent;
-                // DO NOT advance bytesBufferOffset - there's no equivalent in old format
-            }
-            // Note: For old transactions (BasePaymentTransaction), mEquivalent is single equivalent for all reservations.
-            // The reservation methods use mEquivalent internally, so stepEquivalent equals mEquivalent anyway.
+            memcpy(
+                &stepEquivalent,
+                buffer.get() + bytesBufferOffset,
+                sizeof(SerializedEquivalent));
+            bytesBufferOffset += sizeof(SerializedEquivalent);
 
             if (isReserveAmounts) {
                 if (stepEnumDirection == AmountReservation::ReservationDirection::Incoming) {
@@ -1413,15 +1387,6 @@ pair<BytesShared, size_t> BasePaymentTransaction::serializeToBytes() const
         parentBytesAndCount.first.get(),
         parentBytesAndCount.second);
     dataBytesOffset += parentBytesAndCount.second;
-
-    // Reservation Part
-    // Write magic number to indicate new format with equivalents
-    const uint32_t kReservationsFormatMagic = 0x52455356; // "RESV" in ASCII
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &kReservationsFormatMagic,
-        sizeof(uint32_t));
-    dataBytesOffset += sizeof(uint32_t);
 
     auto kmReservationSize = (SerializedRecordsCount)mReservations.size();
     memcpy(

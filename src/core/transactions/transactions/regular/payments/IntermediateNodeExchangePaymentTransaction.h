@@ -99,6 +99,9 @@ protected:
     void clearContextIfTransactionIdle();
 
 private:
+    static const uint32_t kMaxTransactionDurationSeconds = 900;
+
+private:
     // message on which current transaction was started
     IntermediateNodeReservationRequestMessage::ConstShared mMessage;
 
@@ -115,6 +118,8 @@ private:
     std::map<SerializedEquivalent, Commission::Shared> mContextCommissions;
     // Tracks equivalents for which the commission was already charged in this payment.
     std::set<SerializedEquivalent> mChargedCommissionEquivalents;
+
+    DateTime mCreationTime;
 };
 
 #endif //VTCPD_INTERMEDIATENODEEXCHANGEPAYMENTTRANSACTION_H

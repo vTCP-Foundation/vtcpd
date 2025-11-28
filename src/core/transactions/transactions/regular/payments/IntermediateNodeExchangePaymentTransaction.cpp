@@ -142,6 +142,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
 {
     mStep = Stages::IntermediateNode_PreviousNeighborRequestProcessing;
     mCoordinator = nullptr;
+    mCreationTime = utc_now();
 }
 
 IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTransaction(
@@ -235,6 +236,15 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runPr
     debug() << "runPreviousNeighborRequestProcessingStage";
     const auto kNeighbor = mContractorsManager->contractorAddresses(mMessage->idOnReceiverSide).at(0);
     debug() << "Init. intermediate payment operation from node (" << kNeighbor->fullAddress() << ")";
+
+    const auto transactionDuration = utc_now() - mCreationTime;
+    if (transactionDuration.total_seconds() > kMaxTransactionDurationSeconds) {
+        return sendErrorMessageOnPreviousNodeRequest(
+            kNeighbor,
+            0,                  // 0, because we don't know pathID
+            ResponseMessage::Closed);
+        return reject("Transaction duration time has expired. Rolling back");
+    }
 
     const auto &kFinalAmounts = mMessage->finalAmountsConfiguration();
     if (kFinalAmounts.empty()) {
@@ -993,6 +1003,11 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
 TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runReservationProlongationStage()
 {
     debug() << "runReservationProlongationStage";
+    const auto transactionDuration = utc_now() - mCreationTime;
+    if (transactionDuration.total_seconds() > kMaxTransactionDurationSeconds) {
+        return reject("Transaction duration time has expired. Rolling back");
+    }
+
     if (contextIsValid(Message::Payments_IntermediateNodeReservationRequest, false)) {
         mMessage = popNextMessage<IntermediateNodeReservationRequestMessage>();
         return runPreviousNeighborRequestProcessingStage();
@@ -1014,6 +1029,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runRe
     }
 
     if (contextIsValid(Message::Payments_TTLProlongationResponse, false)) {
+        mTTLRequestWasSend = false;
         const auto kMessage = popNextMessage<TTLProlongationResponseMessage>();
         if (kMessage->state() == TTLProlongationResponseMessage::Continue) {
             info() << "Transactions is still alive. Continue waiting for messages";

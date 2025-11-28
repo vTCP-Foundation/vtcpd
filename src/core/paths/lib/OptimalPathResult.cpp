@@ -481,3 +481,41 @@ TrustLineAmount OptimalPathResult::calculateOptimalFlowWithUpdatedConditions(
 
     return requiredAmount;
 }
+
+TrustLineAmount OptimalPathResult::calculateRequiredInputForPath(
+    const TrustLineAmount &desiredOutputAmount) const
+{
+    if (desiredOutputAmount == TrustLineAmount(0)) {
+        return TrustLineAmount(0);
+    }
+
+    return calculateOptimalFlowWithUpdatedConditions(
+        desiredOutputAmount,
+        0,
+        std::nullopt,
+        std::nullopt);
+}
+
+void OptimalPathResult::adjustCommissionsForEstimation(
+    const set<CommissionKey> &alreadyConsumed,
+    vector<CommissionKey> &pendingForPath)
+{
+    pendingForPath.clear();
+
+    for (auto &step : mPath.exchangeSteps) {
+        if (step.fromEquivalent != step.toEquivalent) {
+            continue;
+        }
+
+        if (step.commission == TrustLineAmount(0)) {
+            continue;
+        }
+
+        CommissionKey key{step.nodeID, step.fromEquivalent};
+        if (alreadyConsumed.find(key) != alreadyConsumed.end()) {
+            step.commission = TrustLineAmount(0);
+        } else {
+            pendingForPath.push_back(key);
+        }
+    }
+}

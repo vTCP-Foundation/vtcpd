@@ -7,10 +7,16 @@
 
 #include <optional>
 #include <utility>
+#include <set>
+#include <vector>
 
 using std::pair;
 using std::make_pair;
 using std::optional;
+using std::set;
+using std::vector;
+
+using CommissionKey = pair<ContractorID, SerializedEquivalent>;
 
 // Stores result of OR-Tools optimization for a single path
 struct OptimalPathResult {
@@ -149,6 +155,13 @@ struct OptimalPathResult {
         const SerializedPositionInPath affectedNodePosition,
         const optional<pair<TrustLineAmount, int16_t>> &updatedRate,
         const optional<TrustLineAmount> &updatedCommission) const;
+
+    TrustLineAmount calculateRequiredInputForPath(
+        const TrustLineAmount &desiredOutputAmount) const;
+
+    void adjustCommissionsForEstimation(
+        const set<CommissionKey> &alreadyConsumed,
+        vector<CommissionKey> &pendingForPath);
 };
 
 #endif // VTCPD_OPTIMALPATHRESULT_H

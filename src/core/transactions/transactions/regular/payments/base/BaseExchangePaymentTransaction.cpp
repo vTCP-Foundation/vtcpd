@@ -97,32 +97,13 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
 {
     auto bytesBufferOffset = BaseTransaction::kOffsetToInheritedBytes();
 
-    // Check if this is new format (with magic number) or old format (without)
-    const uint32_t kReservationsFormatMagic = 0x52455356; // "RESV" in ASCII
-    uint32_t possibleMagic;
-    memcpy(
-        &possibleMagic,
-        buffer.get() + bytesBufferOffset,
-        sizeof(uint32_t));
-
-    bool isNewFormat = (possibleMagic == kReservationsFormatMagic);
-
+    // mReservations count
     SerializedRecordsCount reservationsCount;
-    if (isNewFormat) {
-        // New format: skip magic number and read count
-        bytesBufferOffset += sizeof(uint32_t);
-        memcpy(
-            &reservationsCount,
-            buffer.get() + bytesBufferOffset,
-            sizeof(SerializedRecordsCount));
-        bytesBufferOffset += sizeof(SerializedRecordsCount);
-    } else {
-        // Old format: first 4 bytes are the count (no magic number)
-        // This should not happen for BaseExchangePaymentTransaction as it's a new class,
-        // but we support it for consistency
-        reservationsCount = possibleMagic; // reuse already read value
-        bytesBufferOffset += sizeof(SerializedRecordsCount);
-    }
+    memcpy(
+        &reservationsCount,
+        buffer.get() + bytesBufferOffset,
+        sizeof(SerializedRecordsCount));
+    bytesBufferOffset += sizeof(SerializedRecordsCount);
 
     // Map values
     for (auto idx = 0; idx < reservationsCount; idx++) {
@@ -169,21 +150,13 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
             bytesBufferOffset += sizeof(AmountReservation::SerializedReservationDirectionSize);
             auto stepEnumDirection = static_cast<AmountReservation::ReservationDirection>(stepDirection);
 
-            // Equivalent (critical for multi-equivalent support)
+            // Equivalent
             SerializedEquivalent stepEquivalent;
-            if (isNewFormat) {
-                // New format: read equivalent from buffer
-                memcpy(
-                    &stepEquivalent,
-                    buffer.get() + bytesBufferOffset,
-                    sizeof(SerializedEquivalent));
-                bytesBufferOffset += sizeof(SerializedEquivalent);
-            } else {
-                // Old format: this shouldn't normally happen for BaseExchangePaymentTransaction,
-                // but if it does, we need a default equivalent. Use the transaction's equivalent.
-                stepEquivalent = mEquivalent;
-                // DO NOT advance bytesBufferOffset - there's no equivalent in old format
-            }
+            memcpy(
+                &stepEquivalent,
+                buffer.get() + bytesBufferOffset,
+                sizeof(SerializedEquivalent));
+            bytesBufferOffset += sizeof(SerializedEquivalent);
 
             // Get the appropriate TrustLinesManager for this equivalent
             auto trustLineManager = mEquivalentsSubsystemsRouter->trustLinesManager(stepEquivalent);
@@ -288,7 +261,10 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
         mPayload.clear();
     }
 
-    // Note: Recovery stage setting would be done in derived classes if needed
+    if (mStep != Stages::Common_Observing) {
+        mStep = Stages::Common_Recovery;
+        mVotesRecoveryStep = Common_PrepareNodesListToCheckVotes;
+    }
 }
 
 // Helper methods for accessing equivalent-specific managers
@@ -334,15 +310,6 @@ pair<BytesShared, size_t> BaseExchangePaymentTransaction::serializeToBytes() con
         parentBytesAndCount.first.get(),
         parentBytesAndCount.second);
     dataBytesOffset += parentBytesAndCount.second;
-
-    // Reservation Part
-    // Write magic number to indicate new format with equivalents
-    const uint32_t kReservationsFormatMagic = 0x52455356; // "RESV" in ASCII
-    memcpy(
-        dataBytesShared.get() + dataBytesOffset,
-        &kReservationsFormatMagic,
-        sizeof(uint32_t));
-    dataBytesOffset += sizeof(uint32_t);
 
     auto kmReservationSize = (SerializedRecordsCount)mReservations.size();
     memcpy(

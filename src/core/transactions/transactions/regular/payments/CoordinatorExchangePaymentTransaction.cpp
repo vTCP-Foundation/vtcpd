@@ -17,94 +17,6 @@
 
 #include "../../../../common/exceptions/ValueError.h"
 
-namespace {
-using CommissionKey = std::pair<ContractorID, SerializedEquivalent>;
-
-TrustLineAmount calculateRequiredInputForPath(
-    const OptimalPathResult &pathResult,
-    const TrustLineAmount &desiredOutputAmount)
-{
-    if (desiredOutputAmount == TrustLineAmount(0)) {
-        return TrustLineAmount(0);
-    }
-
-    const auto &path = pathResult.path();
-    if (path.ids.empty() || path.ids.size() != path.equivalents.size()) {
-        throw ValueError(
-            "CoordinatorExchangePaymentTransaction::calculateRequiredInputForPath: "
-            "invalid path structure");
-    }
-
-    TrustLineAmount requiredAmount = desiredOutputAmount;
-
-    for (size_t idx = path.ids.size() - 1; idx > 0; --idx) {
-        const ContractorID previousNode = path.ids[idx - 1];
-        const ContractorID currentNode = path.ids[idx];
-        const SerializedEquivalent previousEquivalent = path.equivalents[idx - 1];
-        const SerializedEquivalent currentEquivalent = path.equivalents[idx];
-
-        if (previousNode == currentNode && previousEquivalent != currentEquivalent) {
-            const auto *exchangeStep = pathResult.findExchangeStep(
-                currentNode,
-                previousEquivalent,
-                currentEquivalent);
-            if (!exchangeStep) {
-                throw ValueError(
-                    "CoordinatorExchangePaymentTransaction::calculateRequiredInputForPath: "
-                    "exchange step not found");
-            }
-
-            requiredAmount = exchangeStep->invertExchangeForRequiredInput(requiredAmount);
-            continue;
-        }
-
-        if (idx < path.ids.size() - 1) {
-            const auto *commissionStep = pathResult.findExchangeStep(
-                currentNode,
-                currentEquivalent,
-                currentEquivalent);
-            if (commissionStep && commissionStep->commission > TrustLineAmount(0)) {
-                try {
-                    requiredAmount = requiredAmount + commissionStep->commission;
-                } catch (const std::exception &e) {
-                    throw ValueError(
-                        "CoordinatorExchangePaymentTransaction::calculateRequiredInputForPath: "
-                        "commission addition overflow: " + std::string(e.what()));
-                }
-            }
-        }
-    }
-
-    return requiredAmount;
-}
-
-void adjustCommissionsForEstimation(
-    OptimalPathResult &pathResult,
-    const std::set<CommissionKey> &alreadyConsumed,
-    std::vector<CommissionKey> &pendingForPath)
-{
-    pendingForPath.clear();
-
-    auto &exchangeSteps = pathResult.path().exchangeSteps;
-    for (auto &step : exchangeSteps) {
-        if (step.fromEquivalent != step.toEquivalent) {
-            continue;
-        }
-
-        if (step.commission == TrustLineAmount(0)) {
-            continue;
-        }
-
-        CommissionKey key{step.nodeID, step.fromEquivalent};
-        if (alreadyConsumed.find(key) != alreadyConsumed.end()) {
-            step.commission = TrustLineAmount(0);
-        } else {
-            pendingForPath.push_back(key);
-        }
-    }
-}
-}
-
 CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
     const CreditUsageExchangeCommand::Shared command,
     ContractorsManager *contractorsManager,
@@ -340,14 +252,13 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runPathsRe
             }
 
             vector<CommissionKey> pathPending;
-            adjustCommissionsForEstimation(
-                pathResult,
+            pathResult.adjustCommissionsForEstimation(
                 estimationConsumed,
                 pathPending);
 
             TrustLineAmount pathFlow;
             try {
-                pathFlow = calculateRequiredInputForPath(pathResult, deliveredAmount);
+                pathFlow = pathResult.calculateRequiredInputForPath(deliveredAmount);
             } catch (const ValueError &e) {
                 warning() << "Unable to compute required flow for path: " << e.what();
                 continue;
@@ -1094,35 +1005,24 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runTTLTran
                 currentTransactionUUID(),
                 TTLProlongationResponseMessage::Continue);
             debug() << "Send clarifying message that transactions is alive";
+        } else if (mNodesFinalAmountsConfiguration.find(senderAddress->fullAddress()) !=
+                   mNodesFinalAmountsConfiguration.end()) {
+            // coordinator has configuration for requested node
+            sendMessage<TTLProlongationResponseMessage>(
+                senderAddress,
+                mEquivalent,
+                mContractorsManager->ownAddresses(),
+                currentTransactionUUID(),
+                TTLProlongationResponseMessage::Continue);
+            debug() << "Send clarifying message that transactions is alive";
         } else {
-            // Check if sender is in mNodesFinalAmountsConfiguration
-            bool foundInConfig = false;
-            for (const auto &pathReservation : mNodesFinalAmountsConfiguration) {
-                // Note: We need to check if sender is part of any path
-                // For simplicity, we'll allow Continue for now
-                // TODO: improve this check when we have path node tracking
-                foundInConfig = true;
-                break;
-            }
-
-            if (foundInConfig || !mNodesFinalAmountsConfiguration.empty()) {
-                // coordinator has configuration for requested node
-                sendMessage<TTLProlongationResponseMessage>(
-                    senderAddress,
-                    mEquivalent,
-                    mContractorsManager->ownAddresses(),
-                    currentTransactionUUID(),
-                    TTLProlongationResponseMessage::Continue);
-                debug() << "Send clarifying message that transactions is alive";
-            } else {
-                sendMessage<TTLProlongationResponseMessage>(
-                    senderAddress,
-                    mEquivalent,
-                    mContractorsManager->ownAddresses(),
-                    currentTransactionUUID(),
-                    TTLProlongationResponseMessage::Finish);
-                debug() << "Send transaction finishing message";
-            }
+            sendMessage<TTLProlongationResponseMessage>(
+                senderAddress,
+                mEquivalent,
+                mContractorsManager->ownAddresses(),
+                currentTransactionUUID(),
+                TTLProlongationResponseMessage::Finish);
+            debug() << "Send transaction finishing message";
         }
     } else {
         // voting stage
@@ -1215,8 +1115,8 @@ void CoordinatorExchangePaymentTransaction::initAmountsReservationOnNextPath()
 
             try {
                 // Calculate truncated input amount that delivers exactly remainingNeeded
-                TrustLineAmount truncatedInput = calculateRequiredInputForPath(
-                    *pathStats, remainingNeeded);
+                TrustLineAmount truncatedInput = pathStats->calculateRequiredInputForPath(
+                    remainingNeeded);
 
                 // Update path capacity
                 pathStats->received_amount = remainingNeeded;
@@ -1402,9 +1302,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryReserve
                        nextAfterRemoteNodeAddress);
         }
     } catch (NotFoundError &) {
-        debug() << "No unprocessed paths are left. Requested amount can't be collected. Canceling.";
-        rollBack();
-        informAllNodesAboutTransactionFinish();
+        reject("No unprocessed paths are left. Requested amount can't be collected. Canceling.");
         return resultInsufficientFundsError();
     }
 }
@@ -2798,8 +2696,8 @@ void CoordinatorExchangePaymentTransaction::switchToNextPath()
 
             try {
                 // Calculate truncated input amount that delivers exactly remainingNeeded
-                TrustLineAmount truncatedInput = calculateRequiredInputForPath(
-                    *pathStats, remainingNeeded);
+                TrustLineAmount truncatedInput = pathStats->calculateRequiredInputForPath(
+                    remainingNeeded);
 
                 // Update path capacity
                 pathStats->optimal_flow = truncatedInput;
@@ -2852,6 +2750,17 @@ void CoordinatorExchangePaymentTransaction::informAllNodesAboutTransactionFinish
             currentTransactionUUID(),
             TTLProlongationResponseMessage::Finish);
         debug() << "Send transaction finishing message to participant " << paymentNodeIdAndContractor.first;
+    }
+    for (const auto &currentParticipant : mPaymentParticipants) {
+        if (mNodesFinalAmountsConfiguration.find(currentParticipant.second->mainAddress()->fullAddress()) == mNodesFinalAmountsConfiguration.end()) {
+            sendMessage<TTLProlongationResponseMessage>(
+                currentParticipant.second->mainAddress(),
+                mEquivalent,
+                mContractorsManager->ownAddresses(),
+                currentTransactionUUID(),
+                TTLProlongationResponseMessage::Finish);
+            debug() << "Send transaction finishing message to participant " << currentParticipant.second->mainAddress()->fullAddress();
+        }
     }
 }
 
@@ -3815,7 +3724,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::reject(
     const char* message)
 {
     BaseExchangePaymentTransaction::reject(message);
-    // informAllNodesAboutTransactionFinish() will be added later
+    informAllNodesAboutTransactionFinish();
     return resultNoConsensusError();
 }
 

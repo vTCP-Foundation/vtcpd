@@ -44,9 +44,6 @@ public:
 
     const CommandUUID &commandUUID() const;
 
-protected:
-    using CommissionKey = pair<ContractorID, SerializedEquivalent>;
-
     // Stage handlers
     TransactionResult::SharedConst runPaymentInitializationStage();
     TransactionResult::SharedConst runPathsResourceProcessingStage();
