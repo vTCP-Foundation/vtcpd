@@ -1582,6 +1582,7 @@ void TransactionsManager::launchReceiverExchangePaymentTransaction(
                                mResourcesManager,
                                mExchangeRatesManager,
                                mCommissionsManager,
+                               mExchangePathsManager,
                                mKeysStore,
                                mEventsInterfaceManager,
                                mLog,
@@ -1672,6 +1673,7 @@ void TransactionsManager::launchIntermediateNodeExchangePaymentTransaction(
                                mResourcesManager,
                                mExchangeRatesManager,
                                mCommissionsManager,
+                               mExchangePathsManager,
                                mKeysStore,
                                mLog,
                                mSubsystemsController);

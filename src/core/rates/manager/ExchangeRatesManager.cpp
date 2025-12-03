@@ -1,4 +1,7 @@
 #include "ExchangeRatesManager.h"
+
+#include "../../common/multiprecision/ExchangeRateMath.h"
+
 #include <algorithm>
 
 ExchangeRatesManager::ExchangeRatesManager(
@@ -111,38 +114,14 @@ TrustLineAmount ExchangeRatesManager::calculateConvertedAmount(
         throw NotFoundError("Exchange rate not found for pair");
     }
 
-    // Multiply amount by exchange rate
-    TrustLineAmount result;
     try {
-        result = amountInEquivFrom * rate->exchangeRate();
-    } catch (const std::overflow_error &) {
-        throw OverflowError("Overflow in amount multiplication");
+        return ExchangeRateMath::applyExchangeRate(
+            amountInEquivFrom,
+            rate->exchangeRate(),
+            rate->exchangeRateShift());
+    } catch (const ValueError &e) {
+        throw OverflowError(e.what());
     }
-
-    // Apply base-10 shift
-    int16_t shift = rate->exchangeRateShift();
-    if (shift > 0) {
-        // Positive shift - multiply by 10^shift
-        for (int16_t i = 0; i < shift; ++i) {
-            try {
-                TrustLineAmount newResult = result * 10;
-                if (newResult < result) {
-                    throw OverflowError("Overflow in positive shift application");
-                }
-                result = newResult;
-            } catch (const std::overflow_error &) {
-                throw OverflowError("Overflow in positive shift application");
-            }
-        }
-    } else if (shift < 0) {
-        // Negative shift - divide by 10^(-shift) with truncation toward zero
-        for (int16_t i = 0; i < -shift; ++i) {
-            result = result / 10; // Integer division truncates toward zero
-        }
-    }
-    // shift == 0: no change needed
-
-    return result;
 }
 
 void ExchangeRatesManager::scheduleExpiryTimer()

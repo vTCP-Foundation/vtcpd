@@ -7,6 +7,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
+    ExchangePathsManager *exchangePathsManager,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -19,6 +20,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
     mStorageHandler(storageHandler),
     mResourcesManager(resourcesManager),
+    mExchangePathsManager(exchangePathsManager),
     mKeysStore(keystore),
     mSubsystemsController(subsystemsController),
     mTTLRequestWasSend(false),
@@ -40,6 +42,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
+    ExchangePathsManager *exchangePathsManager,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -53,6 +56,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
     mStorageHandler(storageHandler),
     mResourcesManager(resourcesManager),
+    mExchangePathsManager(exchangePathsManager),
     mKeysStore(keystore),
     mSubsystemsController(subsystemsController),
     mTTLRequestWasSend(false),
@@ -72,6 +76,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
+    ExchangePathsManager *exchangePathsManager,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -84,6 +89,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     mEquivalentsSubsystemsRouter(equivalentsSubsystemsRouter),
     mStorageHandler(storageHandler),
     mResourcesManager(resourcesManager),
+    mExchangePathsManager(exchangePathsManager),
     mKeysStore(keystore),
     mSubsystemsController(subsystemsController),
     mTTLRequestWasSend(false),
@@ -1145,6 +1151,16 @@ void BaseExchangePaymentTransaction::commit(IOTransaction::Shared ioTransaction)
     mTransactionCommittedObservingSignal(
         mTransactionUUID,
         mMaximalClaimingBlockNumber);
+}
+
+void BaseExchangePaymentTransaction::invalidateCachedPathsDueToCommit()
+{
+    debug() << "invalidateCachedPathsDueToCommit";
+    for (const auto &kNodeIDAndReservations : mReservations) {
+        for (const auto &kPathIDAndReservation : kNodeIDAndReservations.second) {
+            mExchangePathsManager->invalidatePathsForEquivalent(kPathIDAndReservation.second->equivalent());
+        }
+    }
 }
 
 void BaseExchangePaymentTransaction::rollBack()

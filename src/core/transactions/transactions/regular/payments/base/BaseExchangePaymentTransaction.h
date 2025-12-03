@@ -10,6 +10,7 @@
 #include "../../../../../topology/cache/TopologyCacheManager.h"
 #include "../../../../../topology/cache/MaxFlowCacheManager.h"
 #include "../../../../../resources/manager/ResourcesManager.h"
+#include "../../../../../paths/ExchangePathsManager.h"
 #include "../../../../../resources/resources/BlockNumberRecourse.h"
 #include "../../../../../common/exceptions/RuntimeError.h"
 
@@ -64,6 +65,7 @@ public:
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         StorageHandler *storageHandler,
         ResourcesManager *resourcesManager,
+        ExchangePathsManager *exchangePathsManager,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -76,6 +78,7 @@ public:
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         StorageHandler *storageHandler,
         ResourcesManager *resourcesManager,
+        ExchangePathsManager *exchangePathsManager,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -86,6 +89,7 @@ public:
         EquivalentsSubsystemsRouter *equivalentsSubsystemsRouter,
         StorageHandler *storageHandler,
         ResourcesManager *resourcesManager,
+        ExchangePathsManager *exchangePathsManager,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -194,6 +198,7 @@ protected:
 
     void saveVotes(IOTransaction::Shared ioTransaction);
     void commit(IOTransaction::Shared ioTransaction);
+    void invalidateCachedPathsDueToCommit();
     void rollBack();
     void rollBack(const PathID &pathID);
     void removeAllDataFromStorageConcerningTransaction(IOTransaction::Shared ioTransaction = nullptr);
@@ -272,6 +277,7 @@ protected:
     ResourcesManager *mResourcesManager;
     Keystore *mKeysStore;
     SubsystemsController *mSubsystemsController;
+    ExchangePathsManager *mExchangePathsManager;
 
     bool mTTLRequestWasSend;
     bool mTransactionIsVoted;

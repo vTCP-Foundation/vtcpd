@@ -26,6 +26,7 @@ public:
         ResourcesManager *resourcesManager,
         ExchangeRatesManager *exchangeRatesManager,
         CommissionsManager *commissionsManager,
+        ExchangePathsManager *exchangePathsManager,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -38,6 +39,7 @@ public:
         ResourcesManager *resourcesManager,
         ExchangeRatesManager *exchangeRatesManager,
         CommissionsManager *commissionsManager,
+        ExchangePathsManager *exchangePathsManager,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);

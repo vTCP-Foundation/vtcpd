@@ -2,7 +2,6 @@
 #define VTCPD_COORDINATOREXCHANGEPAYMENTTRANSACTION_H
 
 #include "base/BaseExchangePaymentTransaction.h"
-#include "../../../paths/ExchangePathsManager.h"
 #include "../../../interface/events_interface/interface/EventsInterfaceManager.h"
 #include "../../../interface/commands_interface/commands/payments/CreditUsageExchangeCommand.h"
 #include "../../../paths/lib/OptimalPathResult.h"
@@ -228,7 +227,6 @@ protected:
     // Reservation stage contains it's own internal steps counter.
     byte_t mReservationsStage;
 
-    ExchangePathsManager *mExchangePathsManager;
     ExchangeRatesManager *mExchangeRatesManager;
     map<PathID, unique_ptr<OptimalPathResult>> mPathsStats;
     vector<SerializedEquivalent> mExchangeEquivalents;

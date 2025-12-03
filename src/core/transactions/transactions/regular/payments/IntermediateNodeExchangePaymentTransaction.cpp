@@ -4,114 +4,9 @@
 #include <map>
 #include <set>
 #include <string>
-#include <boost/multiprecision/cpp_int.hpp>
 
 #include "../../../../common/exceptions/ValueError.h"
-
-using boost::multiprecision::cpp_int;
-
-namespace {
-
-// Helper function to calculate 10^exponent for exchange rate shift calculations
-cpp_int pow10(const size_t exponent)
-{
-    cpp_int result = 1;
-    for (size_t idx = 0; idx < exponent; ++idx) {
-        result *= 10;
-    }
-    return result;
-}
-
-// Helper function to perform ceiling division and convert to TrustLineAmount
-// Used to ensure we don't lose precision when calculating required incoming amounts
-TrustLineAmount ceilDivideToAmount(const cpp_int &numerator, const cpp_int &denominator)
-{
-    if (denominator <= 0) {
-        throw ValueError(
-            "IntermediateNodeExchangePaymentTransaction::ceilDivideToAmount: "
-            "denominator must be positive");
-    }
-
-    cpp_int quotient = numerator / denominator;
-    if (numerator % denominator != 0) {
-        ++quotient;  // Round up to favor higher incoming reservation
-    }
-
-    if (quotient < 0) {
-        throw ValueError(
-            "IntermediateNodeExchangePaymentTransaction::ceilDivideToAmount: "
-            "negative quotient computed");
-    }
-
-    return quotient.convert_to<TrustLineAmount>();
-}
-
-// Helper function to calculate required input amount from output amount using exchange rate
-// This performs inverse exchange calculation with ceiling division to ensure
-// the incoming reservation is sufficient to cover the outgoing amount
-TrustLineAmount invertExchangeForRequiredInput(
-    const TrustLineAmount &outputAmount,
-    const TrustLineAmount &exchangeRate,
-    int16_t exchangeRateShift)
-{
-    if (exchangeRate == TrustLineAmount(0)) {
-        throw ValueError(
-            "IntermediateNodeExchangePaymentTransaction::invertExchangeForRequiredInput: "
-            "zero exchange rate encountered");
-    }
-
-    // Formula: outputAmount = inputAmount * rate * 10^shift
-    // Therefore: inputAmount = outputAmount / (rate * 10^shift)
-    cpp_int numerator = cpp_int(outputAmount);
-    cpp_int denominator = cpp_int(exchangeRate);
-
-    if (exchangeRateShift >= 0) {
-        denominator *= pow10(static_cast<size_t>(exchangeRateShift));
-    } else {
-        numerator *= pow10(static_cast<size_t>(-exchangeRateShift));
-    }
-
-    // Use ceiling division to favor higher incoming amount
-    return ceilDivideToAmount(numerator, denominator);
-}
-
-// Helper function to apply exchange rate to incoming amount for forward conversion
-// Used by validation flow to predict coordinator's outgoing amount when an exchange rate exists.
-TrustLineAmount applyExchangeRateDirect(
-    const TrustLineAmount &inputAmount,
-    const TrustLineAmount &exchangeRate,
-    int16_t exchangeRateShift)
-{
-    cpp_int result = cpp_int(inputAmount) * cpp_int(exchangeRate);
-
-    if (exchangeRateShift > 0) {
-        result *= pow10(static_cast<size_t>(exchangeRateShift));
-    } else if (exchangeRateShift < 0) {
-        auto divisor = pow10(static_cast<size_t>(-exchangeRateShift));
-        if (divisor == 0) {
-            throw ValueError(
-                "IntermediateNodeExchangePaymentTransaction::applyExchangeRateDirect: "
-                "invalid divisor while applying negative shift");
-        }
-        result /= divisor;
-    }
-
-    if (result < 0) {
-        throw ValueError(
-            "IntermediateNodeExchangePaymentTransaction::applyExchangeRateDirect: "
-            "negative converted amount computed");
-    }
-
-    try {
-        return result.convert_to<TrustLineAmount>();
-    } catch (const std::exception &e) {
-        throw ValueError(
-            "IntermediateNodeExchangePaymentTransaction::applyExchangeRateDirect: "
-            "conversion overflow: " + std::string(e.what()));
-    }
-}
-
-}  // anonymous namespace
+#include "../../../../common/multiprecision/ExchangeRateMath.h"
 
 IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTransaction(
     IntermediateNodeReservationRequestMessage::ConstShared message,
@@ -121,6 +16,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
     ResourcesManager *resourcesManager,
     ExchangeRatesManager *exchangeRatesManager,
     CommissionsManager *commissionsManager,
+    ExchangePathsManager *exchangePathsManager,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -133,6 +29,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
         equivalentsSubsystemsRouter,
         storageHandler,
         resourcesManager,
+        exchangePathsManager,
         keystore,
         log,
         subsystemsController),
@@ -153,6 +50,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
     ResourcesManager *resourcesManager,
     ExchangeRatesManager *exchangeRatesManager,
     CommissionsManager *commissionsManager,
+    ExchangePathsManager *exchangePathsManager,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -163,6 +61,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
         equivalentsSubsystemsRouter,
         storageHandler,
         resourcesManager,
+        exchangePathsManager,
         keystore,
         log,
         subsystemsController),
@@ -660,7 +559,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runCo
             }
 
             try {
-                const auto expectedOutgoing = applyExchangeRateDirect(
+                const auto expectedOutgoing = ExchangeRateMath::applyExchangeRate(
                     incomingAmount,
                     rate->exchangeRate(),
                     rate->exchangeRateShift());
@@ -892,7 +791,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runNe
             }
 
             try {
-                incomingAmount = invertExchangeForRequiredInput(
+                incomingAmount = ExchangeRateMath::invertExchangeRate(
                     outgoingAmount,
                     rateIt->second->exchangeRate(),
                     rateIt->second->exchangeRateShift());

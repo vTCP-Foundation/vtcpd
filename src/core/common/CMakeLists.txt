@@ -11,6 +11,8 @@ add_library(common
     serialization/BytesSerializer.h 
     time/TimeUtils.h
     multiprecision/MultiprecisionUtils.h
+    multiprecision/ExchangeRateMath.cpp
+    multiprecision/ExchangeRateMath.h
     memory/MemoryUtils.h)
 
 target_include_directories(common

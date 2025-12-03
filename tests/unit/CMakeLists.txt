@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.14)
 # Build only stable, up-to-date tests (other old tests require refactor)
 add_executable(unit_tests
     database_config_test.cpp
+    common/ExchangeRateMathTest.cpp
     crypto/SphincsKeysTest.cpp
     crypto/SphincsSignatureTest.cpp
     crypto/SphincsMemoryLeakTest.cpp
