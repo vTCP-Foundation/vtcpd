@@ -77,6 +77,7 @@ add_executable(unit_tests
     payments/TestAmountReservationsHandler.cpp
     core/CoreORToolsStartupTest.cpp
     core/CoreSignalConnectionTest.cpp
+    observing/ObservingPaymentClaimTest.cpp
 )
 
 # Include directories for tests
