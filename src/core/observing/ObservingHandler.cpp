@@ -927,7 +927,117 @@ void ObservingHandler::getParticipantsSignatures(
 void ObservingHandler::rejectTransaction(
     ObservingPaymentClaim::Shared claim)
 {
-    (void)claim;
+    info() << "Getting rejection signature: " << claim->transactionUUID();
+
+    if (mObservers.empty()) {
+        warning() << "Cannot get rejection signature: no observers configured";
+        throw NotFoundError("No observers configured");
+    }
+
+    auto firstObserver = mObservers[0];
+
+    try {
+        json request = {
+            {"method", "RPCService.GetRejectionSignature"},
+            {"params", json::array({
+                {
+                    {"transaction_uuid", boost::uuids::to_string(claim->transactionUUID())},
+                    {"max_claim_block_number", claim->maxBlockNumberForClaiming()}
+                }
+            })},
+            {"id", 1}
+        };
+
+        string requestStr = request.dump() + "\n";
+
+        auto &ioCtx = static_cast<IOCtx &>(mPaymentClaimsTimer.get_executor().context());
+        tcp::resolver resolver(ioCtx);
+        boost::system::error_code errorCode;
+
+        auto endpoints = resolver.resolve(
+            firstObserver->host(),
+            to_string(firstObserver->port()),
+            errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+        tcp::socket socket(ioCtx);
+        boost::asio::connect(socket, endpoints, errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Sending RPC request: " << request.dump();
+#endif
+
+        boost::asio::write(
+            socket,
+            boost::asio::buffer(requestStr));
+
+        boost::asio::streambuf responseBuffer;
+        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
+
+        if (errorCode && errorCode != boost::asio::error::eof) {
+            throw errorCode;
+        }
+
+        std::istream responseStream(&responseBuffer);
+        string responseLine;
+        std::getline(responseStream, responseLine);
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Received RPC response: " << responseLine;
+#endif
+
+        json response = json::parse(responseLine);
+
+        if (response.contains("error") && !response["error"].is_null()) {
+            string errorMsg = response["error"].is_string()
+                ? response["error"].get<string>()
+                : response["error"].dump();
+            throw runtime_error("Observer RPC error: " + errorMsg);
+        }
+
+        if (!response.contains("result")) {
+            throw runtime_error("Invalid RPC response: missing result");
+        }
+
+        auto result = response["result"];
+        string state = result.value("state", "");
+        string signature = result.value("signature", "");
+        (void) state;
+
+        if (!signature.empty()) {
+            info() << "Received rejection signature from observer for "
+                   << claim->transactionUUID();
+
+            mRejectTransactionSignal(
+                claim->transactionUUID(),
+                claim->maxBlockNumberForClaiming());
+
+            claim->setStatus(ObservingPaymentClaim::Done);
+        } else {
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+            debug() << "No rejection signature available yet for "
+                    << claim->transactionUUID();
+#endif
+        }
+
+        socket.close();
+
+    } catch (const std::exception &e) {
+        mLog.error(logHeader()) << "Failed to get rejection signature from observer "
+                                << firstObserver->fullAddress() << ": " << e.what();
+        throw;
+    } catch (...) {
+        mLog.error(logHeader()) << "Failed to get rejection signature from observer "
+                                << firstObserver->fullAddress() << ": unknown error";
+        throw;
+    }
 }
 
 BlockNumber ObservingHandler::getActualBlockNumber() const
