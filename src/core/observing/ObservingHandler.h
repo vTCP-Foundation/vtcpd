@@ -110,6 +110,20 @@ protected:
     void runTransactionsChecking(
         const boost::system::error_code &errorCode);
 
+    void processPaymentClaims();
+
+    void sendClaim(
+        ObservingPaymentClaim::Shared claim);
+
+    void checkTransaction(
+        ObservingPaymentClaim::Shared claim);
+
+    void getParticipantsSignatures(
+        ObservingPaymentClaim::Shared claim);
+
+    void rejectTransaction(
+        ObservingPaymentClaim::Shared claim);
+
     void responseActualBlockNumber(
         const TransactionUUID &transactionUUID);
 
@@ -156,6 +170,11 @@ private:
     static constexpr uint16_t kApproximateBlockNumberIncrementingPeriodSecondsTests = 20;
 #endif
 
+    static constexpr uint32_t kPaymentClaimProcessingPeriodSeconds = 60;
+#ifdef TESTS
+    static constexpr uint32_t kPaymentClaimProcessingPeriodSecondsTests = 10;
+#endif
+
 private:
     vector<IPv4WithPortAddress::Shared> mObservers;
     unique_ptr<ObservingCommunicator> mObservingCommunicator;
@@ -172,6 +191,7 @@ private:
     as::steady_timer mBlockNumberRequestTimer;
     as::steady_timer mClaimsTimer;
     as::steady_timer mTransactionsTimer;
+    as::steady_timer mPaymentClaimsTimer;
     as::steady_timer mRequestsTimer;
 
     StorageHandler *mStorageHandler;

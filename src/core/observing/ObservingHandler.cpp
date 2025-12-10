@@ -18,6 +18,7 @@ ObservingHandler::ObservingHandler(
     mBlockNumberRequestTimer(ioCtx),
     mClaimsTimer(ioCtx),
     mTransactionsTimer(ioCtx),
+    mPaymentClaimsTimer(ioCtx),
     mRequestsTimer(ioCtx),
     mStorageHandler(storageHandler),
     mResourcesManager(resourcesManager)
@@ -49,6 +50,24 @@ ObservingHandler::ObservingHandler(
     } else {
         info() << "Configured " << mObservers.size() << " observer(s)";
     }
+
+#ifdef TESTS
+    mPaymentClaimsTimer.expires_after(
+        chrono::seconds(kPaymentClaimProcessingPeriodSecondsTests));
+#else
+    mPaymentClaimsTimer.expires_after(
+        chrono::seconds(kPaymentClaimProcessingPeriodSeconds));
+#endif
+
+    mPaymentClaimsTimer.async_wait(
+        [this](const boost::system::error_code &e) {
+
+            if (e == boost::asio::error::operation_aborted) {
+                return;
+            }
+
+            processPaymentClaims();
+        });
 }
 
 void ObservingHandler::sendClaimRequestToObservers(
@@ -464,6 +483,94 @@ void ObservingHandler::addPaymentClaim(
 #ifdef DEBUG_LOG_OBSEVING_HANDLER
     debug() << "Payment claims map size: " << mPaymentClaims.size();
 #endif
+}
+
+void ObservingHandler::processPaymentClaims()
+{
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+    debug() << "Processing payment claims, count: " << mPaymentClaims.size();
+#endif
+
+    vector<pair<TransactionUUID, BlockNumber>> claimsToRemove;
+
+    for (auto &[key, claim] : mPaymentClaims) {
+        try {
+            switch (claim->status()) {
+            case ObservingPaymentClaim::NoInfo:
+                sendClaim(claim);
+                break;
+            case ObservingPaymentClaim::Observing:
+                checkTransaction(claim);
+                break;
+            case ObservingPaymentClaim::ParticipantsVotesPresent:
+                getParticipantsSignatures(claim);
+                break;
+            case ObservingPaymentClaim::RejectedByObserving:
+                rejectTransaction(claim);
+                break;
+            case ObservingPaymentClaim::Done:
+                claimsToRemove.push_back(key);
+                break;
+            default:
+                break;
+            }
+        } catch (const std::exception &e) {
+            warning() << "Error processing claim " << claim->transactionUUID()
+                      << ": " << e.what();
+        } catch (...) {
+            warning() << "Unknown error processing claim " << claim->transactionUUID();
+        }
+    }
+
+    for (const auto &key : claimsToRemove) {
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Removing completed claim: " << key.first
+                << " block: " << key.second;
+#endif
+        mPaymentClaims.erase(key);
+    }
+
+#ifdef TESTS
+    mPaymentClaimsTimer.expires_after(
+        chrono::seconds(kPaymentClaimProcessingPeriodSecondsTests));
+#else
+    mPaymentClaimsTimer.expires_after(
+        chrono::seconds(kPaymentClaimProcessingPeriodSeconds));
+#endif
+
+    mPaymentClaimsTimer.async_wait(
+        [this](const boost::system::error_code &e) {
+
+            if (e == boost::asio::error::operation_aborted) {
+                return;
+            }
+
+            processPaymentClaims();
+        });
+}
+
+void ObservingHandler::sendClaim(
+    ObservingPaymentClaim::Shared claim)
+{
+    (void)claim;
+}
+
+void ObservingHandler::checkTransaction(
+    ObservingPaymentClaim::Shared claim)
+{
+    (void)claim;
+}
+
+void ObservingHandler::getParticipantsSignatures(
+    ObservingPaymentClaim::Shared claim)
+{
+    (void)claim;
+}
+
+void ObservingHandler::rejectTransaction(
+    ObservingPaymentClaim::Shared claim)
+{
+    (void)claim;
 }
 
 BlockNumber ObservingHandler::getActualBlockNumber() const
