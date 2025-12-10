@@ -11,6 +11,7 @@
 #include "../../../../../topology/cache/MaxFlowCacheManager.h"
 #include "../../../../../resources/manager/ResourcesManager.h"
 #include "../../../../../paths/ExchangePathsManager.h"
+#include "../../../../../observing/ObservingHandler.h"
 #include "../../../../../resources/resources/BlockNumberRecourse.h"
 #include "../../../../../common/exceptions/RuntimeError.h"
 
@@ -66,6 +67,7 @@ public:
         StorageHandler *storageHandler,
         ResourcesManager *resourcesManager,
         ExchangePathsManager *exchangePathsManager,
+        ObservingHandler *observingHandler,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -79,6 +81,7 @@ public:
         StorageHandler *storageHandler,
         ResourcesManager *resourcesManager,
         ExchangePathsManager *exchangePathsManager,
+        ObservingHandler *observingHandler,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -90,6 +93,7 @@ public:
         StorageHandler *storageHandler,
         ResourcesManager *resourcesManager,
         ExchangePathsManager *exchangePathsManager,
+        ObservingHandler *observingHandler,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -278,6 +282,7 @@ protected:
     Keystore *mKeysStore;
     SubsystemsController *mSubsystemsController;
     ExchangePathsManager *mExchangePathsManager;
+    ObservingHandler *mObservingHandler;
 
     bool mTTLRequestWasSend;
     bool mTransactionIsVoted;

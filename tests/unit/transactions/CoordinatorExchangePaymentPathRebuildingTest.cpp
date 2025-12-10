@@ -131,6 +131,7 @@ protected:
             env->resourcesManager.get(),
             env->pathsManager.get(),
             env->ratesManager.get(),
+            nullptr,  // ObservingHandler
             env->keystore.get(),
             true,
             env->eventsManager.get(),

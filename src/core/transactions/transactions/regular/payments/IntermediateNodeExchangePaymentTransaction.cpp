@@ -17,6 +17,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
     ExchangeRatesManager *exchangeRatesManager,
     CommissionsManager *commissionsManager,
     ExchangePathsManager *exchangePathsManager,
+    ObservingHandler *observingHandler,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -30,6 +31,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
         storageHandler,
         resourcesManager,
         exchangePathsManager,
+        observingHandler,
         keystore,
         log,
         subsystemsController),
@@ -51,6 +53,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
     ExchangeRatesManager *exchangeRatesManager,
     CommissionsManager *commissionsManager,
     ExchangePathsManager *exchangePathsManager,
+    ObservingHandler *observingHandler,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -62,6 +65,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
         storageHandler,
         resourcesManager,
         exchangePathsManager,
+        observingHandler,
         keystore,
         log,
         subsystemsController),
@@ -1032,7 +1036,9 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
     auto coordinatorAddress = kMessage->senderAddresses.at(0);
 
     mMaximalClaimingBlockNumber = kMessage->maximalClaimingBlockNumber();
-    debug() << "maximal claiming block number: " << mMaximalClaimingBlockNumber;
+    debug() << "maximal claiming block number on Coordinator side: " << mMaximalClaimingBlockNumber;
+    // todo : check maximal claiming block number here and remove Common_ObservingBlockNumberProcessing step
+    
     info() << "final amount configuration size: " << kMessage->finalAmountsConfiguration().size();
 
     if (!updateReservations(
@@ -1150,15 +1156,8 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
     }
 
     mStep = Common_ObservingBlockNumberProcessing;
-    mResourcesManager->requestObservingBlockNumber(
-        mTransactionUUID);
     mBlockNumberObtainingInProcess = true;
-    return resultWaitForResourceAndMessagesTypes(
-    {BaseResource::ObservingBlockNumber}, {
-        Message::Payments_TransactionPublicKeyHash,
-        Message::Payments_TTLProlongationResponse
-    },
-    maxNetworkDelay(1));
+    return resultAwakeAsFastAsPossible();
 }
 
 TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFinalReservationsNeighborConfirmation()
@@ -1327,13 +1326,15 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runCh
     }
 
     if (!mIsSuspendedOnFinalAmountsConfirmationStage) {
-        if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
+        BlockNumber maximalClaimingBlockNumber;
+        try {
+            maximalClaimingBlockNumber = mObservingHandler->getActualBlockNumber() + kCountBlocksForClaiming;
+        } catch (const NotFoundError& e) {
+            error() << "Failed to get actual block number: " << e.what();
             removeAllDataFromStorageConcerningTransaction();
             sendErrorMessageOnFinalAmountsConfiguration();
-            return reject("Can't check observing actual block number. Rejected.");
+            return reject("Failed to get actual block number. Rejected.");
         }
-        auto blockNumberResource = popNextResource<BlockNumberRecourse>();
-        auto maximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
         debug() << "maximal claiming block number on own side: " << maximalClaimingBlockNumber;
         if (!checkMaxClaimingBlockNumber(maximalClaimingBlockNumber)) {
             debug() << "Max claiming block number sending by coordinator is invalid: " << mMaximalClaimingBlockNumber;

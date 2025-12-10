@@ -439,6 +439,7 @@ int Core::initTransactionsManager(
                                    mExchangeRatesManager.get(),
                                    mExchangePathsManager.get(),
                                    mCommissionsManager.get(),
+                                   mObservingHandler.get(),
                                    mSettings->hopsCount(&conf));
         info() << "Transactions handler is successfully initialised";
         return 0;

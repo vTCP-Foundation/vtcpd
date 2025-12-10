@@ -7,9 +7,9 @@
 #include <openssl/params.h>
 #include <openssl/core_names.h>
 #include <sstream>
-#include <iomanip>
 #include <stdexcept>
 #include <algorithm>
+#include <cctype>
 
 namespace crypto {
 namespace sphincs {
@@ -35,27 +35,48 @@ Signature::Signature(const string& signatureString) : mIsValid(false)
 {
     mSignatureData.fill(0);
 
-    if (signatureString.length() != kSignatureSize * 2) {
-        return; // Invalid hex string length
+    constexpr size_t kBase64EncodedSize = ((kSignatureSize + 2) / 3) * 4; // Padded base64 length for kSignatureSize bytes
+    constexpr size_t kDecodeBufferSize = (kBase64EncodedSize / 4) * 3;
+
+    if (signatureString.length() != kBase64EncodedSize) {
+        return; // Invalid base64 string length for SPHINCS+ signature
     }
 
-    // Validate that all characters are valid hex characters
+    // Keep decoder strict: only base64 alphabet and padding are accepted.
     for (char c : signatureString) {
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
-            return; // Invalid hex character
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '+' || c == '/' || c == '=')) {
+            return;
         }
     }
 
-    try {
-        for (size_t i = 0; i < kSignatureSize; ++i) {
-            string byteString = signatureString.substr(i * 2, 2);
-            mSignatureData[i] = static_cast<byte_t>(stoul(byteString, nullptr, 16));
-        }
-        mIsValid = true;
-    } catch (const std::exception&) {
-        mSignatureData.fill(0);
-        mIsValid = false;
+    std::array<unsigned char, kDecodeBufferSize> decoded{};
+    int decodedLen = EVP_DecodeBlock(
+        decoded.data(),
+        reinterpret_cast<const unsigned char*>(signatureString.data()),
+        static_cast<int>(signatureString.size()));
+    if (decodedLen <= 0) {
+        return;
     }
+
+    size_t padding = 0;
+    if (!signatureString.empty() && signatureString.back() == '=') {
+        padding++;
+        if (signatureString.size() >= 2 && signatureString[signatureString.size() - 2] == '=') {
+            padding++;
+        }
+    }
+
+    if (static_cast<size_t>(decodedLen) < padding) {
+        return;
+    }
+
+    const size_t actualLen = static_cast<size_t>(decodedLen) - padding; // EVP_DecodeBlock counts padded bytes
+    if (actualLen != kSignatureSize) {
+        return; // Decoded size mismatch
+    }
+
+    std::copy(decoded.data(), decoded.data() + kSignatureSize, mSignatureData.begin());
+    mIsValid = true;
 }
 
 Signature::Signature(const Signature& other) : mIsValid(other.mIsValid)
@@ -187,12 +208,18 @@ string Signature::toString() const
         return "";
     }
 
-    stringstream ss;
-    ss << hex << setfill('0');
-    for (size_t i = 0; i < kSignatureSize; ++i) {
-        ss << setw(2) << static_cast<unsigned>(mSignatureData[i]);
+    constexpr size_t kBase64EncodedSize = ((kSignatureSize + 2) / 3) * 4; // Padded base64 length for kSignatureSize bytes
+    std::array<unsigned char, kBase64EncodedSize + 1> encoded{};    // +1 keeps the buffer oversized if EVP writes a terminator
+
+    int encodedLen = EVP_EncodeBlock(
+        encoded.data(),
+        reinterpret_cast<const unsigned char*>(mSignatureData.data()),
+        static_cast<int>(kSignatureSize));
+    if (encodedLen <= 0) {
+        return "";
     }
-    return ss.str();
+
+    return string(reinterpret_cast<char*>(encoded.data()), static_cast<size_t>(encodedLen));
 }
 
 bool Signature::operator==(const Signature& other) const

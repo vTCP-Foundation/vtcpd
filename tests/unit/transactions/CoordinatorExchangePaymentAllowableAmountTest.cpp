@@ -387,6 +387,7 @@ public:
         ResourcesManager *resourcesManager,
         ExchangePathsManager *exchangePathsManager,
         ExchangeRatesManager *exchangeRatesManager,
+        ObservingHandler *observingHandler,
         Keystore *keystore,
         bool isPaymentTransactionsAllowedDueToObserving,
         EventsInterfaceManager *eventsInterfaceManager,
@@ -395,7 +396,7 @@ public:
         : CoordinatorExchangePaymentTransaction(
             command, contractorsManager, equivalentsSubsystemsRouter,
             storageHandler, resourcesManager, exchangePathsManager,
-            exchangeRatesManager, keystore, isPaymentTransactionsAllowedDueToObserving,
+            exchangeRatesManager, observingHandler, keystore, isPaymentTransactionsAllowedDueToObserving,
             eventsInterfaceManager, log, subsystemsController)
     {}
 
@@ -536,6 +537,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, ResultAllowable
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -573,6 +575,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, EarlyValidation
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -597,6 +600,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, EarlyValidation
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -634,6 +638,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, E2E_RollbackMec
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -673,6 +678,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, E2E_PaymentLega
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -715,6 +721,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, E2E_StageMethod
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -756,6 +763,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, LateValidation_
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -784,6 +792,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, LateValidation_
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -840,6 +849,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, RealCalculation
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -868,6 +878,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, RealCalculation
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -914,6 +925,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, RealCalculation
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),
@@ -963,6 +975,7 @@ TEST_F(CoordinatorExchangePaymentAllowableAmountIntegrationTest, RealCalculation
         resourcesManager.get(),
         pathsManager.get(),
         ratesManager.get(),
+        nullptr,  // ObservingHandler
         keystore.get(),
         true,
         eventsManager.get(),

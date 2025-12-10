@@ -8,6 +8,7 @@
 #include "../../rates/manager/ExchangeRatesManager.h"
 #include "../../rates/manager/CommissionsManager.h"
 #include "../../paths/ExchangePathsManager.h"
+#include "../../observing/ObservingHandler.h"
 
 /*
  * Transactions
@@ -146,6 +147,7 @@ public:
         ExchangeRatesManager *exchangeRatesManager,
         ExchangePathsManager *exchangePathsManager,
         CommissionsManager *commissionsManager,
+        ObservingHandler *observingHandler,
 		uint8_t hops_count);
 
     void processCommand(
@@ -641,6 +643,7 @@ private:
     ExchangeRatesManager *mExchangeRatesManager;
     ExchangePathsManager *mExchangePathsManager;
     CommissionsManager *mCommissionsManager;
+    ObservingHandler *mObservingHandler;
 
     unique_ptr<TransactionsScheduler> mScheduler;
     unique_ptr<EquivalentsCyclesSubsystemsRouter> mEquivalentsCyclesSubsystemsRouter;

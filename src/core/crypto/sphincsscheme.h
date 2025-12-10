@@ -73,7 +73,7 @@ public:
 
     /**
      * @brief Constructor from string representation
-     * @param signatureString Hex-encoded signature string
+     * @param signatureString Base64-encoded signature string (padded)
      */
     explicit Signature(const string& signatureString);
 
@@ -125,8 +125,8 @@ public:
     const byte_t* data() const noexcept;
 
     /**
-     * @brief Convert signature to hex string representation
-     * @return Hex-encoded signature string
+     * @brief Convert signature to base64 string representation
+     * @return Base64-encoded signature string
      */
     string toString() const;
 

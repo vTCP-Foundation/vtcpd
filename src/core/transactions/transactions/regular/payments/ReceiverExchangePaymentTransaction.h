@@ -24,6 +24,7 @@ public:
         ExchangeRatesManager *exchangeRatesManager,
         CommissionsManager *commissionsManager,
         ExchangePathsManager *exchangePathsManager,
+        ObservingHandler *observingHandler,
         Keystore *keystore,
         EventsInterfaceManager *eventsInterfaceManager,
         Logger &log,
@@ -38,6 +39,7 @@ public:
         ExchangeRatesManager *exchangeRatesManager,
         CommissionsManager *commissionsManager,
         ExchangePathsManager *exchangePathsManager,
+        ObservingHandler *observingHandler,
         Keystore *keystore,
         EventsInterfaceManager *eventsInterfaceManager,
         Logger &log,
@@ -55,7 +57,6 @@ protected:
     TransactionResult::SharedConst runFinalAmountsConfigurationConfirmation();
     TransactionResult::SharedConst runFinalReservationsCoordinatorConfirmation();
     TransactionResult::SharedConst runFinalReservationsNeighborConfirmation();
-    TransactionResult::SharedConst runCheckObservingBlockNumber();
     TransactionResult::SharedConst runVotesStageWithCoordinatorClarification();
 
     TransactionResult::SharedConst approve() override;

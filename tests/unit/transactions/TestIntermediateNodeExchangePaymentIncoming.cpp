@@ -183,9 +183,11 @@ TEST(IntermediateNodeIncomingTest, IncomingCalculation_SameEquiv_NoCommission) {
         env.contractors.get(),
         env.router.get(),
         env.storage.get(),
-        nullptr,
+        nullptr,  // ResourcesManager
         env.ratesManager.get(),
-        nullptr,
+        nullptr,  // CommissionsManager
+        nullptr,  // ExchangePathsManager
+        env.observingHandler.get(),
         env.keystore.get(),
         env.logger,
         env.subsystemsController.get());
@@ -242,9 +244,11 @@ TEST(IntermediateNodeIncomingTest, IncomingCalculation_SameEquiv_WithCommission)
         env.contractors.get(),
         env.router.get(),
         env.storage.get(),
-        nullptr,
+        nullptr,  // ResourcesManager
         env.ratesManager.get(),
-        nullptr,
+        nullptr,  // CommissionsManager
+        nullptr,  // ExchangePathsManager
+        env.observingHandler.get(),
         env.keystore.get(),
         env.logger,
         env.subsystemsController.get());
@@ -299,9 +303,11 @@ TEST(IntermediateNodeIncomingTest, IncomingCalculation_DifferentEquiv_WithExchan
         env.contractors.get(),
         env.router.get(),
         env.storage.get(),
-        nullptr,
+        nullptr,  // ResourcesManager
         env.ratesManager.get(),
-        nullptr,
+        nullptr,  // CommissionsManager
+        nullptr,  // ExchangePathsManager
+        env.observingHandler.get(),
         env.keystore.get(),
         env.logger,
         env.subsystemsController.get());

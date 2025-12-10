@@ -8,6 +8,7 @@
 #include <set>
 #include <vector>
 #include <algorithm>
+#include <random>
 #include <string>
 #include <sstream>
 #include <exception>
@@ -25,6 +26,7 @@ CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
     ResourcesManager *resourcesManager,
     ExchangePathsManager *exchangePathsManager,
     ExchangeRatesManager *exchangeRatesManager,
+    ObservingHandler *observingHandler,
     Keystore *keystore,
     bool isPaymentTransactionsAllowedDueToObserving,
     EventsInterfaceManager *eventsInterfaceManager,
@@ -39,6 +41,7 @@ CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
         storageHandler,
         resourcesManager,
         exchangePathsManager,
+        observingHandler,
         keystore,
         log,
         subsystemsController),
@@ -641,11 +644,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runDirectA
         debug() << "Begin processing participants votes.";
 
         mStep = Common_ObservingBlockNumberProcessing;
-        mResourcesManager->requestObservingBlockNumber(
-            mTransactionUUID);
-        return resultWaitForResourceTypes(
-        {BaseResource::ObservingBlockNumber},
-        maxNetworkDelay(1));
+        return resultAwakeAsFastAsPossible();
     }
     mStep = Stages::Coordinator_AmountReservation;
     return tryProcessNextPath();
@@ -688,17 +687,83 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runFinalAm
     return propagateVotesListAndWaitForVotingResult();
 }
 
+void CoordinatorExchangePaymentTransaction::randomizeParticipantIdentifiers()
+{
+    debug() << "randomizeParticipantIdentifiers: shuffling participant IDs for privacy";
+
+    // If there are less than 3 participants (coordinator + receiver only), no shuffling needed
+    if (mPaymentParticipants.size() < 3) {
+        debug() << "Only " << mPaymentParticipants.size() << " participants, skipping shuffle";
+        return;
+    }
+
+    // Extract all participants except the coordinator (ID 0)
+    vector<pair<PaymentNodeID, Contractor::Shared>> nonCoordinatorParticipants;
+    for (const auto& [participantID, contractor] : mPaymentParticipants) {
+        if (participantID != kCoordinatorPaymentNodeID) {
+            nonCoordinatorParticipants.emplace_back(participantID, contractor);
+        }
+    }
+
+    // Create a vector of available IDs (excluding coordinator's 0)
+    vector<PaymentNodeID> availableIDs;
+    for (const auto& [participantID, contractor] : nonCoordinatorParticipants) {
+        availableIDs.push_back(participantID);
+    }
+
+    // Shuffle the available IDs using random device for true randomness
+    random_device rd;
+    mt19937 generator(rd());
+    shuffle(availableIDs.begin(), availableIDs.end(), generator);
+
+    debug() << "Shuffled " << nonCoordinatorParticipants.size() << " participants (excluding coordinator)";
+
+    // Create new maps with shuffled IDs
+    map<PaymentNodeID, Contractor::Shared> newPaymentParticipants;
+    map<string, PaymentNodeID> newPaymentNodesIds;
+
+    // Keep coordinator at position 0
+    newPaymentParticipants.insert(
+        make_pair(
+            kCoordinatorPaymentNodeID,
+            mPaymentParticipants[kCoordinatorPaymentNodeID]));
+    newPaymentNodesIds.insert(
+        make_pair(
+            mPaymentParticipants[kCoordinatorPaymentNodeID]->mainAddress()->fullAddress(),
+            kCoordinatorPaymentNodeID));
+
+    // Reassign shuffled IDs to participants
+    for (size_t i = 0; i < nonCoordinatorParticipants.size(); i++) {
+        const auto& contractor = nonCoordinatorParticipants[i].second;
+        const auto newID = availableIDs[i];
+        const auto addressKey = contractor->mainAddress()->fullAddress();
+
+        newPaymentParticipants.insert(make_pair(newID, contractor));
+        newPaymentNodesIds.insert(make_pair(addressKey, newID));
+
+        debug() << "Participant " << addressKey
+                << " remapped: " << nonCoordinatorParticipants[i].first << " -> " << newID;
+    }
+
+    // Replace old maps with new shuffled maps
+    mPaymentParticipants = move(newPaymentParticipants);
+    mPaymentNodesIds = move(newPaymentNodesIds);
+
+    debug() << "Participant identifiers randomization completed";
+}
+
 TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalAmountsConfigurationToAllParticipants()
 {
     debug() << "sendFinalAmountsConfigurationToAllParticipants";
 
     // suspending process means that we already have block number resource
     if (!mIsSuspendedOnFinalAmountsConfirmationStage) {
-        if (!resourceIsValid(BaseResource::ObservingBlockNumber)) {
+        try {
+            mMaximalClaimingBlockNumber = mObservingHandler->getActualBlockNumber() + kCountBlocksForClaiming;
+        } catch (const NotFoundError& e) {
+            error() << "Failed to get actual block number: " << e.what();
             return resultUnexpectedError();
         }
-        auto blockNumberResource = popNextResource<BlockNumberRecourse>();
-        mMaximalClaimingBlockNumber = blockNumberResource->actualObservingBlockNumber() + kCountBlocksForClaiming;
     }
 
     // check if reservation to contractor present
@@ -734,6 +799,9 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
 #ifdef TESTS
     mSubsystemsController->testForbidSendMessageOnFinalAmountClarificationStage();
 #endif
+
+    // Randomize participant identifiers for privacy before sending final configuration
+    randomizeParticipantIdentifiers();
 
     mParticipantsPublicKeys.clear();
     auto ioTransaction = mStorageHandler->beginTransaction();

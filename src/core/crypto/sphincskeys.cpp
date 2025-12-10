@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <stdexcept>
 #include <algorithm>
+#include <cctype>
 
 namespace crypto {
 namespace sphincs {
@@ -33,28 +34,49 @@ PublicKey::PublicKey(const byte_t* keyData) : mIsValid(true)
 PublicKey::PublicKey(const string& keyString) : mIsValid(false)
 {
     mKeyData.fill(0);
-    
-    if (keyString.length() != kKeySize * 2) {
-        return; // Invalid hex string length
+
+    constexpr size_t kBase64EncodedSize = ((kKeySize + 2) / 3) * 4; // Padded base64 length for kKeySize bytes
+    constexpr size_t kDecodeBufferSize = (kBase64EncodedSize / 4) * 3;
+
+    if (keyString.length() != kBase64EncodedSize) {
+        return; // Invalid base64 string length for SPHINCS+ public key
     }
-    
-    // Validate that all characters are valid hex characters
+
+    // Keep decoder strict: only base64 alphabet and padding are accepted.
     for (char c : keyString) {
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
-            return; // Invalid hex character
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '+' || c == '/' || c == '=')) {
+            return;
         }
     }
-    
-    try {
-        for (size_t i = 0; i < kKeySize; ++i) {
-            string byteString = keyString.substr(i * 2, 2);
-            mKeyData[i] = static_cast<byte_t>(stoul(byteString, nullptr, 16));
-        }
-        mIsValid = true;
-    } catch (const std::exception&) {
-        mKeyData.fill(0);
-        mIsValid = false;
+
+    std::array<unsigned char, kDecodeBufferSize> decoded{};
+    int decodedLen = EVP_DecodeBlock(
+        decoded.data(),
+        reinterpret_cast<const unsigned char*>(keyString.data()),
+        static_cast<int>(keyString.size()));
+    if (decodedLen <= 0) {
+        return;
     }
+
+    size_t padding = 0;
+    if (!keyString.empty() && keyString.back() == '=') {
+        padding++;
+        if (keyString.size() >= 2 && keyString[keyString.size() - 2] == '=') {
+            padding++;
+        }
+    }
+
+    if (static_cast<size_t>(decodedLen) < padding) {
+        return;
+    }
+
+    const size_t actualLen = static_cast<size_t>(decodedLen) - padding; // EVP_DecodeBlock counts padded bytes
+    if (actualLen != kKeySize) {
+        return; // Decoded size mismatch
+    }
+
+    std::copy(decoded.data(), decoded.data() + kKeySize, mKeyData.begin());
+    mIsValid = true;
 }
 
 PublicKey::PublicKey(const PublicKey& other) : mIsValid(other.mIsValid)
@@ -81,13 +103,19 @@ string PublicKey::toString() const
     if (!mIsValid) {
         return "";
     }
-    
-    stringstream ss;
-    ss << hex << setfill('0');
-    for (size_t i = 0; i < kKeySize; ++i) {
-        ss << setw(2) << static_cast<unsigned>(mKeyData[i]);
+
+    constexpr size_t kBase64EncodedSize = ((kKeySize + 2) / 3) * 4; // Padded base64 length for kKeySize bytes
+    std::array<unsigned char, kBase64EncodedSize + 1> encoded{};    // +1 keeps the buffer oversized if EVP writes a terminator
+
+    int encodedLen = EVP_EncodeBlock(
+        encoded.data(),
+        reinterpret_cast<const unsigned char*>(mKeyData.data()),
+        static_cast<int>(kKeySize));
+    if (encodedLen <= 0) {
+        return "";
     }
-    return ss.str();
+
+    return string(reinterpret_cast<char*>(encoded.data()), static_cast<size_t>(encodedLen));
 }
 
 bool PublicKey::operator==(const PublicKey& other) const

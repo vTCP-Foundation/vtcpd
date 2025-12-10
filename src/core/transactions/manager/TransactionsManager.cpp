@@ -22,6 +22,7 @@ TransactionsManager::TransactionsManager(
     ExchangeRatesManager *exchangeRatesManager,
     ExchangePathsManager *exchangePathsManager,
     CommissionsManager *commissionsManager,
+    ObservingHandler *observingHandler,
     uint8_t hops_count) :
 
     mIOCtx(IOCtx),
@@ -40,6 +41,7 @@ TransactionsManager::TransactionsManager(
     mExchangeRatesManager(exchangeRatesManager),
     mExchangePathsManager(exchangePathsManager),
     mCommissionsManager(commissionsManager),
+    mObservingHandler(observingHandler),
     mHopsCnt(hops_count),
     isPaymentTransactionsAllowedDueToObserving(true),
     mCyclesRunningParameters(cyclesRunningParameters),
@@ -1490,6 +1492,7 @@ void TransactionsManager::launchCoordinatorExchangePaymentTransaction(
                                mResourcesManager,
                                mExchangePathsManager,
                                mExchangeRatesManager,
+                               mObservingHandler,
                                mKeysStore,
                                isPaymentTransactionsAllowedDueToObserving,
                                mEventsInterfaceManager,
@@ -1583,6 +1586,7 @@ void TransactionsManager::launchReceiverExchangePaymentTransaction(
                                mExchangeRatesManager,
                                mCommissionsManager,
                                mExchangePathsManager,
+                               mObservingHandler,
                                mKeysStore,
                                mEventsInterfaceManager,
                                mLog,
@@ -1674,6 +1678,7 @@ void TransactionsManager::launchIntermediateNodeExchangePaymentTransaction(
                                mExchangeRatesManager,
                                mCommissionsManager,
                                mExchangePathsManager,
+                               mObservingHandler,
                                mKeysStore,
                                mLog,
                                mSubsystemsController);

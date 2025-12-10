@@ -1,9 +1,25 @@
 #include <gtest/gtest.h>
 #include <sodium.h>
+#include <openssl/evp.h>
 #include "../../../src/core/crypto/sphincskeys.h"
 #include "../../../src/core/crypto/sphincsscheme.h"
 
 using namespace crypto::sphincs;
+
+static string base64Encode(const byte_t* data, size_t len)
+{
+    const size_t encodedSize = 4 * ((len + 2) / 3);
+    string encoded(encodedSize, '\0');
+    const int written = EVP_EncodeBlock(
+        reinterpret_cast<unsigned char*>(&encoded[0]),
+        reinterpret_cast<const unsigned char*>(data),
+        static_cast<int>(len));
+    if (written <= 0) {
+        return "";
+    }
+    encoded.resize(static_cast<size_t>(written));
+    return encoded;
+}
 
 class SphincsSignatureTest : public ::testing::Test {
 protected:
@@ -51,29 +67,33 @@ TEST_F(SphincsSignatureTest, SignatureFromData) {
     }
 }
 
-TEST_F(SphincsSignatureTest, SignatureFromValidHexString) {
-    // Create a valid hex string (59584 characters for 29792 bytes)
-    string hexString;
-    for (int i = 0; i < 29792; ++i) {
-        hexString += "ab"; // Each byte as hex (2 chars)
+TEST_F(SphincsSignatureTest, SignatureFromValidBase64String) {
+    byte_t testSigData[Signature::signatureSize()];
+    for (size_t i = 0; i < Signature::signatureSize(); ++i) {
+        testSigData[i] = static_cast<byte_t>(i % 256);
     }
-    
-    Signature sig(hexString);
+
+    const string base64String = base64Encode(testSigData, Signature::signatureSize());
+    ASSERT_EQ(base64String.size(), 4 * ((Signature::signatureSize() + 2) / 3));
+
+    Signature sig(base64String);
     EXPECT_TRUE(sig.isValid());
-    EXPECT_EQ(sig.toString(), hexString);
+    EXPECT_EQ(sig.toString(), base64String);
+    const byte_t* sigData = sig.data();
+    for (size_t i = 0; i < Signature::signatureSize(); ++i) {
+        EXPECT_EQ(sigData[i], testSigData[i]);
+    }
 }
 
-TEST_F(SphincsSignatureTest, SignatureFromInvalidHexString) {
+TEST_F(SphincsSignatureTest, SignatureFromInvalidBase64String) {
     // Test with invalid length
     string invalidString = "short";
     Signature sig1(invalidString);
     EXPECT_FALSE(sig1.isValid());
     
     // Test with invalid characters (create string of correct length but with invalid char)
-    string invalidChars;
-    for (int i = 0; i < 29792; ++i) {
-        invalidChars += (i == 100) ? "aG" : "ab"; // Invalid 'G' character at position 100
-    }
+    string invalidChars(4 * ((Signature::signatureSize() + 2) / 3), 'A');
+    invalidChars[100] = '!'; // Invalid base64 character
     Signature sig2(invalidChars);
     EXPECT_FALSE(sig2.isValid());
 }

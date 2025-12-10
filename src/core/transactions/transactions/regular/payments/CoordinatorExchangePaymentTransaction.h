@@ -31,6 +31,7 @@ public:
         ResourcesManager *resourcesManager,
         ExchangePathsManager *exchangePathsManager,
         ExchangeRatesManager *exchangeRatesManager,
+        ObservingHandler *observingHandler,
         Keystore *keystore,
         bool isPaymentTransactionsAllowedDueToObserving,
         EventsInterfaceManager *eventsInterfaceManager,
@@ -93,6 +94,15 @@ protected:
      * send messages to all transaction participants with their final amount configuration
      */
     TransactionResult::SharedConst sendFinalAmountsConfigurationToAllParticipants();
+
+    /**
+     * Randomizes payment participant identifiers while preserving the coordinator at position 0.
+     * Shuffles all participants except the coordinator, reassigning them new IDs from the same
+     * range while maintaining consistency between mPaymentParticipants and mPaymentNodesIds maps.
+     * This is used for privacy/anonymity purposes to prevent easy identification of the receiver
+     * by their position in the participants list.
+     */
+    void randomizeParticipantIdentifiers();
 
     // Amount reservation helper methods
     void initAmountsReservationOnNextPath();

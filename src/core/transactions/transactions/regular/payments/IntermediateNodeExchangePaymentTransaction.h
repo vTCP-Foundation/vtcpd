@@ -27,6 +27,7 @@ public:
         ExchangeRatesManager *exchangeRatesManager,
         CommissionsManager *commissionsManager,
         ExchangePathsManager *exchangePathsManager,
+        ObservingHandler *observingHandler,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);
@@ -40,6 +41,7 @@ public:
         ExchangeRatesManager *exchangeRatesManager,
         CommissionsManager *commissionsManager,
         ExchangePathsManager *exchangePathsManager,
+        ObservingHandler *observingHandler,
         Keystore *keystore,
         Logger &log,
         SubsystemsController *subsystemsController);

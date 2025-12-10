@@ -209,7 +209,7 @@ public:
 
     /**
      * @brief Constructor from string representation
-     * @param keyString Hex-encoded key string
+     * @param keyString Base64-encoded key string (padded)
      */
     explicit PublicKey(const string& keyString);
 
@@ -235,8 +235,8 @@ public:
     const byte_t* data() const noexcept;
 
     /**
-     * @brief Convert key to hex string representation
-     * @return Hex-encoded key string
+     * @brief Convert key to base64 string representation
+     * @return Base64-encoded key string
      */
     string toString() const;
 

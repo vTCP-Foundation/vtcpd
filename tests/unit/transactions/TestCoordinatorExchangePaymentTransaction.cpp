@@ -272,6 +272,7 @@ protected:
             resourcesManager.get(),
             pathsManager.get(),
             ratesManager.get(),
+            nullptr,  // ObservingHandler
             keystore.get(),
             true, // isPaymentTransactionsAllowedDueToObserving
             eventsManager.get(),

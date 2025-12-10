@@ -8,6 +8,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
     ExchangePathsManager *exchangePathsManager,
+    ObservingHandler *observingHandler,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -21,6 +22,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     mStorageHandler(storageHandler),
     mResourcesManager(resourcesManager),
     mExchangePathsManager(exchangePathsManager),
+    mObservingHandler(observingHandler),
     mKeysStore(keystore),
     mSubsystemsController(subsystemsController),
     mTTLRequestWasSend(false),
@@ -43,6 +45,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
     ExchangePathsManager *exchangePathsManager,
+    ObservingHandler *observingHandler,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -57,6 +60,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     mStorageHandler(storageHandler),
     mResourcesManager(resourcesManager),
     mExchangePathsManager(exchangePathsManager),
+    mObservingHandler(observingHandler),
     mKeysStore(keystore),
     mSubsystemsController(subsystemsController),
     mTTLRequestWasSend(false),
@@ -77,6 +81,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     StorageHandler *storageHandler,
     ResourcesManager *resourcesManager,
     ExchangePathsManager *exchangePathsManager,
+    ObservingHandler *observingHandler,
     Keystore *keystore,
     Logger &log,
     SubsystemsController *subsystemsController) :
@@ -90,6 +95,7 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     mStorageHandler(storageHandler),
     mResourcesManager(resourcesManager),
     mExchangePathsManager(exchangePathsManager),
+    mObservingHandler(observingHandler),
     mKeysStore(keystore),
     mSubsystemsController(subsystemsController),
     mTTLRequestWasSend(false),
@@ -1604,7 +1610,8 @@ bool BaseExchangePaymentTransaction::checkPublicKeysAppropriate()
 pair<BytesShared, size_t> BaseExchangePaymentTransaction::getSerializedParticipantsVotesData(
     Contractor::Shared contractor)
 {
-    size_t serializedDataSize = sizeof(BlockNumber) + TransactionUUID::kBytesSize + sizeof(SerializedRecordsCount) + mPaymentParticipants.size() * sizeof(PaymentNodeID);
+    size_t serializedDataSize = sizeof(BlockNumber) + TransactionUUID::kBytesSize + sizeof(SerializedRecordsCount) 
+                              + mParticipantsPublicKeys.size() * sphincs::PublicKey::keySize();
     BytesShared serializedData = tryMalloc(serializedDataSize);
 
     size_t bytesBufferOffset = 0;
@@ -1620,19 +1627,19 @@ pair<BytesShared, size_t> BaseExchangePaymentTransaction::getSerializedParticipa
         TransactionUUID::kBytesSize);
     bytesBufferOffset += TransactionUUID::kBytesSize;
 
-    auto participantsCount = mPaymentParticipants.size();
+    auto participantsCount = mParticipantsPublicKeys.size();
     memcpy(
         serializedData.get() + bytesBufferOffset,
         &participantsCount,
         sizeof(SerializedRecordsCount));
     bytesBufferOffset += sizeof(SerializedRecordsCount);
 
-    for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
+    for (const auto &paymentNodeIdAndPublicKey : mParticipantsPublicKeys) {
         memcpy(
             serializedData.get() + bytesBufferOffset,
-            &paymentNodeIdAndContractor.first,
-            sizeof(PaymentNodeID));
-        bytesBufferOffset += sizeof(PaymentNodeID);
+            paymentNodeIdAndPublicKey.second->data(),
+            sphincs::PublicKey::keySize());
+        bytesBufferOffset += sphincs::PublicKey::keySize();
     }
 
     return make_pair(

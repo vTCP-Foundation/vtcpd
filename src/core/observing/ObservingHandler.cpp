@@ -11,13 +11,45 @@ ObservingHandler::ObservingHandler(
         make_unique<ObservingCommunicator>(
             ioCtx,
             logger)),
+    mObserverRPCClient(
+        make_unique<ObserverRPCClient>(
+            ioCtx,
+            logger)),
     mBlockNumberRequestTimer(ioCtx),
     mClaimsTimer(ioCtx),
     mTransactionsTimer(ioCtx),
     mRequestsTimer(ioCtx),
     mStorageHandler(storageHandler),
     mResourcesManager(resourcesManager)
-{}
+{
+    // Filter and add only IPv4 addresses to mObservers
+    for (const auto &addressPair : observersAddressesStr) {
+        const string &addressType = addressPair.first;
+        const string &addressStr = addressPair.second;
+
+        if (addressType == "ipv4") {
+            try {
+                auto ipv4Address = make_shared<IPv4WithPortAddress>(addressStr);
+                mObservers.push_back(ipv4Address);
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+                debug() << "Added observer: " << addressStr;
+#endif
+            } catch (const std::exception &e) {
+                warning() << "Failed to parse IPv4 address " << addressStr << ": " << e.what();
+            }
+        } else {
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+            debug() << "Skipping non-IPv4 address type: " << addressType;
+#endif
+        }
+    }
+
+    if (mObservers.empty()) {
+        warning() << "No valid IPv4 observers configured";
+    } else {
+        info() << "Configured " << mObservers.size() << " observer(s)";
+    }
+}
 
 void ObservingHandler::sendClaimRequestToObservers(
     ObservingClaimAppendRequestMessage::Shared request)
@@ -407,8 +439,32 @@ void ObservingHandler::responseActualBlockNumber(
             kDefaultBlockNumber));
 }
 
-void ObservingHandler::getActualBlockNumber()
-{}
+BlockNumber ObservingHandler::getActualBlockNumber() const
+{
+    if (mObservers.empty()) {
+        warning() << "Cannot get actual block number: no observers configured";
+        throw NotFoundError("Cannot get actual block number: no observers configured");
+    }
+
+    auto firstObserver = mObservers[0];
+
+    try {
+        BlockNumber blockNumber = mObserverRPCClient->getBlockNumber(firstObserver);
+        info() << "Actual block number from observer " << firstObserver->fullAddress()
+               << ": " << blockNumber;
+
+        return blockNumber;
+
+    } catch (const std::exception &e) {
+        warning() << "Failed to get block number from observer "
+                  << firstObserver->fullAddress() << ": " << e.what();
+        throw NotFoundError("Failed to get block number from observer " + firstObserver->fullAddress() + ": " + e.what());
+    } catch (...) {
+        warning() << "Unknown error while getting block number from observer "
+                  << firstObserver->fullAddress();
+        throw NotFoundError("Unknown error while getting block number from observer " + firstObserver->fullAddress());
+    } 
+}
 
 const string ObservingHandler::logHeader() const
 {

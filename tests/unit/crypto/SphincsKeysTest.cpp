@@ -1,9 +1,25 @@
 #include <gtest/gtest.h>
 #include <sodium.h>
+#include <openssl/evp.h>
 #include "../../../src/core/crypto/sphincskeys.h"
 #include "../../../src/core/crypto/sphincsscheme.h"
 
 using namespace crypto::sphincs;
+
+static string base64Encode(const byte_t* data, size_t len)
+{
+    const size_t encodedSize = 4 * ((len + 2) / 3);
+    string encoded(encodedSize, '\0');
+    const int written = EVP_EncodeBlock(
+        reinterpret_cast<unsigned char*>(&encoded[0]),
+        reinterpret_cast<const unsigned char*>(data),
+        static_cast<int>(len));
+    if (written <= 0) {
+        return "";
+    }
+    encoded.resize(static_cast<size_t>(written));
+    return encoded;
+}
 
 class SphincsKeysTest : public ::testing::Test {
 protected:
@@ -40,27 +56,33 @@ TEST_F(SphincsKeysTest, PublicKeyFromData) {
     }
 }
 
-TEST_F(SphincsKeysTest, PublicKeyFromValidHexString) {
-    // Create a valid hex string (128 characters for 64 bytes)
-    string hexString;
-    hexString.reserve(PublicKey::keySize() * 2);
-    const string block = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; // 64 chars
-    hexString += block; // first 64
-    hexString += block; // second 64 -> total 128
+TEST_F(SphincsKeysTest, PublicKeyFromValidBase64String) {
+    byte_t testData[PublicKey::keySize()];
+    for (size_t i = 0; i < PublicKey::keySize(); ++i) {
+        testData[i] = static_cast<byte_t>(i % 256);
+    }
 
-    PublicKey key(hexString);
+    const string base64String = base64Encode(testData, PublicKey::keySize());
+    ASSERT_EQ(base64String.size(), 4 * ((PublicKey::keySize() + 2) / 3));
+
+    PublicKey key(base64String);
     EXPECT_TRUE(key.isValid());
-    EXPECT_EQ(key.toString(), hexString);
+    EXPECT_EQ(key.toString(), base64String);
+    const byte_t* keyData = key.data();
+    for (size_t i = 0; i < PublicKey::keySize(); ++i) {
+        EXPECT_EQ(keyData[i], testData[i]);
+    }
 }
 
-TEST_F(SphincsKeysTest, PublicKeyFromInvalidHexString) {
+TEST_F(SphincsKeysTest, PublicKeyFromInvalidBase64String) {
     // Test with invalid length
     string invalidString = "short";
     PublicKey key1(invalidString);
     EXPECT_FALSE(key1.isValid());
     
-    // Test with invalid characters
-    string invalidChars = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeG";
+    // Test with invalid characters in otherwise correctly sized base64 string
+    string invalidChars(4 * ((PublicKey::keySize() + 2) / 3), 'A');
+    invalidChars[10] = '!'; // Not a valid base64 character
     PublicKey key2(invalidChars);
     EXPECT_FALSE(key2.isValid());
 }

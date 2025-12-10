@@ -2,6 +2,7 @@
 #define VTCPD_OBSERVINGHANDLER_H
 
 #include "ObservingCommunicator.h"
+#include "ObserverRPCClient.h"
 #include "ObservingTransaction.h"
 #include "messages/ObservingClaimAppendResponseMessage.h"
 #include "messages/ObservingTransactionsRequestMessage.h"
@@ -57,6 +58,8 @@ public:
     void requestActualBlockNumber(
         const TransactionUUID &transactionUUID);
 
+    BlockNumber getActualBlockNumber() const;
+
 protected:
     const string logHeader() const override;
 
@@ -101,8 +104,6 @@ protected:
 
     void responseActualBlockNumber(
         const TransactionUUID &transactionUUID);
-
-    void getActualBlockNumber();
 
     bool sendParticipantsVoteMessageToObservers(
         const TransactionUUID &transactionUUID,
@@ -150,6 +151,7 @@ private:
 private:
     vector<IPv4WithPortAddress::Shared> mObservers;
     unique_ptr<ObservingCommunicator> mObservingCommunicator;
+    unique_ptr<ObserverRPCClient> mObserverRPCClient;
     map<TransactionUUID, ObservingTransaction::Shared> mClaims;
     // transactionUUID and block number after which claim is impossible
     map<TransactionUUID, BlockNumber> mCheckedTransactions;

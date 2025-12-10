@@ -9,7 +9,9 @@ add_library(observing
     ObservingTransaction.h
     ObservingTransaction.cpp
     ObservingCommunicator.h
-    ObservingCommunicator.cpp)
+    ObservingCommunicator.cpp
+    ObserverRPCClient.h
+    ObserverRPCClient.cpp)
 
 target_include_directories(observing
     PUBLIC

@@ -266,6 +266,7 @@ namespace {
             ResourcesManager *resourcesManager,
             ExchangePathsManager *exchangePathsManager,
             ExchangeRatesManager *exchangeRatesManager,
+            ObservingHandler *observingHandler,
             Keystore *keystore,
             bool isPaymentTransactionsAllowedDueToObserving,
             EventsInterfaceManager *eventsInterfaceManager,
@@ -274,7 +275,7 @@ namespace {
             : CoordinatorExchangePaymentTransaction(
                 command, contractorsManager, equivalentsSubsystemsRouter,
                 storageHandler, resourcesManager, exchangePathsManager,
-                exchangeRatesManager, keystore, isPaymentTransactionsAllowedDueToObserving,
+                exchangeRatesManager, observingHandler, keystore, isPaymentTransactionsAllowedDueToObserving,
                 eventsInterfaceManager, log, subsystemsController)
         {}
 
@@ -312,6 +313,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnSimplePath_NoExchangeNoCommiss
         env.resourcesManager.get(),
         env.pathsManager.get(),
         env.ratesManager.get(),
+        nullptr,  // ObservingHandler
         env.keystore.get(),
         true,
         env.eventsManager.get(),
@@ -374,6 +376,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_WithExchange) {
         env.resourcesManager.get(),
         env.pathsManager.get(),
         env.ratesManager.get(),
+        nullptr,  // ObservingHandler
         env.keystore.get(),
         true,
         env.eventsManager.get(),
@@ -437,6 +440,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_WithCommission) {
         env.resourcesManager.get(),
         env.pathsManager.get(),
         env.ratesManager.get(),
+        nullptr,  // ObservingHandler
         env.keystore.get(),
         true,
         env.eventsManager.get(),
@@ -500,6 +504,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_CommissionOverflow) {
         env.resourcesManager.get(),
         env.pathsManager.get(),
         env.ratesManager.get(),
+        nullptr,  // ObservingHandler
         env.keystore.get(),
         true,
         env.eventsManager.get(),
@@ -547,6 +552,7 @@ TEST(CoordinatorCapacityAdjustmentTest, ShortageOnPath_PathNotFound) {
         env.resourcesManager.get(),
         env.pathsManager.get(),
         env.ratesManager.get(),
+        nullptr,  // ObservingHandler
         env.keystore.get(),
         true,
         env.eventsManager.get(),
