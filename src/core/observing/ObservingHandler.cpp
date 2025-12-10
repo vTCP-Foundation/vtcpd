@@ -801,7 +801,127 @@ void ObservingHandler::checkTransaction(
 void ObservingHandler::getParticipantsSignatures(
     ObservingPaymentClaim::Shared claim)
 {
-    (void)claim;
+    info() << "Getting participants signatures: " << claim->transactionUUID();
+
+    if (mObservers.empty()) {
+        warning() << "Cannot get participants signatures: no observers configured";
+        throw NotFoundError("No observers configured");
+    }
+
+    auto firstObserver = mObservers[0];
+
+    try {
+        json request = {
+            {"method", "RPCService.GetClaimVotes"},
+            {"params", json::array({
+                {
+                    {"transaction_uuid", boost::uuids::to_string(claim->transactionUUID())},
+                    {"max_claim_block_number", claim->maxBlockNumberForClaiming()}
+                }
+            })},
+            {"id", 1}
+        };
+
+        string requestStr = request.dump() + "\n";
+
+        auto &ioCtx = static_cast<IOCtx &>(mPaymentClaimsTimer.get_executor().context());
+        tcp::resolver resolver(ioCtx);
+        boost::system::error_code errorCode;
+
+        auto endpoints = resolver.resolve(
+            firstObserver->host(),
+            to_string(firstObserver->port()),
+            errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+        tcp::socket socket(ioCtx);
+        boost::asio::connect(socket, endpoints, errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Sending RPC request: " << request.dump();
+#endif
+
+        boost::asio::write(
+            socket,
+            boost::asio::buffer(requestStr));
+
+        boost::asio::streambuf responseBuffer;
+        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
+
+        if (errorCode && errorCode != boost::asio::error::eof) {
+            throw errorCode;
+        }
+
+        std::istream responseStream(&responseBuffer);
+        string responseLine;
+        std::getline(responseStream, responseLine);
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Received RPC response: " << responseLine;
+#endif
+
+        json response = json::parse(responseLine);
+
+        if (response.contains("error") && !response["error"].is_null()) {
+            string errorMsg = response["error"].is_string()
+                ? response["error"].get<string>()
+                : response["error"].dump();
+            throw runtime_error("Observer RPC error: " + errorMsg);
+        }
+
+        if (!response.contains("result") || !response["result"].contains("votes")) {
+            throw runtime_error("Invalid RPC response: missing votes");
+        }
+
+        auto votesArray = response["result"]["votes"];
+
+        if (!votesArray.is_array()) {
+            throw runtime_error("Invalid RPC response: votes is not array");
+        }
+
+        map<PaymentNodeID, sphincs::Signature::Shared> signaturesMap;
+
+        for (const auto &vote : votesArray) {
+            PaymentNodeID nodeId = vote.at("index").get<PaymentNodeID>();
+            string signatureBase64 = vote.at("signature").get<string>();
+
+            auto signature = make_shared<sphincs::Signature>(signatureBase64);
+            if (!signature->isValid()) {
+                warning() << "Invalid signature from observer for node " << nodeId;
+                continue;
+            }
+
+            signaturesMap[nodeId] = signature;
+        }
+
+        info() << "Retrieved " << signaturesMap.size()
+               << " participant signatures from observer";
+
+        mParticipantsVotesSignal(
+            claim->transactionUUID(),
+            claim->maxBlockNumberForClaiming(),
+            signaturesMap);
+
+        claim->setStatus(ObservingPaymentClaim::Done);
+
+        socket.close();
+
+    } catch (const std::exception &e) {
+        mLog.error(logHeader()) << "Failed to get participants signatures from observer "
+                                << firstObserver->fullAddress() << ": " << e.what();
+        throw;
+    } catch (...) {
+        mLog.error(logHeader()) << "Failed to get participants signatures from observer "
+                                << firstObserver->fullAddress() << ": unknown error";
+        throw;
+    }
 }
 
 void ObservingHandler::rejectTransaction(
