@@ -8,6 +8,8 @@ add_library(observing
     ObservingHandler.cpp
     ObservingTransaction.h
     ObservingTransaction.cpp
+    ObservingPaymentClaim.h
+    ObservingPaymentClaim.cpp
     ObservingCommunicator.h
     ObservingCommunicator.cpp
     ObserverRPCClient.h
