@@ -4,6 +4,7 @@
 #include "ObservingCommunicator.h"
 #include "ObserverRPCClient.h"
 #include "ObservingTransaction.h"
+#include "ObservingPaymentClaim.h"
 #include "messages/ObservingClaimAppendResponseMessage.h"
 #include "messages/ObservingTransactionsRequestMessage.h"
 #include "messages/ObservingTransactionsResponseMessage.h"
@@ -57,6 +58,13 @@ public:
 
     void requestActualBlockNumber(
         const TransactionUUID &transactionUUID);
+
+    void addPaymentClaim(
+        const TransactionUUID &transactionUUID,
+        BlockNumber maxBlockNumberForClaiming,
+        const map<PaymentNodeID, sphincs::PublicKey::Shared> &participantsPublicKeys,
+        sphincs::PublicKey::Shared publicKey,
+        sphincs::Signature::Shared signature);
 
     BlockNumber getActualBlockNumber() const;
 
@@ -155,6 +163,8 @@ private:
     map<TransactionUUID, ObservingTransaction::Shared> mClaims;
     // transactionUUID and block number after which claim is impossible
     map<TransactionUUID, BlockNumber> mCheckedTransactions;
+    // Payment claims for observer-based resolution
+    map<pair<TransactionUUID, BlockNumber>, ObservingPaymentClaim::Shared> mPaymentClaims;
 
     // number of block getting with last response and response time
     pair<BlockNumber, DateTime> mLastUpdatedBlockNumber;

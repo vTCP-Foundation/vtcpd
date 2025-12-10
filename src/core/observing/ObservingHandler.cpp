@@ -439,6 +439,33 @@ void ObservingHandler::responseActualBlockNumber(
             kDefaultBlockNumber));
 }
 
+void ObservingHandler::addPaymentClaim(
+    const TransactionUUID &transactionUUID,
+    BlockNumber maxBlockNumberForClaiming,
+    const map<PaymentNodeID, sphincs::PublicKey::Shared> &participantsPublicKeys,
+    sphincs::PublicKey::Shared publicKey,
+    sphincs::Signature::Shared signature)
+{
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+    debug() << "Adding payment claim: " << transactionUUID
+            << " maxBlockNumber: " << maxBlockNumberForClaiming;
+#endif
+
+    auto claim = make_shared<ObservingPaymentClaim>(
+        transactionUUID,
+        maxBlockNumberForClaiming,
+        participantsPublicKeys,
+        publicKey,
+        signature);
+
+    auto key = make_pair(transactionUUID, maxBlockNumberForClaiming);
+    mPaymentClaims[key] = claim;
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+    debug() << "Payment claims map size: " << mPaymentClaims.size();
+#endif
+}
+
 BlockNumber ObservingHandler::getActualBlockNumber() const
 {
     if (mObservers.empty()) {
