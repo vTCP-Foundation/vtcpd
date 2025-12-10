@@ -684,7 +684,118 @@ void ObservingHandler::sendClaim(
 void ObservingHandler::checkTransaction(
     ObservingPaymentClaim::Shared claim)
 {
-    (void)claim;
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+    debug() << "Checking transaction status: " << claim->transactionUUID();
+#endif
+
+    if (mObservers.empty()) {
+        warning() << "Cannot check transaction: no observers configured";
+        throw NotFoundError("No observers configured");
+    }
+
+    auto firstObserver = mObservers[0];
+
+    try {
+        json request = {
+            {"method", "RPCService.GetClaimStatus"},
+            {"params", json::array({
+                {
+                    {"transaction_uuid", boost::uuids::to_string(claim->transactionUUID())},
+                    {"max_claim_block_number", claim->maxBlockNumberForClaiming()}
+                }
+            })},
+            {"id", 1}
+        };
+
+        string requestStr = request.dump() + "\n";
+
+        auto &ioCtx = static_cast<IOCtx &>(mPaymentClaimsTimer.get_executor().context());
+        tcp::resolver resolver(ioCtx);
+        boost::system::error_code errorCode;
+
+        auto endpoints = resolver.resolve(
+            firstObserver->host(),
+            to_string(firstObserver->port()),
+            errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+        tcp::socket socket(ioCtx);
+        boost::asio::connect(socket, endpoints, errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Sending RPC request: " << request.dump();
+#endif
+
+        boost::asio::write(
+            socket,
+            boost::asio::buffer(requestStr));
+
+        boost::asio::streambuf responseBuffer;
+        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
+
+        if (errorCode && errorCode != boost::asio::error::eof) {
+            throw errorCode;
+        }
+
+        std::istream responseStream(&responseBuffer);
+        string responseLine;
+        std::getline(responseStream, responseLine);
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Received RPC response: " << responseLine;
+#endif
+
+        json response = json::parse(responseLine);
+
+        if (response.contains("error") && !response["error"].is_null()) {
+            string errorMsg = response["error"].is_string()
+                ? response["error"].get<string>()
+                : response["error"].dump();
+            throw runtime_error("Observer RPC error: " + errorMsg);
+        }
+
+        if (!response.contains("result") || !response["result"].contains("state")) {
+            throw runtime_error("Invalid RPC response: missing state");
+        }
+
+        string state = response["result"]["state"].get<string>();
+
+        if (state == "not found") {
+            claim->setStatus(ObservingPaymentClaim::NoInfo);
+            info() << "Claim not found on observer, will retry: "
+                   << claim->transactionUUID();
+        } else if (state == "observing") {
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+            debug() << "Claim still observing: " << claim->transactionUUID();
+#endif
+        } else if (state == "approved") {
+            claim->setStatus(ObservingPaymentClaim::ParticipantsVotesPresent);
+            info() << "Claim approved by observer: " << claim->transactionUUID();
+        } else if (state == "rejected") {
+            claim->setStatus(ObservingPaymentClaim::RejectedByObserving);
+            info() << "Claim rejected by observer: " << claim->transactionUUID();
+        } else {
+            warning() << "Unknown claim state from observer: " << state;
+        }
+
+        socket.close();
+
+    } catch (const std::exception &e) {
+        mLog.error(logHeader()) << "Failed to check transaction status from observer "
+                                << firstObserver->fullAddress() << ": " << e.what();
+        throw;
+    } catch (...) {
+        mLog.error(logHeader()) << "Failed to check transaction status from observer "
+                                << firstObserver->fullAddress() << ": unknown error";
+        throw;
+    }
 }
 
 void ObservingHandler::getParticipantsSignatures(
