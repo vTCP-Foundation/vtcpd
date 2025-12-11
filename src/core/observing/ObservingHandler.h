@@ -175,6 +175,15 @@ private:
     static constexpr uint32_t kPaymentClaimProcessingPeriodSecondsTests = 10;
 #endif
 
+    // Successful transactions monitoring timings.
+    static constexpr uint32_t kSuccessfulTransactionsMonitoringPeriodSeconds = 60;
+#ifdef TESTS
+    static constexpr uint32_t kSuccessfulTransactionsMonitoringPeriodSecondsTests = 10;
+#endif
+
+    // Maximum number of transactions processed per monitoring cycle.
+    static constexpr uint32_t kMaxTransactionsPerMonitoringCycle = 100;
+
 private:
     vector<IPv4WithPortAddress::Shared> mObservers;
     unique_ptr<ObservingCommunicator> mObservingCommunicator;
@@ -192,10 +201,24 @@ private:
     as::steady_timer mClaimsTimer;
     as::steady_timer mTransactionsTimer;
     as::steady_timer mPaymentClaimsTimer;
+    // Timer for periodic successful transaction monitoring.
+    as::steady_timer mSuccessfulTransactionsMonitorTimer;
     as::steady_timer mRequestsTimer;
 
     StorageHandler *mStorageHandler;
     ResourcesManager *mResourcesManager;
+
+    /**
+     * Main monitoring cycle for successful transactions.
+     * Retrieves transactions from database and checks for relevant observer claims.
+     * Automatically reschedules for next cycle.
+     */
+    void monitorSuccessfulTransactions();
+
+    /**
+     * Reschedules the successful transactions monitoring timer.
+     */
+    void rescheduleSuccessfulTransactionsMonitor();
 };
 
 #endif // VTCPD_OBSERVINGHANDLER_H

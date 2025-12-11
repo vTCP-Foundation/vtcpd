@@ -29,6 +29,7 @@ ObservingHandler::ObservingHandler(
     mClaimsTimer(ioCtx),
     mTransactionsTimer(ioCtx),
     mPaymentClaimsTimer(ioCtx),
+    mSuccessfulTransactionsMonitorTimer(ioCtx),
     mRequestsTimer(ioCtx),
     mStorageHandler(storageHandler),
     mResourcesManager(resourcesManager)
@@ -73,10 +74,27 @@ ObservingHandler::ObservingHandler(
         [this](const boost::system::error_code &e) {
 
             if (e == boost::asio::error::operation_aborted) {
+            return;
+        }
+
+        processPaymentClaims();
+        });
+
+    // Start timer for monitoring successful transactions and related observer claims.
+#ifdef TESTS
+    mSuccessfulTransactionsMonitorTimer.expires_after(
+        chrono::seconds(kSuccessfulTransactionsMonitoringPeriodSecondsTests));
+#else
+    mSuccessfulTransactionsMonitorTimer.expires_after(
+        chrono::seconds(kSuccessfulTransactionsMonitoringPeriodSeconds));
+#endif
+
+    mSuccessfulTransactionsMonitorTimer.async_wait(
+        [this](const boost::system::error_code &e) {
+            if (e == boost::asio::error::operation_aborted) {
                 return;
             }
-
-            processPaymentClaims();
+            monitorSuccessfulTransactions();
         });
 }
 
@@ -557,6 +575,81 @@ void ObservingHandler::processPaymentClaims()
 
             processPaymentClaims();
         });
+}
+
+// Reschedules the periodic monitoring of successful transactions.
+void ObservingHandler::rescheduleSuccessfulTransactionsMonitor()
+{
+#ifdef TESTS
+    mSuccessfulTransactionsMonitorTimer.expires_after(
+        chrono::seconds(kSuccessfulTransactionsMonitoringPeriodSecondsTests));
+#else
+    mSuccessfulTransactionsMonitorTimer.expires_after(
+        chrono::seconds(kSuccessfulTransactionsMonitoringPeriodSeconds));
+#endif
+
+    mSuccessfulTransactionsMonitorTimer.async_wait(
+        [this](const boost::system::error_code &e) {
+            if (e == boost::asio::error::operation_aborted) {
+                return;
+            }
+            monitorSuccessfulTransactions();
+        });
+}
+
+// Main monitoring cycle for finalized transactions that may assist observers.
+void ObservingHandler::monitorSuccessfulTransactions()
+{
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+    debug() << "Starting successful transactions monitoring cycle";
+#endif
+
+    try {
+        BlockNumber currentBlockNumber;
+        try {
+            // Fetch current observer block number to bound claiming window checks.
+            currentBlockNumber = getActualBlockNumber();
+        } catch (const std::exception &e) {
+            mLog.error(logHeader()) << "Failed to get actual block number: " << e.what();
+            rescheduleSuccessfulTransactionsMonitor();
+            return;
+        }
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Current observer block number: " << currentBlockNumber;
+#endif
+
+        // Retrieve transactions that are still within claiming period.
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        auto transactions = ioTransaction->paymentTransactionsHandler()
+                                ->transactionsForObserverMonitoring(
+                                    currentBlockNumber,
+                                    kMaxTransactionsPerMonitoringCycle);
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Retrieved " << transactions.size()
+                << " transactions for monitoring";
+#endif
+
+        if (transactions.empty()) {
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+            debug() << "No transactions to monitor, rescheduling";
+#endif
+            rescheduleSuccessfulTransactionsMonitor();
+            return;
+        }
+
+        // TODO: Implement observer claim detection and submission in Task 13-04.
+        info() << "Monitoring cycle completed: processed " << transactions.size()
+               << " transactions";
+
+    } catch (const std::exception &e) {
+        mLog.error(logHeader()) << "Error in successful transactions monitoring: " << e.what();
+    } catch (...) {
+        mLog.error(logHeader()) << "Unknown error in successful transactions monitoring";
+    }
+
+    rescheduleSuccessfulTransactionsMonitor();
 }
 
 void ObservingHandler::sendClaim(
