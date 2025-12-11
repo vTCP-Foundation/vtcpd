@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 #include <sstream>
 #include <memory>
+#include <algorithm>
 #include <libpq-fe.h>
 #include <sodium.h>
 
@@ -305,12 +306,15 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsWithUnce
     // Get uncertain transactions
     auto uncertainTransactions = mHandler->transactionsWithUncertainObservingState();
     
-    EXPECT_EQ(uncertainTransactions.size(), 2);
+    ASSERT_EQ(uncertainTransactions.size(), 2);
     
-    // Since we can't reliably compare binary UUIDs, just verify we got the correct count
-    // and that all returned transactions have state 0
-    // (The logic correctness is verified by the fact that we get exactly 2 results
-    // when we inserted 3 but updated 1 to state 1)
+    // Verify that we got the correct transactions with correct BlockNumbers
+    // Sort results by block number for consistent comparison
+    std::sort(uncertainTransactions.begin(), uncertainTransactions.end(),
+              [](const auto& a, const auto& b) { return a.second < b.second; });
+    
+    EXPECT_EQ(uncertainTransactions[0].second, static_cast<BlockNumber>(100));
+    EXPECT_EQ(uncertainTransactions[1].second, static_cast<BlockNumber>(300));
 }
 
 // Test 8: No uncertain transactions
@@ -439,10 +443,10 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, LargeBlockNumbers_Su
     mHandler->saveRecord(transactionUUID, largeBlock);
     EXPECT_TRUE(mHandler->isTransactionPresent(transactionUUID));
     
-    // Verify transaction was saved by checking uncertain transactions count
+    // Verify transaction was saved by checking uncertain transactions
     auto uncertainTransactions = mHandler->transactionsWithUncertainObservingState();
-    EXPECT_EQ(uncertainTransactions.size(), 1);
-    // Block number comparison disabled due to binary format issues
+    ASSERT_EQ(uncertainTransactions.size(), 1);
+    EXPECT_EQ(uncertainTransactions[0].second, largeBlock);
 }
 
 // Test 17: Schema validation test
@@ -550,8 +554,8 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, ReverseValidation_Di
     EXPECT_TRUE(mHandler->isTransactionPresent(transactionUUID));
     
     auto uncertainTransactions = mHandler->transactionsWithUncertainObservingState();
-    EXPECT_EQ(uncertainTransactions.size(), 1);
-    // Binary data comparison disabled due to format issues
+    ASSERT_EQ(uncertainTransactions.size(), 1);
+    EXPECT_EQ(uncertainTransactions[0].second, blockNumber);
 }
 
 // Test 21: Multiple state transitions

@@ -97,7 +97,7 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerPostgreSQL:
 {
     vector<pair<TransactionUUID, BlockNumber>> result;
     const string query="SELECT uuid, maximal_claiming_block_number FROM " + mTableName + " WHERE observing_state=0;";
-    PGresult *res = PQexec(mDataBase, query.c_str());
+    PGresult *res = PQexecParams(mDataBase, query.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1);  // Request binary result format
     checkTuples(mDataBase,res,"transactionsWithUncertainState");
     int rows=PQntuples(res);
     for (int i=0;i<rows;++i) {
@@ -191,7 +191,7 @@ vector<TransactionUUID> PaymentTransactionsHandlerPostgreSQL::allTransactionsUUI
 {
     vector<TransactionUUID> result;
     const string query="SELECT uuid FROM " + mTableName + ";";
-    PGresult *res = PQexec(mDataBase, query.c_str());
+    PGresult *res = PQexecParams(mDataBase, query.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1);  // Request binary result format
     checkTuples(mDataBase,res,"allTransactionsUUID");
     int rows=PQntuples(res);
     for (int i=0;i<rows;++i) {
