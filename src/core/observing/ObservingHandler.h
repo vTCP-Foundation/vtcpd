@@ -139,6 +139,19 @@ public:
     mutable AllowPaymentTransactionsSignal mAllowPaymentTransactionsSignal;
 
 private:
+    /**
+     * Checks observer for claims related to node's successful transactions.
+     */
+    void checkForRelevantClaims(
+        const vector<pair<TransactionUUID, BlockNumber>>& transactions);
+
+    /**
+     * Submits finalized participant signatures to observer.
+     */
+    void submitFinalizedSignatures(
+        const TransactionUUID& transactionUUID,
+        BlockNumber maxBlockNumber);
+
     static constexpr uint32_t kInitialObservingRequestShiftSeconds = 5;
     static constexpr uint32_t kInitialObservingRequestNextSeconds = 30;
     static constexpr BlockNumber kDefaultBlockNumber = 777;

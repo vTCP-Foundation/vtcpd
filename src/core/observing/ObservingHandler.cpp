@@ -639,7 +639,9 @@ void ObservingHandler::monitorSuccessfulTransactions()
             return;
         }
 
-        // TODO: Implement observer claim detection and submission in Task 13-04.
+        // Step 3: Check for relevant observer claims and submit signatures when needed.
+        checkForRelevantClaims(transactions);
+
         info() << "Monitoring cycle completed: processed " << transactions.size()
                << " transactions";
 
@@ -650,6 +652,296 @@ void ObservingHandler::monitorSuccessfulTransactions()
     }
 
     rescheduleSuccessfulTransactionsMonitor();
+}
+
+// Checks observer for claims related to finalized transactions and submits signatures.
+void ObservingHandler::checkForRelevantClaims(
+    const vector<pair<TransactionUUID, BlockNumber>>& transactions)
+{
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+    debug() << "Checking observer for relevant claims across "
+            << transactions.size() << " transactions";
+#endif
+
+    if (transactions.empty()) {
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "No transactions provided for claim check";
+#endif
+        return;
+    }
+
+    if (mObservers.empty()) {
+        warning() << "Cannot check for relevant claims: no observers configured";
+        return;
+    }
+
+    auto firstObserver = mObservers[0];
+
+    json::array_t claimsArray;
+    for (const auto &transaction : transactions) {
+        json claimJson = {
+            {"transaction_uuid", boost::uuids::to_string(transaction.first)},
+            {"max_claim_block_number", transaction.second}
+        };
+        claimsArray.push_back(claimJson);
+    }
+
+    json request = {
+        {"method", "RPCService.GetClaimStatuses"},
+        {"params", json::array({
+            {
+                {"claims", claimsArray}
+            }
+        })},
+        {"id", 1}
+    };
+
+    string requestStr = request.dump() + "\n";
+
+    try {
+        auto &ioCtx = static_cast<IOCtx &>(mSuccessfulTransactionsMonitorTimer.get_executor().context());
+        tcp::resolver resolver(ioCtx);
+        boost::system::error_code errorCode;
+
+        auto endpoints = resolver.resolve(
+            firstObserver->host(),
+            to_string(firstObserver->port()),
+            errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+        tcp::socket socket(ioCtx);
+        boost::asio::connect(socket, endpoints, errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Sending bulk claims query to observer " << firstObserver->fullAddress()
+                << ": " << request.dump();
+#endif
+
+        boost::asio::write(
+            socket,
+            boost::asio::buffer(requestStr));
+
+        boost::asio::streambuf responseBuffer;
+        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
+
+        if (errorCode && errorCode != boost::asio::error::eof) {
+            throw errorCode;
+        }
+
+        std::istream responseStream(&responseBuffer);
+        string responseLine;
+        std::getline(responseStream, responseLine);
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Received claims response: " << responseLine;
+#endif
+
+        json response = json::parse(responseLine);
+
+        if (response.contains("error") && !response["error"].is_null()) {
+            string errorMsg = response["error"].is_string()
+                ? response["error"].get<string>()
+                : response["error"].dump();
+            warning() << "Observer RPC error while checking claims: " << errorMsg;
+            socket.close();
+            return;
+        }
+
+        if (!response.contains("result") || !response["result"].contains("statuses")) {
+            warning() << "Invalid RPC response for claim statuses: missing statuses";
+            socket.close();
+            return;
+        }
+
+        const auto &statuses = response["result"]["statuses"];
+
+        if (!statuses.is_array()) {
+            warning() << "Invalid RPC response for claim statuses: statuses is not array";
+            socket.close();
+            return;
+        }
+
+        size_t relevantClaims = 0;
+
+        for (const auto &claimStatus : statuses) {
+            try {
+                const auto uuidStr = claimStatus.at("transaction_uuid").get<string>();
+                BlockNumber claimBlockNumber = claimStatus.at("max_claim_block_number").get<BlockNumber>();
+                const auto state = claimStatus.at("state").get<string>();
+
+                if (state == "observing") {
+                    ++relevantClaims;
+                    TransactionUUID transactionUUID(uuidStr);
+                    submitFinalizedSignatures(transactionUUID, claimBlockNumber);
+                } else {
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+                    debug() << "Transaction " << uuidStr
+                            << " returned non-observing state: " << state;
+#endif
+                }
+            } catch (const std::exception &e) {
+                warning() << "Error processing claim status entry: " << e.what();
+                continue;
+            }
+        }
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Relevant observing claims detected: " << relevantClaims;
+#endif
+        info() << "Found " << relevantClaims << " relevant claims to assist";
+
+        socket.close();
+
+    } catch (const std::exception &e) {
+        mLog.error(logHeader()) << "Failed to check for relevant claims: " << e.what();
+    } catch (...) {
+        mLog.error(logHeader()) << "Unknown error while checking for relevant claims";
+    }
+}
+
+// Submits finalized participant signatures to observer for claim resolution.
+void ObservingHandler::submitFinalizedSignatures(
+    const TransactionUUID& transactionUUID,
+    BlockNumber maxBlockNumber)
+{
+    info() << "Submitting finalized signatures for transaction: " << transactionUUID;
+
+    try {
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        auto participantsSignatures = ioTransaction->paymentParticipantsVotesHandler()
+                                          ->participantsSignatures(transactionUUID);
+
+        if (participantsSignatures.empty()) {
+            warning() << "No participant signatures found for transaction: " << transactionUUID;
+            return;
+        }
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Retrieved " << participantsSignatures.size()
+                << " participant signatures for " << transactionUUID;
+#endif
+
+        json::array_t votesArray;
+        for (const auto &participant : participantsSignatures) {
+            json vote = {
+                {"index", participant.first},
+                {"signature", participant.second->toString()}
+            };
+            votesArray.push_back(vote);
+        }
+
+        json request = {
+            {"method", "RPCService.SubmitClaimVotes"},
+            {"params", json::array({
+                {
+                    {"transaction_uuid", boost::uuids::to_string(transactionUUID)},
+                    {"max_claim_block_number", maxBlockNumber},
+                    {"votes", votesArray},
+                    {"public_key", ""},  // TODO: Populate public_key with node's public key for authentication
+                    {"signature", ""}    // TODO: Populate signature with submission signature for verification
+                }
+            })},
+            {"id", 1}
+        };
+
+        string requestStr = request.dump() + "\n";
+
+        if (mObservers.empty()) {
+            warning() << "Cannot submit finalized signatures: no observers configured";
+            return;
+        }
+
+        auto firstObserver = mObservers[0];
+
+        auto &ioCtx = static_cast<IOCtx &>(mSuccessfulTransactionsMonitorTimer.get_executor().context());
+        tcp::resolver resolver(ioCtx);
+        boost::system::error_code errorCode;
+
+        auto endpoints = resolver.resolve(
+            firstObserver->host(),
+            to_string(firstObserver->port()),
+            errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+        tcp::socket socket(ioCtx);
+        boost::asio::connect(socket, endpoints, errorCode);
+
+        if (errorCode) {
+            throw errorCode;
+        }
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Sending votes submission request to observer "
+                << firstObserver->fullAddress() << ": " << request.dump();
+#endif
+
+        boost::asio::write(
+            socket,
+            boost::asio::buffer(requestStr));
+
+        boost::asio::streambuf responseBuffer;
+        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
+
+        if (errorCode && errorCode != boost::asio::error::eof) {
+            throw errorCode;
+        }
+
+        std::istream responseStream(&responseBuffer);
+        string responseLine;
+        std::getline(responseStream, responseLine);
+
+#ifdef DEBUG_LOG_OBSEVING_HANDLER
+        debug() << "Received votes submission response: " << responseLine;
+#endif
+
+        json response = json::parse(responseLine);
+
+        if (response.contains("error") && !response["error"].is_null()) {
+            string errorMsg = response["error"].is_string()
+                ? response["error"].get<string>()
+                : response["error"].dump();
+            warning() << "Observer RPC error during signature submission: " << errorMsg;
+            socket.close();
+            return;
+        }
+
+        if (!response.contains("result")) {
+            warning() << "Invalid RPC response: missing result for signature submission";
+            socket.close();
+            return;
+        }
+
+        auto result = response["result"];
+        bool success = result.value("success", false);
+        string message = result.value("message", "unknown error");
+
+        if (success) {
+            info() << "Successfully submitted finalized signatures for transaction: "
+                   << transactionUUID;
+        } else {
+            warning() << "Observer rejected signature submission for transaction "
+                      << transactionUUID << ": " << message;
+        }
+
+        socket.close();
+
+    } catch (const std::exception &e) {
+        mLog.error(logHeader()) << "Failed to submit finalized signatures for transaction "
+                                << transactionUUID << ": " << e.what();
+    } catch (...) {
+        mLog.error(logHeader()) << "Failed to submit finalized signatures for transaction "
+                                << transactionUUID << ": unknown error";
+    }
 }
 
 void ObservingHandler::sendClaim(
