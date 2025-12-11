@@ -142,7 +142,7 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerPostgreSQL:
         params,
         lengths,
         formats,
-        0);
+        1);  // Request binary result format
     checkTuples(mDataBase, res, "transactionsForObserverMonitoring");
 
     int rows = PQntuples(res);

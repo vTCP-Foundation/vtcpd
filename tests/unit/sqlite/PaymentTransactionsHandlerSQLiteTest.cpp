@@ -626,4 +626,107 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, DataIntegrityAfterMultipleOperation
     auto finalUncertainTransactions = handler->transactionsWithUncertainObservingState();
     ASSERT_EQ(finalUncertainTransactions.size(), 1);
     EXPECT_EQ(finalUncertainTransactions[0].first.stringUUID(), uuid2.stringUUID());
-} 
+}
+
+// transactionsForObserverMonitoring tests
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_BasicRetrieval_ReturnsMatchingTransactions) {
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(50));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(100));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(150));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(200));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(250));
+
+    auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(100), 10);
+
+    ASSERT_EQ(result.size(), 3);
+    EXPECT_EQ(result[0].second, createTestBlockNumber(150));
+    EXPECT_EQ(result[1].second, createTestBlockNumber(200));
+    EXPECT_EQ(result[2].second, createTestBlockNumber(250));
+}
+
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_StateFiltering_OnlyReturnsUncertainState) {
+    auto uuidState0 = createTestUUID();
+    auto uuidState1 = createTestUUID();
+    auto uuidState2 = createTestUUID();
+
+    handler->saveRecord(uuidState0, createTestBlockNumber(100));
+    handler->saveRecord(uuidState1, createTestBlockNumber(100));
+    handler->saveRecord(uuidState2, createTestBlockNumber(100));
+
+    handler->updateTransactionState(uuidState1, 1);
+    handler->updateTransactionState(uuidState2, 2);
+
+    auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(0), 10);
+
+    ASSERT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0].first.stringUUID(), uuidState0.stringUUID());
+    EXPECT_EQ(result[0].second, createTestBlockNumber(100));
+}
+
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_LimitParameter_RespectsLimit) {
+    for (uint64_t i = 1; i <= 10; ++i) {
+        handler->saveRecord(createTestUUID(), createTestBlockNumber(i * 10));
+    }
+
+    auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(0), 3);
+
+    ASSERT_EQ(result.size(), 3);
+    EXPECT_EQ(result[0].second, createTestBlockNumber(10));
+    EXPECT_EQ(result[1].second, createTestBlockNumber(20));
+    EXPECT_EQ(result[2].second, createTestBlockNumber(30));
+}
+
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_AscendingOrder_OldestFirst) {
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(30));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(10));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(20));
+
+    auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(0), 10);
+
+    ASSERT_EQ(result.size(), 3);
+    EXPECT_EQ(result[0].second, createTestBlockNumber(10));
+    EXPECT_EQ(result[1].second, createTestBlockNumber(20));
+    EXPECT_EQ(result[2].second, createTestBlockNumber(30));
+}
+
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_EmptyResult_NoMatchingTransactions) {
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(50));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(100));
+
+    auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(100), 10);
+
+    EXPECT_TRUE(result.empty());
+}
+
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_BoundaryCondition_ExactBlockNumber) {
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(100));
+
+    auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(100), 10);
+
+    EXPECT_TRUE(result.empty());
+}
+
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_ZeroLimit_ReturnsEmpty) {
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(100));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(200));
+
+    auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(0), 0);
+
+    EXPECT_TRUE(result.empty());
+}
+
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_LargeDataset_ReturnsExpectedRange) {
+    for (uint64_t i = 1; i <= 200; ++i) {
+        handler->saveRecord(createTestUUID(), createTestBlockNumber(i));
+    }
+
+    auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(50), 100);
+
+    ASSERT_EQ(result.size(), 100);
+    EXPECT_EQ(result.front().second, createTestBlockNumber(51));
+    EXPECT_EQ(result.back().second, createTestBlockNumber(150));
+
+    for (size_t i = 0; i < result.size(); ++i) {
+        EXPECT_EQ(result[i].second, createTestBlockNumber(51 + i));
+    }
+}
