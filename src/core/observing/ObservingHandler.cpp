@@ -1,14 +1,6 @@
 #include "ObservingHandler.h"
 
 #include "../common/exceptions/NotFoundError.h"
-#include "../../libs/json/json.h"
-
-#include <boost/asio/read_until.hpp>
-#include <boost/asio/write.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <sstream>
-
-using json = nlohmann::json;
 
 ObservingHandler::ObservingHandler(
     vector<pair<string, string>> observersAddressesStr,
@@ -677,118 +669,23 @@ void ObservingHandler::checkForRelevantClaims(
 
     auto firstObserver = mObservers[0];
 
-    json::array_t claimsArray;
-    for (const auto &transaction : transactions) {
-        json claimJson = {
-            {"transaction_uuid", boost::uuids::to_string(transaction.first)},
-            {"max_claim_block_number", transaction.second}
-        };
-        claimsArray.push_back(claimJson);
-    }
-
-    json request = {
-        {"method", "RPCService.GetClaimStatuses"},
-        {"params", json::array({
-            {
-                {"claims", claimsArray}
-            }
-        })},
-        {"id", 1}
-    };
-
-    string requestStr = request.dump() + "\n";
-
     try {
-        auto &ioCtx = static_cast<IOCtx &>(mSuccessfulTransactionsMonitorTimer.get_executor().context());
-        tcp::resolver resolver(ioCtx);
-        boost::system::error_code errorCode;
-
-        auto endpoints = resolver.resolve(
-            firstObserver->host(),
-            to_string(firstObserver->port()),
-            errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-        tcp::socket socket(ioCtx);
-        boost::asio::connect(socket, endpoints, errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Sending bulk claims query to observer " << firstObserver->fullAddress()
-                << ": " << request.dump();
-#endif
-
-        boost::asio::write(
-            socket,
-            boost::asio::buffer(requestStr));
-
-        boost::asio::streambuf responseBuffer;
-        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
-
-        if (errorCode && errorCode != boost::asio::error::eof) {
-            throw errorCode;
-        }
-
-        std::istream responseStream(&responseBuffer);
-        string responseLine;
-        std::getline(responseStream, responseLine);
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Received claims response: " << responseLine;
-#endif
-
-        json response = json::parse(responseLine);
-
-        if (response.contains("error") && !response["error"].is_null()) {
-            string errorMsg = response["error"].is_string()
-                ? response["error"].get<string>()
-                : response["error"].dump();
-            warning() << "Observer RPC error while checking claims: " << errorMsg;
-            socket.close();
-            return;
-        }
-
-        if (!response.contains("result") || !response["result"].contains("statuses")) {
-            warning() << "Invalid RPC response for claim statuses: missing statuses";
-            socket.close();
-            return;
-        }
-
-        const auto &statuses = response["result"]["statuses"];
-
-        if (!statuses.is_array()) {
-            warning() << "Invalid RPC response for claim statuses: statuses is not array";
-            socket.close();
-            return;
-        }
-
+        auto statuses = mObserverRPCClient->getClaimStatuses(
+            firstObserver,
+            transactions);
         size_t relevantClaims = 0;
 
-        for (const auto &claimStatus : statuses) {
-            try {
-                const auto uuidStr = claimStatus.at("transaction_uuid").get<string>();
-                BlockNumber claimBlockNumber = claimStatus.at("max_claim_block_number").get<BlockNumber>();
-                const auto state = claimStatus.at("state").get<string>();
-
-                if (state == "observing") {
-                    ++relevantClaims;
-                    TransactionUUID transactionUUID(uuidStr);
-                    submitFinalizedSignatures(transactionUUID, claimBlockNumber);
-                } else {
+        for (const auto &status : statuses) {
+            if (status.state == "observing") {
+                ++relevantClaims;
+                submitFinalizedSignatures(
+                    status.transactionUUID,
+                    status.maxClaimBlockNumber);
+            } else {
 #ifdef DEBUG_LOG_OBSEVING_HANDLER
-                    debug() << "Transaction " << uuidStr
-                            << " returned non-observing state: " << state;
+                debug() << "Transaction " << status.transactionUUID
+                        << " returned non-observing state: " << status.state;
 #endif
-                }
-            } catch (const std::exception &e) {
-                warning() << "Error processing claim status entry: " << e.what();
-                continue;
             }
         }
 
@@ -796,8 +693,6 @@ void ObservingHandler::checkForRelevantClaims(
         debug() << "Relevant observing claims detected: " << relevantClaims;
 #endif
         info() << "Found " << relevantClaims << " relevant claims to assist";
-
-        socket.close();
 
     } catch (const std::exception &e) {
         mLog.error(logHeader()) << "Failed to check for relevant claims: " << e.what();
@@ -828,31 +723,6 @@ void ObservingHandler::submitFinalizedSignatures(
                 << " participant signatures for " << transactionUUID;
 #endif
 
-        json::array_t votesArray;
-        for (const auto &participant : participantsSignatures) {
-            json vote = {
-                {"index", participant.first},
-                {"signature", participant.second->toString()}
-            };
-            votesArray.push_back(vote);
-        }
-
-        json request = {
-            {"method", "RPCService.SubmitClaimVotes"},
-            {"params", json::array({
-                {
-                    {"transaction_uuid", boost::uuids::to_string(transactionUUID)},
-                    {"max_claim_block_number", maxBlockNumber},
-                    {"votes", votesArray},
-                    {"public_key", ""},  // TODO: Populate public_key with node's public key for authentication
-                    {"signature", ""}    // TODO: Populate signature with submission signature for verification
-                }
-            })},
-            {"id", 1}
-        };
-
-        string requestStr = request.dump() + "\n";
-
         if (mObservers.empty()) {
             warning() << "Cannot submit finalized signatures: no observers configured";
             return;
@@ -860,80 +730,21 @@ void ObservingHandler::submitFinalizedSignatures(
 
         auto firstObserver = mObservers[0];
 
-        auto &ioCtx = static_cast<IOCtx &>(mSuccessfulTransactionsMonitorTimer.get_executor().context());
-        tcp::resolver resolver(ioCtx);
-        boost::system::error_code errorCode;
-
-        auto endpoints = resolver.resolve(
-            firstObserver->host(),
-            to_string(firstObserver->port()),
-            errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-        tcp::socket socket(ioCtx);
-        boost::asio::connect(socket, endpoints, errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Sending votes submission request to observer "
-                << firstObserver->fullAddress() << ": " << request.dump();
-#endif
-
-        boost::asio::write(
-            socket,
-            boost::asio::buffer(requestStr));
-
-        boost::asio::streambuf responseBuffer;
-        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
-
-        if (errorCode && errorCode != boost::asio::error::eof) {
-            throw errorCode;
-        }
-
-        std::istream responseStream(&responseBuffer);
-        string responseLine;
-        std::getline(responseStream, responseLine);
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Received votes submission response: " << responseLine;
-#endif
-
-        json response = json::parse(responseLine);
-
-        if (response.contains("error") && !response["error"].is_null()) {
-            string errorMsg = response["error"].is_string()
-                ? response["error"].get<string>()
-                : response["error"].dump();
-            warning() << "Observer RPC error during signature submission: " << errorMsg;
-            socket.close();
-            return;
-        }
-
-        if (!response.contains("result")) {
-            warning() << "Invalid RPC response: missing result for signature submission";
-            socket.close();
-            return;
-        }
-
-        auto result = response["result"];
-        bool success = result.value("success", false);
-        string message = result.value("message", "unknown error");
+        string responseMessage;
+        bool success = mObserverRPCClient->submitClaimVotes(
+            firstObserver,
+            transactionUUID,
+            maxBlockNumber,
+            participantsSignatures,
+            responseMessage);
 
         if (success) {
             info() << "Successfully submitted finalized signatures for transaction: "
                    << transactionUUID;
         } else {
             warning() << "Observer rejected signature submission for transaction "
-                      << transactionUUID << ": " << message;
+                      << transactionUUID << ": " << responseMessage;
         }
-
-        socket.close();
 
     } catch (const std::exception &e) {
         mLog.error(logHeader()) << "Failed to submit finalized signatures for transaction "
@@ -959,101 +770,13 @@ void ObservingHandler::sendClaim(
     auto firstObserver = mObservers[0];
 
     try {
-        json::array_t participantsArray;
-        for (const auto &participant : claim->participantsPublicKeys()) {
-            json participantJson = {
-                {"index", participant.first},
-                {"public_key", participant.second->toString()}
-            };
-            participantsArray.push_back(participantJson);
-        }
-
-        json request = {
-            {"method", "RPCService.AcceptClaim"},
-            {"params", json::array({
-                {
-                    {"transaction_uuid", boost::uuids::to_string(claim->transactionUUID())},
-                    {"max_claim_block_number", claim->maxBlockNumberForClaiming()},
-                    {"participants", participantsArray},
-                    {"public_key", claim->publicKey()->toString()},
-                    {"signature", claim->signature()->toString()}
-                }
-            })},
-            {"id", 1}
-        };
-
-        string requestStr = request.dump() + "\n";
-
-        auto &ioCtx = static_cast<IOCtx &>(mPaymentClaimsTimer.get_executor().context());
-        tcp::resolver resolver(ioCtx);
-        boost::system::error_code errorCode;
-
-        auto endpoints = resolver.resolve(
-            firstObserver->host(),
-            to_string(firstObserver->port()),
-            errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-        tcp::socket socket(ioCtx);
-        boost::asio::connect(socket, endpoints, errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Sending RPC request: " << request.dump();
-#endif
-
-        boost::asio::write(
-            socket,
-            boost::asio::buffer(requestStr));
-
-        boost::asio::streambuf responseBuffer;
-        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
-
-        if (errorCode && errorCode != boost::asio::error::eof) {
-            throw errorCode;
-        }
-
-        std::istream responseStream(&responseBuffer);
-        string responseLine;
-        std::getline(responseStream, responseLine);
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Received RPC response: " << responseLine;
-#endif
-
-        json response = json::parse(responseLine);
-
-        if (response.contains("error") && !response["error"].is_null()) {
-            string errorMsg = response["error"].is_string()
-                ? response["error"].get<string>()
-                : response["error"].dump();
-            throw runtime_error("Observer RPC error: " + errorMsg);
-        }
-
-        if (!response.contains("result")) {
-            throw runtime_error("Invalid RPC response: missing result");
-        }
-
-        auto result = response["result"];
-        bool success = result.value("success", false);
-
-        if (success) {
+        if (mObserverRPCClient->acceptClaim(
+                    firstObserver,
+                    *claim)) {
             claim->setStatus(ObservingPaymentClaim::Observing);
             info() << "Claim accepted by observer: " << claim->transactionUUID();
-            socket.close();
             return;
         }
-
-        string message = result.contains("message") && result["message"].is_string()
-            ? result["message"].get<string>()
-            : "Observer claim rejected";
-        throw runtime_error(message);
 
     } catch (const std::exception &e) {
         mLog.error(logHeader()) << "Failed to send claim to observer " << firstObserver->fullAddress()
@@ -1081,96 +804,26 @@ void ObservingHandler::checkTransaction(
     auto firstObserver = mObservers[0];
 
     try {
-        json request = {
-            {"method", "RPCService.GetClaimStatus"},
-            {"params", json::array({
-                {
-                    {"transaction_uuid", boost::uuids::to_string(claim->transactionUUID())},
-                    {"max_claim_block_number", claim->maxBlockNumberForClaiming()}
-                }
-            })},
-            {"id", 1}
-        };
+        auto status = mObserverRPCClient->getClaimStatus(
+            firstObserver,
+            claim->transactionUUID(),
+            claim->maxBlockNumberForClaiming());
 
-        string requestStr = request.dump() + "\n";
-
-        auto &ioCtx = static_cast<IOCtx &>(mPaymentClaimsTimer.get_executor().context());
-        tcp::resolver resolver(ioCtx);
-        boost::system::error_code errorCode;
-
-        auto endpoints = resolver.resolve(
-            firstObserver->host(),
-            to_string(firstObserver->port()),
-            errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-        tcp::socket socket(ioCtx);
-        boost::asio::connect(socket, endpoints, errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Sending RPC request: " << request.dump();
-#endif
-
-        boost::asio::write(
-            socket,
-            boost::asio::buffer(requestStr));
-
-        boost::asio::streambuf responseBuffer;
-        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
-
-        if (errorCode && errorCode != boost::asio::error::eof) {
-            throw errorCode;
-        }
-
-        std::istream responseStream(&responseBuffer);
-        string responseLine;
-        std::getline(responseStream, responseLine);
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Received RPC response: " << responseLine;
-#endif
-
-        json response = json::parse(responseLine);
-
-        if (response.contains("error") && !response["error"].is_null()) {
-            string errorMsg = response["error"].is_string()
-                ? response["error"].get<string>()
-                : response["error"].dump();
-            throw runtime_error("Observer RPC error: " + errorMsg);
-        }
-
-        if (!response.contains("result") || !response["result"].contains("state")) {
-            throw runtime_error("Invalid RPC response: missing state");
-        }
-
-        string state = response["result"]["state"].get<string>();
-
-        if (state == "not found") {
+        if (status == ObservingPaymentClaim::NoInfo) {
             claim->setStatus(ObservingPaymentClaim::NoInfo);
             info() << "Claim not found on observer, will retry: "
                    << claim->transactionUUID();
-        } else if (state == "observing") {
+        } else if (status == ObservingPaymentClaim::Observing) {
 #ifdef DEBUG_LOG_OBSEVING_HANDLER
             debug() << "Claim still observing: " << claim->transactionUUID();
 #endif
-        } else if (state == "approved") {
+        } else if (status == ObservingPaymentClaim::ParticipantsVotesPresent) {
             claim->setStatus(ObservingPaymentClaim::ParticipantsVotesPresent);
             info() << "Claim approved by observer: " << claim->transactionUUID();
-        } else if (state == "rejected") {
+        } else if (status == ObservingPaymentClaim::RejectedByObserving) {
             claim->setStatus(ObservingPaymentClaim::RejectedByObserving);
             info() << "Claim rejected by observer: " << claim->transactionUUID();
-        } else {
-            warning() << "Unknown claim state from observer: " << state;
         }
-
-        socket.close();
 
     } catch (const std::exception &e) {
         mLog.error(logHeader()) << "Failed to check transaction status from observer "
@@ -1196,95 +849,10 @@ void ObservingHandler::getParticipantsSignatures(
     auto firstObserver = mObservers[0];
 
     try {
-        json request = {
-            {"method", "RPCService.GetClaimVotes"},
-            {"params", json::array({
-                {
-                    {"transaction_uuid", boost::uuids::to_string(claim->transactionUUID())},
-                    {"max_claim_block_number", claim->maxBlockNumberForClaiming()}
-                }
-            })},
-            {"id", 1}
-        };
-
-        string requestStr = request.dump() + "\n";
-
-        auto &ioCtx = static_cast<IOCtx &>(mPaymentClaimsTimer.get_executor().context());
-        tcp::resolver resolver(ioCtx);
-        boost::system::error_code errorCode;
-
-        auto endpoints = resolver.resolve(
-            firstObserver->host(),
-            to_string(firstObserver->port()),
-            errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-        tcp::socket socket(ioCtx);
-        boost::asio::connect(socket, endpoints, errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Sending RPC request: " << request.dump();
-#endif
-
-        boost::asio::write(
-            socket,
-            boost::asio::buffer(requestStr));
-
-        boost::asio::streambuf responseBuffer;
-        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
-
-        if (errorCode && errorCode != boost::asio::error::eof) {
-            throw errorCode;
-        }
-
-        std::istream responseStream(&responseBuffer);
-        string responseLine;
-        std::getline(responseStream, responseLine);
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Received RPC response: " << responseLine;
-#endif
-
-        json response = json::parse(responseLine);
-
-        if (response.contains("error") && !response["error"].is_null()) {
-            string errorMsg = response["error"].is_string()
-                ? response["error"].get<string>()
-                : response["error"].dump();
-            throw runtime_error("Observer RPC error: " + errorMsg);
-        }
-
-        if (!response.contains("result") || !response["result"].contains("votes")) {
-            throw runtime_error("Invalid RPC response: missing votes");
-        }
-
-        auto votesArray = response["result"]["votes"];
-
-        if (!votesArray.is_array()) {
-            throw runtime_error("Invalid RPC response: votes is not array");
-        }
-
-        map<PaymentNodeID, sphincs::Signature::Shared> signaturesMap;
-
-        for (const auto &vote : votesArray) {
-            PaymentNodeID nodeId = vote.at("index").get<PaymentNodeID>();
-            string signatureBase64 = vote.at("signature").get<string>();
-
-            auto signature = make_shared<sphincs::Signature>(signatureBase64);
-            if (!signature->isValid()) {
-                warning() << "Invalid signature from observer for node " << nodeId;
-                continue;
-            }
-
-            signaturesMap[nodeId] = signature;
-        }
+        auto signaturesMap = mObserverRPCClient->getClaimVotes(
+            firstObserver,
+            claim->transactionUUID(),
+            claim->maxBlockNumberForClaiming());
 
         info() << "Retrieved " << signaturesMap.size()
                << " participant signatures from observer";
@@ -1295,8 +863,6 @@ void ObservingHandler::getParticipantsSignatures(
             signaturesMap);
 
         claim->setStatus(ObservingPaymentClaim::Done);
-
-        socket.close();
 
     } catch (const std::exception &e) {
         mLog.error(logHeader()) << "Failed to get participants signatures from observer "
@@ -1322,81 +888,12 @@ void ObservingHandler::rejectTransaction(
     auto firstObserver = mObservers[0];
 
     try {
-        json request = {
-            {"method", "RPCService.GetRejectionSignature"},
-            {"params", json::array({
-                {
-                    {"transaction_uuid", boost::uuids::to_string(claim->transactionUUID())},
-                    {"max_claim_block_number", claim->maxBlockNumberForClaiming()}
-                }
-            })},
-            {"id", 1}
-        };
+        auto signature = mObserverRPCClient->getRejectionSignature(
+            firstObserver,
+            claim->transactionUUID(),
+            claim->maxBlockNumberForClaiming());
 
-        string requestStr = request.dump() + "\n";
-
-        auto &ioCtx = static_cast<IOCtx &>(mPaymentClaimsTimer.get_executor().context());
-        tcp::resolver resolver(ioCtx);
-        boost::system::error_code errorCode;
-
-        auto endpoints = resolver.resolve(
-            firstObserver->host(),
-            to_string(firstObserver->port()),
-            errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-        tcp::socket socket(ioCtx);
-        boost::asio::connect(socket, endpoints, errorCode);
-
-        if (errorCode) {
-            throw errorCode;
-        }
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Sending RPC request: " << request.dump();
-#endif
-
-        boost::asio::write(
-            socket,
-            boost::asio::buffer(requestStr));
-
-        boost::asio::streambuf responseBuffer;
-        boost::asio::read_until(socket, responseBuffer, '\n', errorCode);
-
-        if (errorCode && errorCode != boost::asio::error::eof) {
-            throw errorCode;
-        }
-
-        std::istream responseStream(&responseBuffer);
-        string responseLine;
-        std::getline(responseStream, responseLine);
-
-#ifdef DEBUG_LOG_OBSEVING_HANDLER
-        debug() << "Received RPC response: " << responseLine;
-#endif
-
-        json response = json::parse(responseLine);
-
-        if (response.contains("error") && !response["error"].is_null()) {
-            string errorMsg = response["error"].is_string()
-                ? response["error"].get<string>()
-                : response["error"].dump();
-            throw runtime_error("Observer RPC error: " + errorMsg);
-        }
-
-        if (!response.contains("result")) {
-            throw runtime_error("Invalid RPC response: missing result");
-        }
-
-        auto result = response["result"];
-        string state = result.value("state", "");
-        string signature = result.value("signature", "");
-        (void) state;
-
-        if (!signature.empty()) {
+        if (signature.has_value()) {
             info() << "Received rejection signature from observer for "
                    << claim->transactionUUID();
 
@@ -1411,8 +908,6 @@ void ObservingHandler::rejectTransaction(
                     << claim->transactionUUID();
 #endif
         }
-
-        socket.close();
 
     } catch (const std::exception &e) {
         mLog.error(logHeader()) << "Failed to get rejection signature from observer "
