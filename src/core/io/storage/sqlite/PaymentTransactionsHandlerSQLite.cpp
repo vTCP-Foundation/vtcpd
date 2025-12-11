@@ -191,6 +191,67 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerSQLite::tra
     return result;
 }
 
+vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerSQLite::transactionsForObserverMonitoring(
+    BlockNumber minBlockNumber,
+    uint32_t limit)
+{
+    vector<pair<TransactionUUID, BlockNumber>> result;
+
+    // Fetch transactions still within claiming window with uncertain observing state
+    string query = "SELECT uuid, maximal_claiming_block_number FROM " + mTableName +
+                   " WHERE maximal_claiming_block_number > ? AND observing_state = 0 "
+                   "ORDER BY maximal_claiming_block_number ASC LIMIT ?;";
+
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+
+    BlockNumber minBlockNumberCopy = minBlockNumber;
+    int rc = sqlite3_bind_blob(
+        stmt.get(),
+        1,
+        &minBlockNumberCopy,
+        sizeof(BlockNumber),
+        SQLITE_STATIC);
+    if (rc != SQLITE_OK) {
+        throw IOError("PaymentTransactionsHandlerSQLite::transactionsForObserverMonitoring: Failed to bind min block number. "
+                      "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    rc = sqlite3_bind_int(stmt.get(), 2, static_cast<int>(limit));
+    if (rc != SQLITE_OK) {
+        throw IOError("PaymentTransactionsHandlerSQLite::transactionsForObserverMonitoring: Failed to bind limit. "
+                      "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    while (true) {
+        rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 0));
+
+            auto blockNumberBytes = sqlite3_column_blob(stmt.get(), 1);
+            BlockNumber maximalClaimingBlockNumber;
+            memcpy(
+                &maximalClaimingBlockNumber,
+                blockNumberBytes,
+                sizeof(BlockNumber));
+
+            result.emplace_back(
+                transactionUUID,
+                maximalClaimingBlockNumber);
+        } else if (rc == SQLITE_DONE) {
+            break;
+        } else {
+            throw IOError("PaymentTransactionsHandlerSQLite::transactionsForObserverMonitoring: Failed to execute SELECT. "
+                          "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+        }
+    }
+
+#ifdef STORAGE_HANDLER_DEBUG_LOG
+    info() << "Observer monitoring transactions retrieved: Count=" << result.size();
+#endif
+
+    return result;
+}
+
 bool PaymentTransactionsHandlerSQLite::isTransactionPresent(
     const TransactionUUID &transactionUUID)
 {

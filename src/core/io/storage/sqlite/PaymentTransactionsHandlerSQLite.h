@@ -54,6 +54,18 @@ public:
     vector<pair<TransactionUUID, BlockNumber>> transactionsWithUncertainObservingState() override;
 
     /**
+     * Retrieves transactions that are still within their claiming period and
+     * awaiting observer confirmation (state = 0), ordered by claiming block.
+     *
+     * @param minBlockNumber Lower bound for maximal_claiming_block_number (exclusive)
+     * @param limit Maximum number of records to return
+     * @return Vector of (TransactionUUID, BlockNumber) sorted by claiming block
+     */
+    vector<pair<TransactionUUID, BlockNumber>> transactionsForObserverMonitoring(
+        BlockNumber minBlockNumber,
+        uint32_t limit) override;
+
+    /**
      * Checks if transaction exists in database.
      */
     bool isTransactionPresent(

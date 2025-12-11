@@ -111,6 +111,58 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerPostgreSQL:
     return result;
 }
 
+vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerPostgreSQL::transactionsForObserverMonitoring(
+    BlockNumber minBlockNumber,
+    uint32_t limit)
+{
+    vector<pair<TransactionUUID, BlockNumber>> result;
+    const string query = "SELECT uuid, maximal_claiming_block_number FROM " + mTableName +
+                         " WHERE maximal_claiming_block_number > $1 AND observing_state = 0 "
+                         "ORDER BY maximal_claiming_block_number ASC LIMIT $2;";
+
+    const int kParams = 2;
+    const char *params[kParams];
+    int lengths[kParams];
+    int formats[kParams];
+
+    params[0] = reinterpret_cast<const char*>(&minBlockNumber);
+    lengths[0] = sizeof(BlockNumber);
+    formats[0] = 1;
+
+    string limitStr = to_string(limit);
+    params[1] = limitStr.c_str();
+    lengths[1] = 0;
+    formats[1] = 0;
+
+    PGresult *res = PQexecParams(
+        mDataBase,
+        query.c_str(),
+        kParams,
+        nullptr,
+        params,
+        lengths,
+        formats,
+        0);
+    checkTuples(mDataBase, res, "transactionsForObserverMonitoring");
+
+    int rows = PQntuples(res);
+    for (int i = 0; i < rows; ++i) {
+        const unsigned char *uuidBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, i, 0));
+        const unsigned char *blockBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, i, 1));
+        TransactionUUID uuid(uuidBytes);
+        BlockNumber maximalClaimingBlockNumber;
+        memcpy(&maximalClaimingBlockNumber, blockBytes, sizeof(BlockNumber));
+        result.emplace_back(uuid, maximalClaimingBlockNumber);
+    }
+    PQclear(res);
+
+#ifdef STORAGE_HANDLER_DEBUG_LOG
+    info() << "Observer monitoring transactions retrieved: Count=" << result.size();
+#endif
+
+    return result;
+}
+
 bool PaymentTransactionsHandlerPostgreSQL::isTransactionPresent(
     const TransactionUUID &transactionUUID)
 {

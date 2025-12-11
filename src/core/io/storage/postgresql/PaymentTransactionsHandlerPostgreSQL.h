@@ -30,6 +30,17 @@ public:
 
     std::vector<std::pair<TransactionUUID, BlockNumber>> transactionsWithUncertainObservingState() override;
 
+    /**
+     * Retrieves transactions still inside claiming window and in uncertain observing state.
+     *
+     * @param minBlockNumber Lower exclusive bound for maximal_claiming_block_number
+     * @param limit Maximum number of transactions to return
+     * @return Vector of (TransactionUUID, BlockNumber) ordered by claiming block
+     */
+    std::vector<std::pair<TransactionUUID, BlockNumber>> transactionsForObserverMonitoring(
+        BlockNumber minBlockNumber,
+        uint32_t limit) override;
+
     bool isTransactionPresent(
         const TransactionUUID &transactionUUID) override;
 
