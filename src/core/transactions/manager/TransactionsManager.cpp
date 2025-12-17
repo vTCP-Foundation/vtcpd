@@ -1506,8 +1506,6 @@ void TransactionsManager::launchCoordinatorExchangePaymentTransaction(
             transaction->trustLineActionSignal);
         subscribeForKeysSharingSignal(
             transaction->publicKeysSharingSignal);
-        subscribeForObserving(
-            transaction);
         prepareAndSchedule(transaction, true, false, true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for CoordinatorPaymentTransaction "
@@ -1599,8 +1597,6 @@ void TransactionsManager::launchReceiverExchangePaymentTransaction(
             transaction->trustLineActionSignal);
         subscribeForKeysSharingSignal(
             transaction->publicKeysSharingSignal);
-        subscribeForObserving(
-            transaction);
         prepareAndSchedule(transaction, false, false, true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for ReceiverExchangePaymentTransaction "
@@ -1690,8 +1686,6 @@ void TransactionsManager::launchIntermediateNodeExchangePaymentTransaction(
             transaction->trustLineActionSignal);
         subscribeForKeysSharingSignal(
             transaction->publicKeysSharingSignal);
-        subscribeForObserving(
-            transaction);
         prepareAndSchedule(transaction, false, false, true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for IntermediateNodeExchangePaymentTransaction "
@@ -2693,24 +2687,6 @@ void TransactionsManager::subscribeForOutgoingMessagesWithCaching(
 
 void TransactionsManager::subscribeForObserving(
     BasePaymentTransaction::Shared transaction)
-{
-    transaction->observingClaimSignal.connect(
-        boost::bind(
-            &TransactionsManager::onObservingClaimReady,
-            this,
-            _1));
-
-
-    transaction->mTransactionCommittedObservingSignal.connect(
-        boost::bind(
-            &TransactionsManager::onObservingTransactionCommitted,
-            this,
-            _1,
-            _2));
-}
-
-void TransactionsManager::subscribeForObserving(
-    BaseExchangePaymentTransaction::Shared transaction)
 {
     transaction->observingClaimSignal.connect(
         boost::bind(

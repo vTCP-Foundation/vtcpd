@@ -6,6 +6,7 @@ ObservingHandler::ObservingHandler(
     vector<pair<string, string>> observersAddressesStr,
     IOCtx &ioCtx,
     StorageHandler *storageHandler,
+    Keystore *keysStore,
     ResourcesManager *resourcesManager,
     Logger &logger) :
     LoggerMixin(logger),
@@ -24,6 +25,7 @@ ObservingHandler::ObservingHandler(
     mSuccessfulTransactionsMonitorTimer(ioCtx),
     mRequestsTimer(ioCtx),
     mStorageHandler(storageHandler),
+    mKeysStore(keysStore),
     mResourcesManager(resourcesManager)
 {
     // Filter and add only IPv4 addresses to mObservers

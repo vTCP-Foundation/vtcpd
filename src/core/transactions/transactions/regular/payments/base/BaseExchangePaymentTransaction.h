@@ -55,8 +55,6 @@ public:
 public:
     typedef signals::signal<void(set<ContractorID>&, const SerializedEquivalent)> BuildCycleThreeNodesSignal;
     typedef signals::signal<void(set<ContractorID>&, const SerializedEquivalent)> BuildCycleFourNodesSignal;
-    typedef signals::signal<void(ObservingClaimAppendRequestMessage::Shared)> ObservingClaimSignal;
-    typedef signals::signal<void(const TransactionUUID&, BlockNumber)> TransactionCommittedObservingSignal;
 
 public:
     BaseExchangePaymentTransaction(
@@ -169,7 +167,6 @@ protected:
     TransactionResult::SharedConst runPrepareListNodesToCheckNodes();
     TransactionResult::SharedConst runCheckCoordinatorVotesStage();
     TransactionResult::SharedConst runCheckIntermediateNodeVotesStage();
-    TransactionResult::SharedConst runObservingStage();
     TransactionResult::SharedConst runObservingResultStage();
     TransactionResult::SharedConst runObservingRejectTransaction();
 
@@ -271,8 +268,6 @@ protected:
 public:
     mutable BuildCycleThreeNodesSignal mBuildCycleThreeNodesSignal;
     mutable BuildCycleFourNodesSignal mBuildCycleFourNodesSignal;
-    mutable ObservingClaimSignal observingClaimSignal;
-    mutable TransactionCommittedObservingSignal mTransactionCommittedObservingSignal;
 
 protected:
     ContractorsManager *mContractorsManager;

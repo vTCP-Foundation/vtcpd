@@ -16,6 +16,7 @@
 #include "messages/ObservingParticipantsVotesAppendResponseMessage.h"
 
 #include "../io/storage/interfaces/StorageHandler.h"
+#include "../crypto/keychain.h"
 #include "../resources/manager/ResourcesManager.h"
 #include "../resources/resources/BlockNumberRecourse.h"
 #include "../logger/LoggerMixin.hpp"
@@ -46,6 +47,7 @@ public:
         vector<pair<string, string>> observersAddressesStr,
         IOCtx &ioCtx,
         StorageHandler *storageHandler,
+        Keystore *keysStore,
         ResourcesManager *resourcesManager,
         Logger &logger);
 
@@ -219,6 +221,7 @@ private:
     as::steady_timer mRequestsTimer;
 
     StorageHandler *mStorageHandler;
+    Keystore *mKeysStore;
     ResourcesManager *mResourcesManager;
 
     /**

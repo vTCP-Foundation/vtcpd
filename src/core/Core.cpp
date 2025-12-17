@@ -137,6 +137,11 @@ int Core::initSubsystems()
         return initCode;
     }
 
+    initCode = initKeysStore();
+    if (initCode != 0) {
+        return initCode;
+    }
+
     initCode = initObservingHandler(conf);
     if (initCode != 0) {
         return initCode;
@@ -148,11 +153,6 @@ int Core::initSubsystems()
     }
 
     initCode = initTrustLinesInfluenceController();
-    if (initCode != 0) {
-        return initCode;
-    }
-
-    initCode = initKeysStore();
     if (initCode != 0) {
         return initCode;
     }
@@ -311,6 +311,7 @@ int Core::initObservingHandler(
                                 mSettings->observers(&conf),
                                 mIOCtx,
                                 mStorageHandler.get(),
+                                mKeysStore.get(),
                                 mResourcesManager.get(),
                                 *mLog);
 

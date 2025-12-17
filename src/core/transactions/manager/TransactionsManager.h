@@ -465,9 +465,6 @@ protected:
     void subscribeForObserving(
         BasePaymentTransaction::Shared transaction);
 
-    void subscribeForObserving(
-        BaseExchangePaymentTransaction::Shared transaction);
-
     void subscribeForCommandResult(
         TransactionsScheduler::CommandResultSignal &signal);
 

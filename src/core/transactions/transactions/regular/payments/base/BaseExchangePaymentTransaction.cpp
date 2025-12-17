@@ -906,11 +906,14 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::processNextNodeTo
         debug() << "No nodes left to be asked";
         mCountRecoveryAttempts++;
         if (mCountRecoveryAttempts >= kMaxRecoveryAttempts) {
-            debug() << "Max count recovery attempts";
-            mVotesRecoveryStep = VotesRecoveryStages::Common_PrepareNodesListToCheckVotes;
-            mCountRecoveryAttempts = 0;
-            return resultAwakeAfterMilliseconds(
-                       kWaitMillisecondsToTryInitialRecoverAgain);
+            debug() << "Max count recovery attempts. Send request to observers.";
+            mObservingHandler->addPaymentClaim(
+                mTransactionUUID,
+                mMaximalClaimingBlockNumber,
+                mParticipantsPublicKeys,
+                mPublicKey,
+                mSignedTransaction);
+            return resultDone();
         }
         debug() << "Sleep and try again later";
         mVotesRecoveryStep = VotesRecoveryStages::Common_PrepareNodesListToCheckVotes;
@@ -1020,39 +1023,12 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runCheckIntermedi
     return processParticipantsVotesMessage();
 }
 
-TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingStage()
-{
-    info() << "runObservingStage";
-    observingClaimSignal(
-        make_shared<ObservingClaimAppendRequestMessage>(
-            mTransactionUUID,
-            mMaximalClaimingBlockNumber,
-            mParticipantsPublicKeys));
-
-    debug() << "Serializing transaction";
-    auto ioTransaction = mStorageHandler->beginTransaction();
-    auto bytesAndCount = serializeToBytes();
-    debug() << "Transaction serialized";
-    ioTransaction->transactionHandler()->saveRecord(
-        currentTransactionUUID(),
-        bytesAndCount.first,
-        bytesAndCount.second);
-    debug() << "Transaction saved";
-    // After that control of this transaction will be under ObservingCommunicator
-    return resultDone();
-}
-
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingResultStage()
 {
     info() << "runObservingResultStage";
     if (mParticipantsSignatures.empty()) {
-        info() << "Close and wait for claiming result";
-        observingClaimSignal(
-            make_shared<ObservingClaimAppendRequestMessage>(
-                mTransactionUUID,
-                mMaximalClaimingBlockNumber,
-                mParticipantsPublicKeys));
-        return resultDone();
+        info() << "Participants signatures are empty. Close and wait for claiming result";
+        return recover("Participants signatures are empty.");
     }
     info() << "Participants signatures receive";
     return processParticipantsVotesMessage();
@@ -1065,6 +1041,7 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingRejec
     removeAllDataFromStorageConcerningTransaction(ioTransaction);
     // todo : change transaction history status
     info() << "Reject by expiring claiming time";
+    // todo : save observer reject signature
     rollBack();
     return resultDone();
 }
@@ -1152,11 +1129,6 @@ void BaseExchangePaymentTransaction::commit(IOTransaction::Shared ioTransaction)
     // delete this transaction from storage
     ioTransaction->transactionHandler()->deleteRecordIfExists(
         currentTransactionUUID());
-
-    // todo : don't send signal if transaction committed after observing
-    mTransactionCommittedObservingSignal(
-        mTransactionUUID,
-        mMaximalClaimingBlockNumber);
 }
 
 void BaseExchangePaymentTransaction::invalidateCachedPathsDueToCommit()
