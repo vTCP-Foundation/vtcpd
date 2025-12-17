@@ -7,3 +7,4 @@ find_package(Boost MODULE REQUIRED)
 
 add_subdirectory(messages)
 add_subdirectory(communicator)
+add_subdirectory(rpc)
