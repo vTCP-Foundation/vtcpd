@@ -37,6 +37,8 @@ add_library(network__rpc
     requests/SubmitClaimVotesRpcRequest.h
     requests/GetClaimStatusesRpcRequest.cpp
     requests/GetClaimStatusesRpcRequest.h
+    AsyncRpcSession.cpp
+    AsyncRpcSession.h
     responses/GetBlockNumberRpcResponse.cpp
     responses/GetBlockNumberRpcResponse.h
     responses/AcceptClaimRpcResponse.cpp
