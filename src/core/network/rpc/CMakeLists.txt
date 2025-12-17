@@ -26,7 +26,27 @@ add_library(network__rpc
     RpcRequest.cpp
     RpcRequest.h
     RpcResponse.cpp
-    RpcResponse.h)
+    RpcResponse.h
+    requests/GetBlockNumberRpcRequest.cpp
+    requests/GetBlockNumberRpcRequest.h
+    requests/AcceptClaimRpcRequest.cpp
+    requests/AcceptClaimRpcRequest.h
+    requests/GetClaimStatusRpcRequest.cpp
+    requests/GetClaimStatusRpcRequest.h
+    requests/SubmitClaimVotesRpcRequest.cpp
+    requests/SubmitClaimVotesRpcRequest.h
+    requests/GetClaimStatusesRpcRequest.cpp
+    requests/GetClaimStatusesRpcRequest.h
+    responses/GetBlockNumberRpcResponse.cpp
+    responses/GetBlockNumberRpcResponse.h
+    responses/AcceptClaimRpcResponse.cpp
+    responses/AcceptClaimRpcResponse.h
+    responses/GetClaimStatusRpcResponse.cpp
+    responses/GetClaimStatusRpcResponse.h
+    responses/SubmitClaimVotesRpcResponse.cpp
+    responses/SubmitClaimVotesRpcResponse.h
+    responses/GetClaimStatusesRpcResponse.cpp
+    responses/GetClaimStatusesRpcResponse.h)
 
 target_include_directories(network__rpc
     PUBLIC
