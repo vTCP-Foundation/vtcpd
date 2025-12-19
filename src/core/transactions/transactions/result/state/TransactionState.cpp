@@ -1,4 +1,5 @@
 ﻿#include "TransactionState.h"
+#include <limits>
 
 TransactionState::TransactionState(
     Message::MessageType requiredMessageType,
@@ -8,7 +9,9 @@ TransactionState::TransactionState(
     mAwakeningTimestamp(0),
     mFlushToPermanentStorage(flushToPermanentStorage),
     mMustBeAwakenedOnMessage(awakeOnMessage),
-    mMustSavePreviousStateState(false)
+    mMustSavePreviousStateState(false),
+    mIsWaitingForRpcResponse(false),
+    mMustBeAwakenedOnRpcResponse(false)
 {
     mRequiredMessageTypes.push_back(requiredMessageType);
 }
@@ -21,7 +24,9 @@ TransactionState::TransactionState(
     mFlushToPermanentStorage(flushToPermanentStorage),
     mMustBeAwakenedOnMessage(awakeOnMessage),
     mAwakeningTimestamp(awakeningTimestamp),
-    mMustSavePreviousStateState(false)
+    mMustSavePreviousStateState(false),
+    mIsWaitingForRpcResponse(false),
+    mMustBeAwakenedOnRpcResponse(false)
 {}
 
 TransactionState::TransactionState(
@@ -33,7 +38,9 @@ TransactionState::TransactionState(
     mFlushToPermanentStorage(flushToPermanentStorage),
     mMustBeAwakenedOnMessage(awakeOnMessage),
     mAwakeningTimestamp(awakeningTimestamp),
-    mMustSavePreviousStateState(false)
+    mMustSavePreviousStateState(false),
+    mIsWaitingForRpcResponse(false),
+    mMustBeAwakenedOnRpcResponse(false)
 {
     mRequiredMessageTypes.push_back(requiredMessageType);
 }
@@ -41,7 +48,9 @@ TransactionState::TransactionState(
 TransactionState::TransactionState(
     bool mustSavePreviousState) :
 
-    mMustSavePreviousStateState(mustSavePreviousState)
+    mMustSavePreviousStateState(mustSavePreviousState),
+    mIsWaitingForRpcResponse(false),
+    mMustBeAwakenedOnRpcResponse(false)
 {}
 
 /*!
@@ -167,6 +176,38 @@ TransactionState::SharedConst TransactionState::waitForResourcesAndMessagesTypes
     return const_pointer_cast<const TransactionState>(state);
 }
 
+/*!
+ * Returns TransactionState that waits for a specific RPC response.
+ * Transaction awakens on RPC response arrival or timeout expiration.
+ */
+TransactionState::SharedConst TransactionState::waitForRpcResponse(
+    RpcMethod requiredRpcMethod,
+    uint32_t noLongerThanMilliseconds)
+{
+    TransactionState::Shared state;
+    if (noLongerThanMilliseconds == 0) {
+        state = const_pointer_cast<TransactionState>(
+                    TransactionState::exit());
+        state->mIsWaitingForRpcResponse = false;
+        state->mMustBeAwakenedOnRpcResponse = false;
+        state->mRequiredRpcMethods.clear();
+        state->mMustBeAwakenedOnMessage = false;
+        return const_pointer_cast<const TransactionState>(state);
+    }
+
+    state = const_pointer_cast<TransactionState>(
+                TransactionState::awakeAfterMilliseconds(
+                    noLongerThanMilliseconds));
+
+    state->mRequiredRpcMethods.clear();
+    state->mRequiredRpcMethods.push_back(requiredRpcMethod);
+    state->mIsWaitingForRpcResponse = true;
+    state->mMustBeAwakenedOnRpcResponse = true;
+    state->mMustBeAwakenedOnMessage = false;
+
+    return const_pointer_cast<const TransactionState>(state);
+}
+
 TransactionState::SharedConst TransactionState::continueWithPreviousState()
 {
     TransactionState::Shared state;
@@ -198,7 +239,8 @@ const bool TransactionState::mustBeRescheduled() const
 {
     return
         (mAwakeningTimestamp != numeric_limits<GEOEpochTimestamp>::max()) ||
-        (!acceptedMessagesTypes().empty());
+        (!acceptedMessagesTypes().empty()) ||
+        mIsWaitingForRpcResponse;
 }
 
 const bool TransactionState::mustExit() const
@@ -209,6 +251,41 @@ const bool TransactionState::mustExit() const
 const bool TransactionState::mustBeAwakenedOnMessage() const
 {
     return mMustBeAwakenedOnMessage;
+}
+
+/*!
+ * Indicates whether transaction is currently in RPC wait mode.
+ */
+const bool TransactionState::isWaitingForRpcResponse() const
+{
+    return mIsWaitingForRpcResponse;
+}
+
+/*!
+ * Exposes the list of RPC methods the transaction expects.
+ */
+const vector<RpcMethod>& TransactionState::requiredRpcMethods() const
+{
+    return mRequiredRpcMethods;
+}
+
+/*!
+ * Convenience accessor for the primary expected RPC method.
+ */
+const RpcMethod TransactionState::requiredRpcMethod() const
+{
+    if (mRequiredRpcMethods.empty()) {
+        return RpcMethod::Unknown;
+    }
+    return mRequiredRpcMethods.front();
+}
+
+/*!
+ * Shows if the scheduler should awaken the transaction on RPC delivery.
+ */
+const bool TransactionState::mustBeAwakenedOnRpcResponse() const
+{
+    return mMustBeAwakenedOnRpcResponse;
 }
 
 const bool TransactionState::mustSavePreviousStateState() const

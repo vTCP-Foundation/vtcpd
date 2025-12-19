@@ -106,6 +106,16 @@ BaseTransaction::BaseTransaction(
 {
 }
 
+/**
+ * Emits RPC request signal so the caller can route it to the observer.
+ */
+void BaseTransaction::sendRpcRequest(
+    RpcRequest::Shared request) const
+{
+    outgoingRpcRequestSignal(
+        request);
+}
+
 void BaseTransaction::launchSubsidiaryTransaction(
     BaseTransaction::Shared transaction)
 {
@@ -188,6 +198,19 @@ TransactionResult::Shared BaseTransaction::resultAwakeAsFastAsPossible() const
                TransactionState::awakeAsFastAsPossible());
 }
 
+/**
+ * Constructs TransactionResult that waits for a specific RPC response.
+ */
+TransactionResult::Shared BaseTransaction::resultWaitForRpcResponse(
+    RpcMethod method,
+    uint32_t noLongerThanMilliseconds) const
+{
+    return make_shared<TransactionResult>(
+               TransactionState::waitForRpcResponse(
+                   method,
+                   noLongerThanMilliseconds));
+}
+
 TransactionResult::Shared BaseTransaction::transactionResultFromCommand(
     CommandResult::SharedConst result) const
 {
@@ -247,6 +270,41 @@ void BaseTransaction::pushResource(
     BaseResource::Shared resource)
 {
     mResources.push_back(resource);
+}
+
+/**
+ * Adds an RPC response to the FIFO queue. Returns false when the queue is full.
+ */
+bool BaseTransaction::pushRpcResponse(
+    RpcResponse::Shared response)
+{
+    if (!response) {
+        throw RuntimeError(
+            "BaseTransaction::pushRpcResponse: response is null");
+    }
+
+    if (mRpcContext.size() >= kMaxRpcResponsesPerTransaction) {
+        return false;
+    }
+
+    mRpcContext.push_back(response);
+    return true;
+}
+
+/**
+ * Checks if there is at least one pending RPC response.
+ */
+bool BaseTransaction::hasRpcResponse() const
+{
+    return !mRpcContext.empty();
+}
+
+/**
+ * Returns the number of queued RPC responses.
+ */
+size_t BaseTransaction::rpcResponsesCount() const
+{
+    return mRpcContext.size();
 }
 
 void BaseTransaction::clearContext()

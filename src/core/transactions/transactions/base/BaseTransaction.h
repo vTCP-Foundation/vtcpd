@@ -10,6 +10,8 @@
 #include "../../../network/communicator/internal/incoming/TailManager.h"
 #include "../result/TransactionResult.h"
 #include "../../../resources/resources/BaseResource.h"
+#include "../../../network/rpc/RpcRequest.h"
+#include "../../../network/rpc/RpcResponse.h"
 
 #include "../../../common/exceptions/RuntimeError.h"
 
@@ -32,6 +34,7 @@ public:
     typedef shared_ptr<BaseTransaction> Shared;
     typedef uint16_t SerializedTransactionType;
     typedef uint16_t SerializedStep;
+    static constexpr size_t kMaxRpcResponsesPerTransaction = 50;
 
     typedef signals::signal<void(Message::Shared, const ContractorID)> SendMessageSignal;
     typedef signals::signal<void(Message::Shared, BaseAddress::Shared)> SendMessageToAddressSignal;
@@ -46,6 +49,7 @@ public:
     typedef signals::signal<void(ContractorID, const SerializedEquivalent)> PublicKeysSharingSignal;
     typedef signals::signal<void(ContractorID, const SerializedEquivalent)> AuditSignal;
     typedef signals::signal<void(ContractorID)> ProcessPongMessageSignal;
+    typedef signals::signal<void(RpcRequest::Shared)> SendRpcRequestSignal;
 
 public:
     virtual ~BaseTransaction() = default;
@@ -166,6 +170,13 @@ public:
     void pushResource(
         BaseResource::Shared resource);
 
+    bool pushRpcResponse(
+        RpcResponse::Shared response);
+
+    bool hasRpcResponse() const;
+
+    size_t rpcResponsesCount() const;
+
     virtual pair<BytesShared, size_t> serializeToBytes() const;
 
     static const size_t kOffsetToInheritedBytes();
@@ -173,6 +184,9 @@ public:
     virtual TransactionResult::SharedConst run() = 0;
 
 protected:
+    void sendRpcRequest(
+        RpcRequest::Shared request) const;
+
     BaseTransaction(
         const TransactionType type,
         Logger &log);
@@ -221,6 +235,15 @@ protected:
         const auto resource = static_pointer_cast<ResourceType>(mResources.front());
         mResources.pop_front();
         return resource;
+    }
+
+    // Retrieves the next RPC response from the queue preserving FIFO order.
+    template<typename ResponseType>
+    inline shared_ptr<ResponseType> popRpcResponse()
+    {
+        const auto response = static_pointer_cast<ResponseType>(mRpcContext.front());
+        mRpcContext.pop_front();
+        return response;
     }
 
     // TODO: convert to hpp?
@@ -327,6 +350,10 @@ protected:
 
     TransactionResult::Shared resultAwakeAsFastAsPossible() const;
 
+    TransactionResult::Shared resultWaitForRpcResponse(
+        RpcMethod method,
+        uint32_t noLongerThanMilliseconds = TransactionState::kDefaultRpcWaitMilliseconds) const;
+
     TransactionResult::Shared transactionResultFromCommand(
         CommandResult::SharedConst result) const;
 
@@ -355,6 +382,7 @@ public:
     mutable TrustLineActionSignal trustLineActionSignal;
     mutable PublicKeysSharingSignal publicKeysSharingSignal;
     mutable AuditSignal auditSignal;
+    mutable SendRpcRequestSignal outgoingRpcRequestSignal;
 
 protected:
     TransactionType mType;
@@ -362,6 +390,7 @@ protected:
     SerializedEquivalent mEquivalent;
     deque<Message::Shared> mContext;
     deque<BaseResource::Shared> mResources;
+    deque<RpcResponse::Shared> mRpcContext;
     SerializedStep mStep;
     DateTime mTimeStarted;
 

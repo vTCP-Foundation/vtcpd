@@ -224,6 +224,7 @@ target_link_libraries(vtcpd PRIVATE
     settings
     network__communicator
     network__messages
+    network__rpc
     interface__commands
     interface__results
     interface__events

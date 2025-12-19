@@ -4,6 +4,7 @@
 #include "../../../../common/time/TimeUtils.h"
 #include "../../../../network/messages/Message.hpp"
 #include "../../../../resources/resources/BaseResource.h"
+#include "../../../../network/rpc/RpcMethod.h"
 
 #include "boost/date_time.hpp"
 
@@ -19,6 +20,7 @@ class TransactionState
 public:
     typedef shared_ptr<TransactionState> Shared;
     typedef shared_ptr<const TransactionState> SharedConst;
+    static constexpr uint32_t kDefaultRpcWaitMilliseconds = 10000;
 
 public:
     // Readable shortcuts for states creation.
@@ -47,6 +49,10 @@ public:
         vector<BaseResource::ResourceType> &&requiredResourcesType,
         vector<Message::MessageType> &&requiredMessageType,
         uint32_t noLongerThanMilliseconds = 0);
+
+    static TransactionState::SharedConst waitForRpcResponse(
+        RpcMethod requiredRpcMethod,
+        uint32_t noLongerThanMilliseconds = kDefaultRpcWaitMilliseconds);
 
     static TransactionState::SharedConst continueWithPreviousState();
 
@@ -86,17 +92,28 @@ public:
 
     const bool mustBeAwakenedOnMessage() const;
 
+    const bool isWaitingForRpcResponse() const;
+
+    const vector<RpcMethod>& requiredRpcMethods() const;
+
+    const RpcMethod requiredRpcMethod() const;
+
+    const bool mustBeAwakenedOnRpcResponse() const;
+
     const bool mustSavePreviousStateState() const;
 
 private:
     GEOEpochTimestamp mAwakeningTimestamp;
     vector<Message::MessageType> mRequiredMessageTypes;
     vector<BaseResource::ResourceType> mRequiredResourcesTypes;
+    vector<RpcMethod> mRequiredRpcMethods;
     bool mFlushToPermanentStorage;
     bool mMustBeAwakenedOnMessage;
     // if this field is true, then transaction after running method run save state,
     // which was set up before launching
     bool mMustSavePreviousStateState;
+    bool mIsWaitingForRpcResponse = false;
+    bool mMustBeAwakenedOnRpcResponse = false;
 };
 
 
