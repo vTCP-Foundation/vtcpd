@@ -5,9 +5,12 @@
 
 #include "settings/Settings.h"
 #include "network/communicator/Communicator.h"
+#include "network/rpc/RpcRequest.h"
+#include "network/rpc/RpcResponse.h"
 #include "interface/commands_interface/interface/CommandsInterface.h"
 #include "interface/results_interface/interface/ResultsInterface.h"
 #include "interface/events_interface/interface/EventsInterfaceManager.h"
+#include "network/rpc/ObserverRpcCommunicator.h"
 #include "resources/manager/ResourcesManager.h"
 #include "transactions/manager/TransactionsManager.h"
 #include "io/storage/interfaces/StorageHandler.h"
@@ -74,6 +77,9 @@ private:
 
     int initCommandsInterface();
 
+    int initObserverRpcCommunicator(
+        const json &conf);
+
     int initResultsInterface();
 
     int initEventsInterfaceManager(
@@ -123,6 +129,8 @@ private:
     void connectResourcesManagerSignals();
 
     void connectSignalsToSlots();
+
+    void connectObserverRpcSignals();
 
     void onCommandReceivedSlot(
         bool success,
@@ -182,6 +190,12 @@ private:
     void onProcessPongMessageSlot(
         ContractorID contractorID);
 
+    void onRpcRequestSlot(
+        RpcRequest::Shared request);
+
+    void onRpcResponseSlot(
+        RpcResponse::Shared response);
+
     void onPathsResourceRequestedSlot(
         const TransactionUUID &transactionUUID,
         BaseAddress::Shared destinationNodeAddress,
@@ -234,6 +248,7 @@ protected:
     unique_ptr<CommandsInterface> mCommandsInterface;
     unique_ptr<ResultsInterface> mResultsInterface;
     unique_ptr<EventsInterfaceManager> mEventsInterfaceManager;
+    unique_ptr<ObserverRpcCommunicator> mObserverRpcCommunicator;
     unique_ptr<ResourcesManager> mResourcesManager;
     unique_ptr<TransactionsManager> mTransactionsManager;
     unique_ptr<StorageHandler> mStorageHandler;

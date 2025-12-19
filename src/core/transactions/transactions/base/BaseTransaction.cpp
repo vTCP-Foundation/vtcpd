@@ -284,6 +284,13 @@ bool BaseTransaction::pushRpcResponse(
     }
 
     if (mRpcContext.size() >= kMaxRpcResponsesPerTransaction) {
+        // Preserve bounded memory while still surfacing overflow as an error to the transaction.
+        // When we receive a synthesized RpcError due to overflow, clear the queue and store it
+        // so the transaction can react to the failure immediately.
+        if (response->status() == RpcResponseStatus::RpcError) {
+            mRpcContext.clear();
+            mRpcContext.push_back(response);
+        }
         return false;
     }
 

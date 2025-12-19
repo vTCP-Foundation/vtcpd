@@ -15,6 +15,7 @@
 #include "../../resources/resources/BaseResource.h"
 
 #include "../../common/exceptions/Exception.h"
+#include "../../network/rpc/RpcResponse.h"
 #include "../../common/exceptions/ValueError.h"
 #include "../../common/exceptions/ConflictError.h"
 #include "../../common/exceptions/NotFoundError.h"
@@ -76,6 +77,12 @@ public:
      */
     void tryAttachMessageToTransaction(
         Message::Shared message);
+
+    /**
+     * Attaches incoming RPC response to the matching transaction and awakens it if required.
+     */
+    bool tryAttachRpcResponseToTransaction(
+        RpcResponse::Shared response);
 
     void tryAttachResourceToTransaction(
         BaseResource::Shared resource);

@@ -103,6 +103,8 @@
 #include "../transactions/rates/ListExchangeRatesTransaction.h"
 #include "../transactions/rates/RemoveExchangeRateTransaction.h"
 #include "../transactions/rates/ClearExchangeRatesTransaction.h"
+#include "../../network/rpc/RpcRequest.h"
+#include "../../network/rpc/RpcResponse.h"
 
 #include <boost/signals2.hpp>
 
@@ -127,6 +129,7 @@ public:
     signals::signal<void(ConfirmationMessage::Shared)> processConfirmationMessageSignal;
     signals::signal<void(ContractorID)> processPongMessageSignal;
     signals::signal<void(TransactionUUID, BlockNumber)> observingTransactionCommittedSignal;
+    signals::signal<void(RpcRequest::Shared)> rpcRequestSignal;
 
 public:
     TransactionsManager(
@@ -196,6 +199,9 @@ public:
         BlockNumber maximalClaimingBlockNumber);
 
     void launchUpdateChannelAddressesInitiatorTransaction();
+
+    void onRpcResponseReceived(
+        RpcResponse::Shared response);
 
 protected: // Transactions
     /*
@@ -507,6 +513,9 @@ protected:
     void subscribeForAuditSignal(
         BaseTransaction::AuditSignal &signal);
 
+    void subscribeForRpcRequest(
+        BaseTransaction::SendRpcRequestSignal &signal);
+
     // Slots
     void onSubsidiaryTransactionReady(
         BaseTransaction::Shared transaction);
@@ -585,6 +594,9 @@ protected:
         const SerializedEquivalent equivalent,
         const BaseTransaction::TransactionType transactionType);
 
+    void onTransactionRpcRequestReady(
+        RpcRequest::Shared request);
+
 private:
     void loadTransactionsFromStorage();
 
@@ -597,14 +609,16 @@ private:
         BaseTransaction::Shared transaction,
         bool regenerateUUID=false,
         bool subsidiaryTransactionSubscribe=false,
-        bool outgoingMessagesSubscribe=false);
+        bool outgoingMessagesSubscribe=false,
+        bool rpcRequestSubscribe=false);
 
     void prepareAndSchedulePostponed(
         BaseTransaction::Shared transaction,
         uint32_t millisecondsDelay,
         bool regenerateUUID=false,
         bool subsidiaryTransactionSubscribe=false,
-        bool outgoingMessagesSubscribe=false);
+        bool outgoingMessagesSubscribe=false,
+        bool rpcRequestSubscribe=false);
 
 protected:
     static string logHeader()

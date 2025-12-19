@@ -1,5 +1,80 @@
 ﻿#include "TransactionsScheduler.h"
 
+#include "../../network/rpc/responses/AcceptClaimRpcResponse.h"
+#include "../../network/rpc/responses/GetBlockNumberRpcResponse.h"
+#include "../../network/rpc/responses/GetClaimStatusRpcResponse.h"
+#include "../../network/rpc/responses/GetClaimStatusesRpcResponse.h"
+#include "../../network/rpc/responses/SubmitClaimVotesRpcResponse.h"
+
+#include <algorithm>
+
+namespace {
+constexpr char kRpcResponsesOverflowError[] = "RPC responses queue overflow";
+
+string rpcMethodToString(
+    const RpcMethod method)
+{
+    switch (method) {
+    case RpcMethod::GetBlockNumber:
+        return "GetBlockNumber";
+    case RpcMethod::AcceptClaim:
+        return "AcceptClaim";
+    case RpcMethod::GetClaimStatus:
+        return "GetClaimStatus";
+    case RpcMethod::SubmitClaimVotes:
+        return "SubmitClaimVotes";
+    case RpcMethod::GetClaimStatuses:
+        return "GetClaimStatuses";
+    default:
+        return "Unknown";
+    }
+}
+
+RpcResponse::Shared makeOverflowResponse(
+    const RpcResponse::Shared &response)
+{
+    const auto &transactionUUID = response->transactionUUID();
+    switch (response->method()) {
+    case RpcMethod::GetBlockNumber:
+        return make_shared<GetBlockNumberRpcResponse>(
+            transactionUUID,
+            RpcResponseStatus::RpcError,
+            0,
+            kRpcResponsesOverflowError);
+    case RpcMethod::AcceptClaim:
+        return make_shared<AcceptClaimRpcResponse>(
+            transactionUUID,
+            RpcResponseStatus::RpcError,
+            false,
+            "",
+            kRpcResponsesOverflowError);
+    case RpcMethod::GetClaimStatus:
+        return make_shared<GetClaimStatusRpcResponse>(
+            transactionUUID,
+            RpcResponseStatus::RpcError,
+            GetClaimStatusRpcResponse::ClaimState::NotFound,
+            map<PaymentNodeID, sphincs::Signature::Shared>(),
+            "",
+            kRpcResponsesOverflowError);
+    case RpcMethod::SubmitClaimVotes:
+        return make_shared<SubmitClaimVotesRpcResponse>(
+            transactionUUID,
+            RpcResponseStatus::RpcError,
+            false,
+            "",
+            kRpcResponsesOverflowError);
+    case RpcMethod::GetClaimStatuses:
+        return make_shared<GetClaimStatusesRpcResponse>(
+            transactionUUID,
+            RpcResponseStatus::RpcError,
+            vector<GetClaimStatusesRpcResponse::ClaimStatus>(),
+            kRpcResponsesOverflowError);
+    default:
+        return nullptr;
+    }
+}
+}
+
 TransactionsScheduler::TransactionsScheduler(
     as::io_context &IOCtx,
     TrustLinesInfluenceController *trustLinesInfluenceController,
@@ -129,6 +204,65 @@ void TransactionsScheduler::tryAttachMessageToTransaction(
         transactionMessage->transactionUUID().stringUUID() +
         " there is no requested transaction for message " +
         to_string(message->typeID()));
+}
+
+bool TransactionsScheduler::tryAttachRpcResponseToTransaction(
+    RpcResponse::Shared response)
+{
+    if (response == nullptr) {
+        warning() << "tryAttachRpcResponseToTransaction: response is null";
+        return false;
+    }
+
+    for (auto &transactionAndState : *mTransactions) {
+        const auto &transaction = transactionAndState.first;
+        const auto &state = transactionAndState.second;
+
+        if (transaction->currentTransactionUUID() != response->transactionUUID()) {
+            continue;
+        }
+
+        if (state == nullptr || !state->isWaitingForRpcResponse()) {
+            warning() << "tryAttachRpcResponseToTransaction: transaction "
+                      << transaction->currentTransactionUUID()
+                      << " is not waiting for RPC response";
+            return false;
+        }
+
+        const auto &requiredMethods = state->requiredRpcMethods();
+        const auto method = response->method();
+        if (find(requiredMethods.begin(), requiredMethods.end(), method) == requiredMethods.end()) {
+            warning() << "tryAttachRpcResponseToTransaction: transaction "
+                      << transaction->currentTransactionUUID()
+                      << " does not expect method " << rpcMethodToString(method);
+            return false;
+        }
+
+        auto pushResult = transaction->pushRpcResponse(response);
+        if (!pushResult) {
+            // Queue overflow: deliver a synthetic RpcError so the transaction can react.
+            auto overflowResponse = makeOverflowResponse(response);
+            if (overflowResponse != nullptr) {
+                if (!transaction->pushRpcResponse(overflowResponse)) {
+                    warning() << "tryAttachRpcResponseToTransaction: failed to enqueue overflow RpcError for "
+                              << transaction->currentTransactionUUID();
+                }
+            } else {
+                warning() << "tryAttachRpcResponseToTransaction: unable to build overflow response for method "
+                          << rpcMethodToString(method);
+            }
+        }
+
+        if (state->mustBeAwakenedOnRpcResponse()) {
+            launchTransaction(transaction);
+        }
+
+        return true;
+    }
+
+    warning() << "tryAttachRpcResponseToTransaction: transaction not found for response "
+              << response->transactionUUID();
+    return false;
 }
 
 void TransactionsScheduler::tryAttachResourceToTransaction(

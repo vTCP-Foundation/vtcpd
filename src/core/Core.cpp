@@ -188,6 +188,11 @@ int Core::initSubsystems()
         return initCode;
     }
 
+    initCode = initObserverRpcCommunicator(conf);
+    if (initCode != 0) {
+        return initCode;
+    }
+
     initCode = initTopologyEventDelayedTask();
     if (initCode != 0) {
         return initCode;
@@ -316,6 +321,43 @@ int Core::initObservingHandler(
                                 *mLog);
 
         info() << "Observing handler is successfully initialised";
+        return 0;
+
+    } catch (const std::exception &e) {
+        mLog->logException("Core", e);
+        return -1;
+    }
+}
+
+int Core::initObserverRpcCommunicator(
+    const json &conf)
+{
+    try {
+        IPv4WithPortAddress::Shared observerAddress = nullptr;
+        const auto observers = mSettings->observers(&conf);
+        for (const auto &observer : observers) {
+            if (observer.first != "ipv4") {
+                continue;
+            }
+            try {
+                observerAddress = make_shared<IPv4WithPortAddress>(
+                    observer.second);
+                break;
+            } catch (const exception &e) {
+                warning() << "initObserverRpcCommunicator: invalid observer address "
+                          << observer.second << ". Details: " << e.what();
+            }
+        }
+
+        if (observerAddress == nullptr) {
+            warning() << "initObserverRpcCommunicator: no valid IPv4 observer address configured";
+        }
+
+        mObserverRpcCommunicator = make_unique<ObserverRpcCommunicator>(
+            mIOCtx,
+            observerAddress,
+            *mLog);
+        info() << "Observer RPC communicator is successfully initialised";
         return 0;
 
     } catch (const std::exception &e) {
@@ -803,6 +845,27 @@ void Core::connectObservingSignals()
             _1));
 }
 
+// Wires RPC signals between TransactionsManager and ObserverRpcCommunicator.
+void Core::connectObserverRpcSignals()
+{
+    if (mObserverRpcCommunicator == nullptr || mTransactionsManager == nullptr) {
+        warning() << "connectObserverRpcSignals: RPC components are not initialised";
+        return;
+    }
+
+    mTransactionsManager->rpcRequestSignal.connect(
+        boost::bind(
+            &Core::onRpcRequestSlot,
+            this,
+            _1));
+
+    mObserverRpcCommunicator->rpcResponseSignal.connect(
+        boost::bind(
+            &Core::onRpcResponseSlot,
+            this,
+            _1));
+}
+
 void Core::connectResourcesManagerSignals()
 {
     mResourcesManager->requestPathsResourcesSignal.connect(
@@ -842,6 +905,7 @@ void Core::connectSignalsToSlots()
     connectCommunicatorSignals();
     connectResourcesManagerSignals();
     connectObservingSignals();
+    connectObserverRpcSignals();
 }
 
 void Core::onCommandReceivedSlot (
@@ -1134,6 +1198,53 @@ void Core::onProcessPongMessageSlot(
 {
     mCommunicator->processPongMessage(
         contractorID);
+}
+
+// Forwards RPC requests emitted by transactions to the observer communicator.
+void Core::onRpcRequestSlot(
+    RpcRequest::Shared request)
+{
+    if (request == nullptr) {
+        warning() << "onRpcRequestSlot: empty RPC request";
+        return;
+    }
+
+#ifdef TESTS
+    if (not mSubsystemsController->isNetworkOn()) {
+        debug() << "Ignore RPC request send while network is disabled";
+        return;
+    }
+#endif
+
+    if (mObserverRpcCommunicator == nullptr) {
+        warning() << "onRpcRequestSlot: RPC communicator is not initialised";
+        return;
+    }
+
+    try {
+        mObserverRpcCommunicator->sendRequest(request);
+
+    } catch (const exception &e) {
+        mLog->logException("Core", e);
+    }
+}
+
+// Delivers observer RPC responses back to the transactions manager.
+void Core::onRpcResponseSlot(
+    RpcResponse::Shared response)
+{
+    if (mTransactionsManager == nullptr) {
+        warning() << "onRpcResponseSlot: transactions manager is not initialised";
+        return;
+    }
+
+    try {
+        mTransactionsManager->onRpcResponseReceived(
+            response);
+
+    } catch (const exception &e) {
+        mLog->logException("Core", e);
+    }
 }
 
 void Core::onSendOwnAddressesSlot()

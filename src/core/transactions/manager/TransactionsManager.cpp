@@ -2638,6 +2638,26 @@ void TransactionsManager::allowPaymentTransactionsDueToObserving(
     isPaymentTransactionsAllowedDueToObserving = allowPaymentTransactions;
 }
 
+// Routes RPC responses from Core back into the scheduler for delivery to transactions.
+void TransactionsManager::onRpcResponseReceived(
+    RpcResponse::Shared response)
+{
+    if (response == nullptr) {
+        warning() << "onRpcResponseReceived: empty response";
+        return;
+    }
+
+    try {
+        if (!mScheduler->tryAttachRpcResponseToTransaction(response)) {
+            warning() << "onRpcResponseReceived: no transaction waiting for RPC method "
+                      << static_cast<int>(response->method())
+                      << " with UUID " << response->transactionUUID();
+        }
+    } catch (const exception &e) {
+        error() << "onRpcResponseReceived: failed to attach response. Details: " << e.what();
+    }
+}
+
 void TransactionsManager::subscribeForSubsidiaryTransactions(
     BaseTransaction::LaunchSubsidiaryTransactionSignal &signal)
 {
@@ -2849,6 +2869,17 @@ void TransactionsManager::subscribeForAuditSignal(
             _2));
 }
 
+// Connects a transaction's RPC request signal to the manager dispatcher.
+void TransactionsManager::subscribeForRpcRequest(
+    BaseTransaction::SendRpcRequestSignal &signal)
+{
+    signal.connect(
+        boost::bind(
+            &TransactionsManager::onTransactionRpcRequestReady,
+            this,
+            _1));
+}
+
 void TransactionsManager::onTransactionOutgoingMessageReady(
     Message::Shared message,
     const ContractorID contractorID)
@@ -2878,6 +2909,17 @@ void TransactionsManager::onTransactionOutgoingMessageWithCachingReady(
         contractorID,
         incomingMessageTypeFilter,
         cacheLivingTime);
+}
+
+// Forwards transaction-generated RPC requests to Core for observer delivery.
+void TransactionsManager::onTransactionRpcRequestReady(
+    RpcRequest::Shared request)
+{
+    if (request == nullptr) {
+        warning() << "onTransactionRpcRequestReady: empty RPC request";
+        return;
+    }
+    rpcRequestSignal(request);
 }
 
 void TransactionsManager::onObservingClaimReady(
@@ -2943,6 +2985,8 @@ void TransactionsManager::onSubsidiaryTransactionReady(
         transaction->outgoingMessageToAddressReadySignal);
     subscribeForOutgoingMessagesWithCaching(
         transaction->sendMessageWithCachingSignal);
+    subscribeForRpcRequest(
+        transaction->outgoingRpcRequestSignal);
 
     subscribeForProcessingConfirmationMessage(
         transaction->processConfirmationMessageSignal);
@@ -3191,7 +3235,8 @@ void TransactionsManager::prepareAndSchedule(
     BaseTransaction::Shared transaction,
     bool regenerateUUID,
     bool subsidiaryTransactionSubscribe,
-    bool outgoingMessagesSubscribe)
+    bool outgoingMessagesSubscribe,
+    bool rpcRequestSubscribe)
 {
     if (outgoingMessagesSubscribe) {
         subscribeForOutgoingMessages(
@@ -3200,6 +3245,10 @@ void TransactionsManager::prepareAndSchedule(
             transaction->outgoingMessageToAddressReadySignal);
         subscribeForOutgoingMessagesWithCaching(
             transaction->sendMessageWithCachingSignal);
+    }
+    if (rpcRequestSubscribe) {
+        subscribeForRpcRequest(
+            transaction->outgoingRpcRequestSignal);
     }
     if (subsidiaryTransactionSubscribe) {
         subscribeForSubsidiaryTransactions(
@@ -3237,7 +3286,8 @@ void TransactionsManager::prepareAndSchedulePostponed(
     uint32_t millisecondsDelay,
     bool regenerateUUID,
     bool subsidiaryTransactionSubscribe,
-    bool outgoingMessagesSubscribe)
+    bool outgoingMessagesSubscribe,
+    bool rpcRequestSubscribe)
 {
     if (outgoingMessagesSubscribe) {
         subscribeForOutgoingMessages(
@@ -3246,6 +3296,10 @@ void TransactionsManager::prepareAndSchedulePostponed(
             transaction->outgoingMessageToAddressReadySignal);
         subscribeForOutgoingMessagesWithCaching(
             transaction->sendMessageWithCachingSignal);
+    }
+    if (rpcRequestSubscribe) {
+        subscribeForRpcRequest(
+            transaction->outgoingRpcRequestSignal);
     }
     if (subsidiaryTransactionSubscribe) {
         subscribeForSubsidiaryTransactions(
