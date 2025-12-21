@@ -78,6 +78,22 @@ add_executable(unit_tests
     core/CoreORToolsStartupTest.cpp
     core/CoreSignalConnectionTest.cpp
     observing/ObservingPaymentClaimTest.cpp
+    # RPC unit tests (PRD-14)
+    network/rpc/RpcMethodTest.cpp
+    network/rpc/RpcResponseStatusTest.cpp
+    network/rpc/RpcRequestTest.cpp
+    network/rpc/RpcResponseTest.cpp
+    network/rpc/GetBlockNumberRpcRequestTest.cpp
+    network/rpc/GetBlockNumberRpcResponseTest.cpp
+    network/rpc/AcceptClaimRpcRequestTest.cpp
+    network/rpc/AcceptClaimRpcResponseTest.cpp
+    network/rpc/GetClaimStatusRpcRequestTest.cpp
+    network/rpc/GetClaimStatusRpcResponseTest.cpp
+    network/rpc/SubmitClaimVotesRpcRequestTest.cpp
+    network/rpc/SubmitClaimVotesRpcResponseTest.cpp
+    network/rpc/GetClaimStatusesRpcRequestTest.cpp
+    network/rpc/GetClaimStatusesRpcResponseTest.cpp
+    network/rpc/RpcSerializationTest.cpp
 )
 
 # Include directories for tests
@@ -122,6 +138,7 @@ target_link_libraries(unit_tests PRIVATE
     transactions__base
     network__messages
     network__communicator
+    network__rpc
     observing
     transactions
     transactions__payments
