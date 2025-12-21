@@ -94,6 +94,9 @@ add_executable(unit_tests
     network/rpc/GetClaimStatusesRpcRequestTest.cpp
     network/rpc/GetClaimStatusesRpcResponseTest.cpp
     network/rpc/RpcSerializationTest.cpp
+    # RPC async routing and queue tests (PRD-14, task 14-08)
+    network/rpc/BaseTransactionRpcQueueTest.cpp
+    network/rpc/TransactionsSchedulerRpcRoutingTest.cpp
 )
 
 # Include directories for tests

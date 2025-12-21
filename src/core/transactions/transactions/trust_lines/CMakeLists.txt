@@ -46,4 +46,5 @@ target_link_libraries(transactions__trustlines
     PUBLIC
         transactions__base
         common
-        exceptions)
+        exceptions
+        features)
