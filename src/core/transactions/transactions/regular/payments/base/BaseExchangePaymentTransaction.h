@@ -28,6 +28,7 @@
 #include "../../../../../network/messages/payments/ParticipantsVotesMessage.h"
 #include "../../../../../network/messages/payments/VotesStatusRequestMessage.hpp"
 #include "../../../../../network/messages/payments/FinalPathConfigurationMessage.h"
+#include "../../../../../network/messages/payments/FinalPathExchangeConfigurationMessage.h"
 #include "../../../../../network/messages/payments/FinalPathCycleConfigurationMessage.h"
 #include "../../../../../network/messages/payments/TTLProlongationRequestMessage.h"
 #include "../../../../../network/messages/payments/TTLProlongationResponseMessage.h"
@@ -37,6 +38,9 @@
 #include "../../../../../network/messages/payments/ParticipantsPublicKeysMessage.h"
 #include "../../../../../network/messages/payments/ParticipantVoteMessage.h"
 #include "../../../../../observing/messages/ObservingClaimAppendRequestMessage.h"
+
+#include "../../../../../network/rpc/requests/GetBlockNumberRpcRequest.h"
+#include "../../../../../network/rpc/responses/GetBlockNumberRpcResponse.h"
 
 #include "../../../../../subsystems_controller/SubsystemsController.h"
 
@@ -206,6 +210,7 @@ protected:
     uint32_t maxNetworkDelay(const uint16_t totalHopsCount) const;
     const bool contextIsValid(Message::MessageType messageType, bool showErrorMessage = true) const;
     const bool resourceIsValid(BaseResource::ResourceType resourceType) const;
+    const bool rpcRequestIsValid(RpcMethod rpcMethod) const;
     void dropNodeReservationsOnPath(PathID pathID);
     void runThreeNodesCyclesTransactions();
     void runFourNodesCyclesTransactions();
@@ -250,8 +255,9 @@ protected:
     static const uint8_t kMaxRecoveryAttempts = 30;
     static const uint8_t kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage = 3;
     const PaymentNodeID kCoordinatorPaymentNodeID = 0;
-    static const uint64_t kCountBlocksForClaiming = 20;
-    static const uint64_t kAllowableBlockNumberDifference = 2;
+    static const uint64_t kCountBlocksForClaiming = 10000;
+    static const uint64_t kAllowableBlockNumberDifference = 10;
+    static const uint16_t kDisputeGracePeriodBlocksCount = 4000; 
     static const uint32_t kMaxHoursTransactionDuration = 0;
     static const uint32_t kMaxMinutesTransactionDuration = 0;
     static const uint32_t kMaxSecondsTransactionDuration = 30;
@@ -301,6 +307,7 @@ protected:
     uint8_t mCntSuspendingOnFinalAmountsConfirmationStage;
     sphincs::PublicKey::Shared mPublicKey;
     BlockNumber mMaximalClaimingBlockNumber;
+    uint16_t mDisputeGracePeriodBlocksCount;
     bool mBlockNumberObtainingInProcess;
     vector<pair<ContractorID, TrustLineAmount>> mOutgoingTransfers;
     vector<pair<ContractorID, TrustLineAmount>> mIncomingTransfers;

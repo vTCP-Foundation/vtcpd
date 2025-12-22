@@ -354,6 +354,11 @@ protected:
         RpcMethod method,
         uint32_t noLongerThanMilliseconds = TransactionState::kDefaultRpcWaitMilliseconds) const;
 
+    TransactionResult::Shared resultWaitForRpcResponseAndMessagesTypes(
+        RpcMethod method,
+        vector<Message::MessageType> &&requiredMessagesTypes,
+        uint32_t noLongerThanMilliseconds = TransactionState::kDefaultRpcWaitMilliseconds) const;
+
     TransactionResult::Shared transactionResultFromCommand(
         CommandResult::SharedConst result) const;
 

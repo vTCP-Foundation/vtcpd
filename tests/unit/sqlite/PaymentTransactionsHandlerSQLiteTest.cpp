@@ -192,14 +192,16 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, ConstructorEmptyTableName) {
 TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordValidData) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(12345);
-    
-    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber));
-    
+    // effectiveClaimingBlockNumber equals maximalClaimingBlockNumber for basic tests
+    auto effectiveBlockNumber = blockNumber;
+
+    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber, effectiveBlockNumber));
+
     // Verify data was saved
     EXPECT_EQ(countTransactionsInDatabase(), 1);
     EXPECT_TRUE(transactionExistsInDatabase(transactionUUID));
     EXPECT_TRUE(handler->isTransactionPresent(transactionUUID));
-    
+
     // Verify initial observing state is 0
     EXPECT_EQ(getTransactionObservingState(transactionUUID), 0);
 }
@@ -207,9 +209,9 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordValidData) {
 TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordWithSpecificUUID) {
     auto transactionUUID = createTestUUID("12345678-1234-5678-9abc-123456789012");
     auto blockNumber = createTestBlockNumber(54321);
-    
-    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber));
-    
+
+    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber, blockNumber));
+
     // Verify data was saved
     EXPECT_EQ(countTransactionsInDatabase(), 1);
     EXPECT_TRUE(handler->isTransactionPresent(transactionUUID));
@@ -218,9 +220,9 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordWithSpecificUUID) {
 TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordLargeBlockNumber) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(std::numeric_limits<uint64_t>::max() - 1);
-    
-    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber));
-    
+
+    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber, blockNumber));
+
     // Verify data was saved
     EXPECT_EQ(countTransactionsInDatabase(), 1);
     EXPECT_TRUE(handler->isTransactionPresent(transactionUUID));
@@ -229,9 +231,9 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordLargeBlockNumber) {
 TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordZeroBlockNumber) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(0);
-    
-    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber));
-    
+
+    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber, blockNumber));
+
     // Verify data was saved
     EXPECT_EQ(countTransactionsInDatabase(), 1);
     EXPECT_TRUE(handler->isTransactionPresent(transactionUUID));
@@ -241,28 +243,28 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordDuplicateUUID) {
     auto transactionUUID = createTestUUID();
     auto blockNumber1 = createTestBlockNumber(100);
     auto blockNumber2 = createTestBlockNumber(200);
-    
-    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber1));
-    
+
+    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber1, blockNumber1));
+
     // Attempting to save duplicate UUID should throw (if there's a unique constraint)
     // or succeed (if duplicates are allowed) - need to check implementation
     // Based on the schema, it seems duplicates might be allowed
-    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber2));
+    EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber2, blockNumber2));
 }
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveMultipleRecords) {
     auto uuid1 = createTestUUID();
     auto uuid2 = createTestUUID();
     auto uuid3 = createTestUUID();
-    
+
     auto block1 = createTestBlockNumber(100);
     auto block2 = createTestBlockNumber(200);
     auto block3 = createTestBlockNumber(300);
-    
-    EXPECT_NO_THROW(handler->saveRecord(uuid1, block1));
-    EXPECT_NO_THROW(handler->saveRecord(uuid2, block2));
-    EXPECT_NO_THROW(handler->saveRecord(uuid3, block3));
-    
+
+    EXPECT_NO_THROW(handler->saveRecord(uuid1, block1, block1));
+    EXPECT_NO_THROW(handler->saveRecord(uuid2, block2, block2));
+    EXPECT_NO_THROW(handler->saveRecord(uuid3, block3, block3));
+
     // Verify all records were saved
     EXPECT_EQ(countTransactionsInDatabase(), 3);
     EXPECT_TRUE(handler->isTransactionPresent(uuid1));
@@ -274,18 +276,18 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveMultipleRecords) {
 TEST_F(PaymentTransactionsHandlerSQLiteTest, UpdateTransactionStateValidData) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(100);
-    
+
     // Save transaction first
-    handler->saveRecord(transactionUUID, blockNumber);
-    EXPECT_EQ(getTransactionObservingState(transactionUUID), 0);
-    
-    // Update state
-    EXPECT_NO_THROW(handler->updateTransactionState(transactionUUID, 1));
-    EXPECT_EQ(getTransactionObservingState(transactionUUID), 1);
-    
-    // Update to different state
-    EXPECT_NO_THROW(handler->updateTransactionState(transactionUUID, 2));
-    EXPECT_EQ(getTransactionObservingState(transactionUUID), 2);
+    handler->saveRecord(transactionUUID, blockNumber, blockNumber);
+    EXPECT_EQ(getTransactionObservingState(transactionUUID), static_cast<int>(PaymentObservingState::Init));
+
+    // Update state to Approved
+    EXPECT_NO_THROW(handler->updateTransactionState(transactionUUID, PaymentObservingState::Committed));
+    EXPECT_EQ(getTransactionObservingState(transactionUUID), static_cast<int>(PaymentObservingState::Committed));
+
+    // Update to ParticipantsVotesPresent state
+    EXPECT_NO_THROW(handler->updateTransactionState(transactionUUID, PaymentObservingState::ParticipantsVotesPresent));
+    EXPECT_EQ(getTransactionObservingState(transactionUUID), static_cast<int>(PaymentObservingState::ParticipantsVotesPresent));
 }
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, UpdateTransactionStateNonExistent) {
@@ -293,34 +295,21 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, UpdateTransactionStateNonExistent) 
     
     // Update non-existent transaction should throw
     EXPECT_THROW(
-        handler->updateTransactionState(transactionUUID, 1),
+        handler->updateTransactionState(transactionUUID, PaymentObservingState::Committed),
         ValueError
     );
 }
 
-TEST_F(PaymentTransactionsHandlerSQLiteTest, UpdateTransactionStateNegativeValue) {
+TEST_F(PaymentTransactionsHandlerSQLiteTest, UpdateTransactionStateRejected) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(100);
-    
-    // Save transaction first
-    handler->saveRecord(transactionUUID, blockNumber);
-    
-    // Update to negative state
-    EXPECT_NO_THROW(handler->updateTransactionState(transactionUUID, -1));
-    EXPECT_EQ(getTransactionObservingState(transactionUUID), -1);
-}
 
-TEST_F(PaymentTransactionsHandlerSQLiteTest, UpdateTransactionStateLargeValue) {
-    auto transactionUUID = createTestUUID();
-    auto blockNumber = createTestBlockNumber(100);
-    
     // Save transaction first
-    handler->saveRecord(transactionUUID, blockNumber);
-    
-    // Update to large state value
-    int largeState = std::numeric_limits<int>::max() - 1;
-    EXPECT_NO_THROW(handler->updateTransactionState(transactionUUID, largeState));
-    EXPECT_EQ(getTransactionObservingState(transactionUUID), largeState);
+    handler->saveRecord(transactionUUID, blockNumber, blockNumber);
+
+    // Update to RejectedByObserving state
+    EXPECT_NO_THROW(handler->updateTransactionState(transactionUUID, PaymentObservingState::RejectedByObserving));
+    EXPECT_EQ(getTransactionObservingState(transactionUUID), static_cast<int>(PaymentObservingState::RejectedByObserving));
 }
 
 // Transactions With Uncertain Observing State Tests
@@ -333,15 +322,15 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsWithUncertainObservingS
     auto uuid1 = createTestUUID();
     auto uuid2 = createTestUUID();
     auto uuid3 = createTestUUID();
-    
+
     auto block1 = createTestBlockNumber(100);
     auto block2 = createTestBlockNumber(200);
     auto block3 = createTestBlockNumber(300);
-    
+
     // Save all with uncertain state (default 0)
-    handler->saveRecord(uuid1, block1);
-    handler->saveRecord(uuid2, block2);
-    handler->saveRecord(uuid3, block3);
+    handler->saveRecord(uuid1, block1, block1);
+    handler->saveRecord(uuid2, block2, block2);
+    handler->saveRecord(uuid3, block3, block3);
     
     auto result = handler->transactionsWithUncertainObservingState();
     ASSERT_EQ(result.size(), 3);
@@ -361,20 +350,20 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsWithUncertainObservingS
     auto uuid1 = createTestUUID();
     auto uuid2 = createTestUUID();
     auto uuid3 = createTestUUID();
-    
+
     auto block1 = createTestBlockNumber(100);
     auto block2 = createTestBlockNumber(200);
     auto block3 = createTestBlockNumber(300);
-    
+
     // Save transactions
-    handler->saveRecord(uuid1, block1);
-    handler->saveRecord(uuid2, block2);
-    handler->saveRecord(uuid3, block3);
-    
+    handler->saveRecord(uuid1, block1, block1);
+    handler->saveRecord(uuid2, block2, block2);
+    handler->saveRecord(uuid3, block3, block3);
+
     // Update some states to non-uncertain
-    handler->updateTransactionState(uuid1, 1);
-    handler->updateTransactionState(uuid3, 2);
-    
+    handler->updateTransactionState(uuid1, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuid3, PaymentObservingState::ParticipantsVotesPresent);
+
     // Only uuid2 should have uncertain state (0)
     auto result = handler->transactionsWithUncertainObservingState();
     ASSERT_EQ(result.size(), 1);
@@ -385,12 +374,12 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsWithUncertainObservingS
 TEST_F(PaymentTransactionsHandlerSQLiteTest, IsTransactionPresentExisting) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(100);
-    
+
     // Initially not present
     EXPECT_FALSE(handler->isTransactionPresent(transactionUUID));
-    
+
     // Save and check
-    handler->saveRecord(transactionUUID, blockNumber);
+    handler->saveRecord(transactionUUID, blockNumber, blockNumber);
     EXPECT_TRUE(handler->isTransactionPresent(transactionUUID));
 }
 
@@ -403,11 +392,11 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, IsTransactionPresentNonExistent) {
 TEST_F(PaymentTransactionsHandlerSQLiteTest, IsTransactionPresentAfterStateUpdate) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(100);
-    
+
     // Save and update state
-    handler->saveRecord(transactionUUID, blockNumber);
-    handler->updateTransactionState(transactionUUID, 5);
-    
+    handler->saveRecord(transactionUUID, blockNumber, blockNumber);
+    handler->updateTransactionState(transactionUUID, PaymentObservingState::RejectedByObserving);
+
     // Should still be present
     EXPECT_TRUE(handler->isTransactionPresent(transactionUUID));
 }
@@ -416,15 +405,15 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, IsTransactionPresentAfterStateUpdat
 TEST_F(PaymentTransactionsHandlerSQLiteTest, DeleteRecordExisting) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(100);
-    
+
     // Save transaction
-    handler->saveRecord(transactionUUID, blockNumber);
+    handler->saveRecord(transactionUUID, blockNumber, blockNumber);
     EXPECT_TRUE(handler->isTransactionPresent(transactionUUID));
     EXPECT_EQ(countTransactionsInDatabase(), 1);
-    
+
     // Delete transaction
     EXPECT_NO_THROW(handler->deleteRecord(transactionUUID));
-    
+
     // Verify deletion
     EXPECT_FALSE(handler->isTransactionPresent(transactionUUID));
     EXPECT_EQ(countTransactionsInDatabase(), 0);
@@ -442,20 +431,20 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, DeleteRecordSpecific) {
     auto uuid1 = createTestUUID();
     auto uuid2 = createTestUUID();
     auto uuid3 = createTestUUID();
-    
+
     auto block1 = createTestBlockNumber(100);
     auto block2 = createTestBlockNumber(200);
     auto block3 = createTestBlockNumber(300);
-    
+
     // Save multiple transactions
-    handler->saveRecord(uuid1, block1);
-    handler->saveRecord(uuid2, block2);
-    handler->saveRecord(uuid3, block3);
+    handler->saveRecord(uuid1, block1, block1);
+    handler->saveRecord(uuid2, block2, block2);
+    handler->saveRecord(uuid3, block3, block3);
     EXPECT_EQ(countTransactionsInDatabase(), 3);
-    
+
     // Delete specific transaction
     handler->deleteRecord(uuid2);
-    
+
     // Verify only uuid2 was deleted
     EXPECT_EQ(countTransactionsInDatabase(), 2);
     EXPECT_TRUE(handler->isTransactionPresent(uuid1));
@@ -472,9 +461,9 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, AllTransactionsUUIDEmpty) {
 TEST_F(PaymentTransactionsHandlerSQLiteTest, AllTransactionsUUIDSingle) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(100);
-    
-    handler->saveRecord(transactionUUID, blockNumber);
-    
+
+    handler->saveRecord(transactionUUID, blockNumber, blockNumber);
+
     auto result = handler->allTransactionsUUID();
     ASSERT_EQ(result.size(), 1);
     EXPECT_EQ(result[0].stringUUID(), transactionUUID.stringUUID());
@@ -484,24 +473,24 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, AllTransactionsUUIDMultiple) {
     auto uuid1 = createTestUUID();
     auto uuid2 = createTestUUID();
     auto uuid3 = createTestUUID();
-    
+
     auto block1 = createTestBlockNumber(100);
     auto block2 = createTestBlockNumber(200);
     auto block3 = createTestBlockNumber(300);
-    
-    handler->saveRecord(uuid1, block1);
-    handler->saveRecord(uuid2, block2);
-    handler->saveRecord(uuid3, block3);
-    
+
+    handler->saveRecord(uuid1, block1, block1);
+    handler->saveRecord(uuid2, block2, block2);
+    handler->saveRecord(uuid3, block3, block3);
+
     auto result = handler->allTransactionsUUID();
     ASSERT_EQ(result.size(), 3);
-    
+
     // Verify all UUIDs are returned (order might vary)
     std::vector<std::string> returnedUUIDs;
     for (const auto& uuid : result) {
         returnedUUIDs.push_back(uuid.stringUUID());
     }
-    
+
     EXPECT_TRUE(std::find(returnedUUIDs.begin(), returnedUUIDs.end(), uuid1.stringUUID()) != returnedUUIDs.end());
     EXPECT_TRUE(std::find(returnedUUIDs.begin(), returnedUUIDs.end(), uuid2.stringUUID()) != returnedUUIDs.end());
     EXPECT_TRUE(std::find(returnedUUIDs.begin(), returnedUUIDs.end(), uuid3.stringUUID()) != returnedUUIDs.end());
@@ -510,19 +499,19 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, AllTransactionsUUIDMultiple) {
 TEST_F(PaymentTransactionsHandlerSQLiteTest, AllTransactionsUUIDAfterDeletion) {
     auto uuid1 = createTestUUID();
     auto uuid2 = createTestUUID();
-    
+
     auto block1 = createTestBlockNumber(100);
     auto block2 = createTestBlockNumber(200);
-    
-    handler->saveRecord(uuid1, block1);
-    handler->saveRecord(uuid2, block2);
-    
+
+    handler->saveRecord(uuid1, block1, block1);
+    handler->saveRecord(uuid2, block2, block2);
+
     auto resultBefore = handler->allTransactionsUUID();
     EXPECT_EQ(resultBefore.size(), 2);
-    
+
     // Delete one transaction
     handler->deleteRecord(uuid1);
-    
+
     auto resultAfter = handler->allTransactionsUUID();
     ASSERT_EQ(resultAfter.size(), 1);
     EXPECT_EQ(resultAfter[0].stringUUID(), uuid2.stringUUID());
@@ -532,17 +521,17 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, AllTransactionsUUIDAfterDeletion) {
 TEST_F(PaymentTransactionsHandlerSQLiteTest, MultipleOperationsOnSameTransaction) {
     auto transactionUUID = createTestUUID();
     auto blockNumber = createTestBlockNumber(100);
-    
+
     // Save, update, check, delete
-    handler->saveRecord(transactionUUID, blockNumber);
+    handler->saveRecord(transactionUUID, blockNumber, blockNumber);
     EXPECT_TRUE(handler->isTransactionPresent(transactionUUID));
-    
-    handler->updateTransactionState(transactionUUID, 3);
-    EXPECT_EQ(getTransactionObservingState(transactionUUID), 3);
-    
+
+    handler->updateTransactionState(transactionUUID, PaymentObservingState::ParticipantsVotesPresent);
+    EXPECT_EQ(getTransactionObservingState(transactionUUID), static_cast<int>(PaymentObservingState::ParticipantsVotesPresent));
+
     auto uncertainTransactions = handler->transactionsWithUncertainObservingState();
-    EXPECT_TRUE(uncertainTransactions.empty()); // State is 3, not 0
-    
+    EXPECT_TRUE(uncertainTransactions.empty()); // State is ParticipantsVotesPresent, not Uncertain
+
     handler->deleteRecord(transactionUUID);
     EXPECT_FALSE(handler->isTransactionPresent(transactionUUID));
 }
@@ -550,39 +539,39 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, MultipleOperationsOnSameTransaction
 TEST_F(PaymentTransactionsHandlerSQLiteTest, ConcurrentAccessSimulation) {
     auto uuid1 = createTestUUID();
     auto uuid2 = createTestUUID();
-    
+
     auto block1 = createTestBlockNumber(100);
     auto block2 = createTestBlockNumber(200);
-    
+
     // Simulate concurrent operations
-    EXPECT_NO_THROW(handler->saveRecord(uuid1, block1));
-    EXPECT_NO_THROW(handler->saveRecord(uuid2, block2));
-    
+    EXPECT_NO_THROW(handler->saveRecord(uuid1, block1, block1));
+    EXPECT_NO_THROW(handler->saveRecord(uuid2, block2, block2));
+
     EXPECT_TRUE(handler->isTransactionPresent(uuid1));
     EXPECT_TRUE(handler->isTransactionPresent(uuid2));
-    
+
     auto allUUIDs = handler->allTransactionsUUID();
     EXPECT_EQ(allUUIDs.size(), 2);
 }
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, PerformanceReasonableTime) {
     const size_t numTransactions = 1000;
-    
+
     auto start = std::chrono::high_resolution_clock::now();
-    
+
     // Save many transactions
     for (size_t i = 0; i < numTransactions; ++i) {
         auto uuid = createTestUUID();
         auto blockNumber = createTestBlockNumber(i);
-        handler->saveRecord(uuid, blockNumber);
+        handler->saveRecord(uuid, blockNumber, blockNumber);
     }
-    
+
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    
+
     // Should complete within reasonable time. Relaxed threshold for CI/debug builds
     EXPECT_LT(duration.count(), 15000);
-    
+
     // Verify all transactions were saved
     auto allTransactions = handler->allTransactionsUUID();
     EXPECT_EQ(allTransactions.size(), numTransactions);
@@ -593,35 +582,35 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, DataIntegrityAfterMultipleOperation
     auto uuid1 = createTestUUID();
     auto uuid2 = createTestUUID();
     auto uuid3 = createTestUUID();
-    
+
     auto block1 = createTestBlockNumber(100);
     auto block2 = createTestBlockNumber(200);
     auto block3 = createTestBlockNumber(300);
-    
+
     // Complex sequence of operations
-    handler->saveRecord(uuid1, block1);
-    handler->saveRecord(uuid2, block2);
-    handler->saveRecord(uuid3, block3);
-    
-    handler->updateTransactionState(uuid1, 1);
-    handler->updateTransactionState(uuid3, 2);
-    
+    handler->saveRecord(uuid1, block1, block1);
+    handler->saveRecord(uuid2, block2, block2);
+    handler->saveRecord(uuid3, block3, block3);
+
+    handler->updateTransactionState(uuid1, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuid3, PaymentObservingState::ParticipantsVotesPresent);
+
     // uuid2 should have uncertain state
     auto uncertainTransactions = handler->transactionsWithUncertainObservingState();
     ASSERT_EQ(uncertainTransactions.size(), 1);
     EXPECT_EQ(uncertainTransactions[0].first.stringUUID(), uuid2.stringUUID());
-    
+
     // Delete uuid1
     handler->deleteRecord(uuid1);
-    
+
     // Verify final state
     auto allTransactions = handler->allTransactionsUUID();
     EXPECT_EQ(allTransactions.size(), 2);
-    
+
     EXPECT_FALSE(handler->isTransactionPresent(uuid1));
     EXPECT_TRUE(handler->isTransactionPresent(uuid2));
     EXPECT_TRUE(handler->isTransactionPresent(uuid3));
-    
+
     // uncertain state should still only contain uuid2
     auto finalUncertainTransactions = handler->transactionsWithUncertainObservingState();
     ASSERT_EQ(finalUncertainTransactions.size(), 1);
@@ -629,13 +618,29 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, DataIntegrityAfterMultipleOperation
 }
 
 // transactionsForObserverMonitoring tests
+// Note: transactionsForObserverMonitoring filters by effective_claiming_block_number AND observing_state = Committed
 TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_BasicRetrieval_ReturnsMatchingTransactions) {
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(50));
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(100));
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(150));
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(200));
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(250));
+    // Save records and set them to Committed state (required for transactionsForObserverMonitoring)
+    auto uuid1 = createTestUUID();
+    auto uuid2 = createTestUUID();
+    auto uuid3 = createTestUUID();
+    auto uuid4 = createTestUUID();
+    auto uuid5 = createTestUUID();
 
+    handler->saveRecord(uuid1, createTestBlockNumber(50), createTestBlockNumber(50));
+    handler->saveRecord(uuid2, createTestBlockNumber(100), createTestBlockNumber(100));
+    handler->saveRecord(uuid3, createTestBlockNumber(150), createTestBlockNumber(150));
+    handler->saveRecord(uuid4, createTestBlockNumber(200), createTestBlockNumber(200));
+    handler->saveRecord(uuid5, createTestBlockNumber(250), createTestBlockNumber(250));
+
+    // Set all to Committed state
+    handler->updateTransactionState(uuid1, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuid2, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuid3, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuid4, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuid5, PaymentObservingState::Committed);
+
+    // Filter by effective_claiming_block_number > 100
     auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(100), 10);
 
     ASSERT_EQ(result.size(), 3);
@@ -644,28 +649,41 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_B
     EXPECT_EQ(result[2].second, createTestBlockNumber(250));
 }
 
-TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_StateFiltering_OnlyReturnsUncertainState) {
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_StateFiltering_OnlyReturnsApprovedState) {
     auto uuidState0 = createTestUUID();
     auto uuidState1 = createTestUUID();
     auto uuidState2 = createTestUUID();
 
-    handler->saveRecord(uuidState0, createTestBlockNumber(100));
-    handler->saveRecord(uuidState1, createTestBlockNumber(100));
-    handler->saveRecord(uuidState2, createTestBlockNumber(100));
+    handler->saveRecord(uuidState0, createTestBlockNumber(100), createTestBlockNumber(100));
+    handler->saveRecord(uuidState1, createTestBlockNumber(100), createTestBlockNumber(100));
+    handler->saveRecord(uuidState2, createTestBlockNumber(100), createTestBlockNumber(100));
 
-    handler->updateTransactionState(uuidState1, 1);
-    handler->updateTransactionState(uuidState2, 2);
+    // uuidState0 stays Uncertain (0)
+    // uuidState1 becomes Approved (1) - this is what transactionsForObserverMonitoring filters for
+    // uuidState2 becomes ParticipantsVotesPresent (3)
+    handler->updateTransactionState(uuidState1, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuidState2, PaymentObservingState::ParticipantsVotesPresent);
 
     auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(0), 10);
 
+    // transactionsForObserverMonitoring filters by observing_state = 1 (Approved)
     ASSERT_EQ(result.size(), 1);
-    EXPECT_EQ(result[0].first.stringUUID(), uuidState0.stringUUID());
+    EXPECT_EQ(result[0].first.stringUUID(), uuidState1.stringUUID());
     EXPECT_EQ(result[0].second, createTestBlockNumber(100));
 }
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_LimitParameter_RespectsLimit) {
+    std::vector<TransactionUUID> uuids;
     for (uint64_t i = 1; i <= 10; ++i) {
-        handler->saveRecord(createTestUUID(), createTestBlockNumber(i * 10));
+        auto uuid = createTestUUID();
+        auto blockNum = createTestBlockNumber(i * 10);
+        handler->saveRecord(uuid, blockNum, blockNum);
+        uuids.push_back(uuid);
+    }
+
+    // Set all to Committed state
+    for (const auto& uuid : uuids) {
+        handler->updateTransactionState(uuid, PaymentObservingState::Committed);
     }
 
     auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(0), 3);
@@ -677,9 +695,18 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_L
 }
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_AscendingOrder_OldestFirst) {
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(30));
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(10));
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(20));
+    auto uuid1 = createTestUUID();
+    auto uuid2 = createTestUUID();
+    auto uuid3 = createTestUUID();
+
+    handler->saveRecord(uuid1, createTestBlockNumber(30), createTestBlockNumber(30));
+    handler->saveRecord(uuid2, createTestBlockNumber(10), createTestBlockNumber(10));
+    handler->saveRecord(uuid3, createTestBlockNumber(20), createTestBlockNumber(20));
+
+    // Set all to Committed state
+    handler->updateTransactionState(uuid1, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuid2, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuid3, PaymentObservingState::Committed);
 
     auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(0), 10);
 
@@ -690,25 +717,27 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_A
 }
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_EmptyResult_NoMatchingTransactions) {
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(50));
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(100));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(50), createTestBlockNumber(50));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(100), createTestBlockNumber(100));
 
+    // effective_claiming_block_number must be > 100, but both are <= 100
     auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(100), 10);
 
     EXPECT_TRUE(result.empty());
 }
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_BoundaryCondition_ExactBlockNumber) {
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(100));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(100), createTestBlockNumber(100));
 
+    // effective_claiming_block_number must be > 100, but it equals 100
     auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(100), 10);
 
     EXPECT_TRUE(result.empty());
 }
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_ZeroLimit_ReturnsEmpty) {
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(100));
-    handler->saveRecord(createTestUUID(), createTestBlockNumber(200));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(100), createTestBlockNumber(100));
+    handler->saveRecord(createTestUUID(), createTestBlockNumber(200), createTestBlockNumber(200));
 
     auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(0), 0);
 
@@ -716,10 +745,20 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_Z
 }
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_LargeDataset_ReturnsExpectedRange) {
+    std::vector<TransactionUUID> uuids;
     for (uint64_t i = 1; i <= 200; ++i) {
-        handler->saveRecord(createTestUUID(), createTestBlockNumber(i));
+        auto uuid = createTestUUID();
+        auto blockNum = createTestBlockNumber(i);
+        handler->saveRecord(uuid, blockNum, blockNum);
+        uuids.push_back(uuid);
     }
 
+    // Set all to Committed state
+    for (const auto& uuid : uuids) {
+        handler->updateTransactionState(uuid, PaymentObservingState::Committed);
+    }
+
+    // Filter by effective_claiming_block_number > 50
     auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(50), 100);
 
     ASSERT_EQ(result.size(), 100);
@@ -729,4 +768,30 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_L
     for (size_t i = 0; i < result.size(); ++i) {
         EXPECT_EQ(result[i].second, createTestBlockNumber(51 + i));
     }
+}
+
+// Test to verify that effective_claiming_block_number filtering works correctly
+// when it differs from maximal_claiming_block_number
+TEST_F(PaymentTransactionsHandlerSQLiteTest, TransactionsForObserverMonitoring_EffectiveBlockDiffersFromMaximal) {
+    // Transaction with maximal=50, effective=100 (dispute grace period of 50 blocks)
+    auto uuid1 = createTestUUID();
+    handler->saveRecord(uuid1, createTestBlockNumber(50), createTestBlockNumber(100));
+
+    // Transaction with maximal=60, effective=60 (no dispute grace period)
+    auto uuid2 = createTestUUID();
+    handler->saveRecord(uuid2, createTestBlockNumber(60), createTestBlockNumber(60));
+
+    // Set both to Committed state
+    handler->updateTransactionState(uuid1, PaymentObservingState::Committed);
+    handler->updateTransactionState(uuid2, PaymentObservingState::Committed);
+
+    // Query with minBlockNumber=70
+    // uuid1 should be returned (effective=100 > 70)
+    // uuid2 should NOT be returned (effective=60 <= 70)
+    auto result = handler->transactionsForObserverMonitoring(createTestBlockNumber(70), 10);
+
+    ASSERT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0].first.stringUUID(), uuid1.stringUUID());
+    // The returned maximal_claiming_block_number should be 50
+    EXPECT_EQ(result[0].second, createTestBlockNumber(50));
 }

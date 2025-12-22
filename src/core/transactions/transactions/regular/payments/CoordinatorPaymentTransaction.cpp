@@ -1977,8 +1977,11 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::runVotesConsistenc
                     kCoordinatorPaymentNodeID,
                     signature.value()));
 
+            // Save payment transaction record. For non-exchange payment transactions,
+            // effective claiming block equals maximal claiming block (no dispute grace period)
             ioTransaction->paymentTransactionsHandler()->saveRecord(
                 mTransactionUUID,
+                mMaximalClaimingBlockNumber,
                 mMaximalClaimingBlockNumber);
         }
         debug() << "Voted +";

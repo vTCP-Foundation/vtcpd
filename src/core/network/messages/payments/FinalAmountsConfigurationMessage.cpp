@@ -29,7 +29,8 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const TransactionUUID &transactionUUID,
     const vector<PathReservation> &finalAmountsConfig,
     const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
-    const BlockNumber maximalClaimingBlockNumber) :
+    const BlockNumber maximalClaimingBlockNumber,
+    const uint16_t disputeGracePeriodBlocksCount) :
 
     RequestMessageWithReservations(
         equivalent,
@@ -37,7 +38,8 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
         transactionUUID,
         finalAmountsConfig),
     mPaymentParticipants(paymentParticipants),
-    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber)
+    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
+    mDisputeGracePeriodBlocksCount(disputeGracePeriodBlocksCount)
     // mSignatures empty
 {
 }
@@ -50,6 +52,7 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const vector<PathReservation> &finalAmountsConfig,
     const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
     const BlockNumber maximalClaimingBlockNumber,
+    const uint16_t disputeGracePeriodBlocksCount,
     const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures) :
 
     RequestMessageWithReservations(
@@ -59,6 +62,7 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
         finalAmountsConfig),
     mPaymentParticipants(paymentParticipants),
     mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
+    mDisputeGracePeriodBlocksCount(disputeGracePeriodBlocksCount),
     mSignatures(signatures)
 {
 }
@@ -71,6 +75,7 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const vector<PathReservation> &finalAmountsConfig,
     const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
     const BlockNumber maximalClaimingBlockNumber,
+    const uint16_t disputeGracePeriodBlocksCount,
     const sphincs::Signature::Shared signature) :
 
     RequestMessageWithReservations(
@@ -79,7 +84,8 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
         transactionUUID,
         finalAmountsConfig),
     mPaymentParticipants(paymentParticipants),
-    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber)
+    mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
+    mDisputeGracePeriodBlocksCount(disputeGracePeriodBlocksCount)
 {
     // Create single-element vector with mEquivalent and signature
     if (signature) {
@@ -96,6 +102,7 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
     const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig,
     const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
     const BlockNumber maximalClaimingBlockNumber,
+    const uint16_t disputeGracePeriodBlocksCount,
     const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures) :
 
     RequestMessageWithReservations(
@@ -105,6 +112,7 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
         finalAmountsConfig),
     mPaymentParticipants(paymentParticipants),
     mMaximalClaimingBlockNumber(maximalClaimingBlockNumber),
+    mDisputeGracePeriodBlocksCount(disputeGracePeriodBlocksCount),
     mSignatures(signatures)
 {
 }
@@ -157,6 +165,8 @@ FinalAmountsConfigurationMessage::FinalAmountsConfigurationMessage(
 
     deserializer.copyInto(&mMaximalClaimingBlockNumber);
 
+    deserializer.copyInto(&mDisputeGracePeriodBlocksCount);
+
     // Deserialize signatures count
     SerializedRecordsCount signaturesCount;
     deserializer.copyInto(&signaturesCount);
@@ -193,6 +203,11 @@ const BlockNumber FinalAmountsConfigurationMessage::maximalClaimingBlockNumber()
     return mMaximalClaimingBlockNumber;
 }
 
+const uint16_t FinalAmountsConfigurationMessage::disputeGracePeriodBlocksCount() const
+{
+    return mDisputeGracePeriodBlocksCount;
+}
+
 bool FinalAmountsConfigurationMessage::isReceiptContains() const
 {
     return !mSignatures.empty();
@@ -219,6 +234,8 @@ pair<BytesShared, size_t> FinalAmountsConfigurationMessage::serializeToBytes() c
     }
 
     serializer.copy(mMaximalClaimingBlockNumber);
+
+    serializer.copy(mDisputeGracePeriodBlocksCount);
 
     // Serialize signatures count
     serializer.copy(static_cast<SerializedRecordsCount>(mSignatures.size()));

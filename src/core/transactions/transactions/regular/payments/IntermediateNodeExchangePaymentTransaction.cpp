@@ -1037,7 +1037,8 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
 
     mMaximalClaimingBlockNumber = kMessage->maximalClaimingBlockNumber();
     debug() << "maximal claiming block number on Coordinator side: " << mMaximalClaimingBlockNumber;
-    // todo : check maximal claiming block number here and remove Common_ObservingBlockNumberProcessing step
+    mDisputeGracePeriodBlocksCount = kMessage->disputeGracePeriodBlocksCount();
+    debug() << "dispute grace period blocks count: " << mDisputeGracePeriodBlocksCount;
     
     info() << "final amount configuration size: " << kMessage->finalAmountsConfiguration().size();
 
@@ -1157,7 +1158,12 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
 
     mStep = Common_ObservingBlockNumberProcessing;
     mBlockNumberObtainingInProcess = true;
-    return resultAwakeAsFastAsPossible();
+    sendRpcRequest(
+        make_shared<GetBlockNumberRpcRequest>(
+            mTransactionUUID));
+    return resultWaitForRpcResponse(
+        RpcMethod::GetBlockNumber,
+        maxNetworkDelay(1));
 }
 
 TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFinalReservationsNeighborConfirmation()
@@ -1261,8 +1267,8 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
     }
 
     if (mBlockNumberObtainingInProcess) {
-        return resultWaitForResourceAndMessagesTypes(
-        {BaseResource::ObservingBlockNumber},
+        return resultWaitForRpcResponseAndMessagesTypes(
+        RpcMethod::GetBlockNumber,
         {Message::Payments_TransactionPublicKeyHash},
         maxNetworkDelay(1));
     }
@@ -1326,21 +1332,30 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runCh
     }
 
     if (!mIsSuspendedOnFinalAmountsConfirmationStage) {
-        BlockNumber maximalClaimingBlockNumber;
-        try {
-            maximalClaimingBlockNumber = mObservingHandler->getActualBlockNumber() + kCountBlocksForClaiming;
-        } catch (const NotFoundError& e) {
-            error() << "Failed to get actual block number: " << e.what();
+        if (!rpcRequestIsValid(RpcMethod::GetBlockNumber)) {
             removeAllDataFromStorageConcerningTransaction();
             sendErrorMessageOnFinalAmountsConfiguration();
-            return reject("Failed to get actual block number. Rejected.");
+            return reject("Can't check observing actual block number. Rejected.");
         }
+        auto blockNumberRpcResponse = popRpcResponse<GetBlockNumberRpcResponse>();
+        if (blockNumberRpcResponse->status() != RpcResponseStatus::Success) {
+            removeAllDataFromStorageConcerningTransaction();
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Can't check observing actual block number. RCP response is not successful. Rejected.");
+        }
+        auto maximalClaimingBlockNumber = blockNumberRpcResponse->blockNumber() + kCountBlocksForClaiming;
         debug() << "maximal claiming block number on own side: " << maximalClaimingBlockNumber;
         if (!checkMaxClaimingBlockNumber(maximalClaimingBlockNumber)) {
             debug() << "Max claiming block number sending by coordinator is invalid: " << mMaximalClaimingBlockNumber;
             removeAllDataFromStorageConcerningTransaction();
             sendErrorMessageOnFinalAmountsConfiguration();
             return reject("Max claiming block number sending by coordinator is invalid. Rejected.");
+        }
+
+        if (mDisputeGracePeriodBlocksCount != kDisputeGracePeriodBlocksCount) {
+            removeAllDataFromStorageConcerningTransaction();
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Dispute grace period blocks count is not properly. Rejected.");
         }
         mBlockNumberObtainingInProcess = false;
     }

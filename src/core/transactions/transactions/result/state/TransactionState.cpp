@@ -208,6 +208,30 @@ TransactionState::SharedConst TransactionState::waitForRpcResponse(
     return const_pointer_cast<const TransactionState>(state);
 }
 
+TransactionState::SharedConst TransactionState::waitForRcpResponseAndMessagesTypes(
+    RpcMethod requiredRpcMethod,
+    vector<Message::MessageType> &&requiredMessageType,
+    uint32_t noLongerThanMilliseconds)
+{
+    TransactionState::Shared state;
+    if (noLongerThanMilliseconds == 0) {
+        state = const_pointer_cast<TransactionState> (TransactionState::exit());
+
+    } else {
+        state = const_pointer_cast<TransactionState> (TransactionState::awakeAfterMilliseconds(
+                    noLongerThanMilliseconds));
+    }
+
+    state->mRequiredMessageTypes = requiredMessageType;
+
+    state->mRequiredRpcMethods.clear();
+    state->mRequiredRpcMethods.push_back(requiredRpcMethod);
+    state->mIsWaitingForRpcResponse = true;
+    state->mMustBeAwakenedOnRpcResponse = true;
+
+    return const_pointer_cast<const TransactionState>(state);
+}
+
 TransactionState::SharedConst TransactionState::continueWithPreviousState()
 {
     TransactionState::Shared state;

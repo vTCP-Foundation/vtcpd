@@ -211,6 +211,18 @@ TransactionResult::Shared BaseTransaction::resultWaitForRpcResponse(
                    noLongerThanMilliseconds));
 }
 
+TransactionResult::Shared BaseTransaction::resultWaitForRpcResponseAndMessagesTypes(
+    RpcMethod method,
+    vector<Message::MessageType> &&requiredMessagesTypes,
+    uint32_t noLongerThanMilliseconds) const
+{
+    return make_shared<TransactionResult>(
+               TransactionState::waitForRcpResponseAndMessagesTypes(
+                   method,
+                   move(requiredMessagesTypes),
+                   noLongerThanMilliseconds));
+}
+
 TransactionResult::Shared BaseTransaction::transactionResultFromCommand(
     CommandResult::SharedConst result) const
 {

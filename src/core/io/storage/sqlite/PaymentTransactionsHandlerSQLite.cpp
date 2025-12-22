@@ -19,9 +19,13 @@ PaymentTransactionsHandlerSQLite::PaymentTransactionsHandlerSQLite(
     }
 
     // Create main table
+    // effective_claiming_block_number stores the extended claiming deadline that includes
+    // the dispute grace period. This value equals maximal_claiming_block_number +
+    // disputeGracePeriodBlocksCount and is used for observer monitoring queries.
     string query = "CREATE TABLE IF NOT EXISTS " + mTableName +
                    " (uuid BLOB NOT NULL, "
                    "maximal_claiming_block_number BLOB NOT NULL, "
+                   "effective_claiming_block_number BLOB NOT NULL, "
                    "observing_state INTEGER NOT NULL, "
                    "recording_time INTEGER NOT NULL, "
                    "payment_key_id INTEGER NOT NULL);";
@@ -61,10 +65,15 @@ PaymentTransactionsHandlerSQLite::PaymentTransactionsHandlerSQLite(
 
 void PaymentTransactionsHandlerSQLite::saveRecord(
     const TransactionUUID &transactionUUID,
-    BlockNumber maximalClaimingBlockNumber)
+    BlockNumber maximalClaimingBlockNumber,
+    BlockNumber effectiveClaimingBlockNumber)
 {
+    // Insert payment transaction record with both claiming block numbers:
+    // - maximal_claiming_block_number: original claiming deadline
+    // - effective_claiming_block_number: extended deadline including dispute grace period
     string query = "INSERT INTO " + mTableName + " (uuid, maximal_claiming_block_number, "
-                   "observing_state, recording_time, payment_key_id) VALUES(?, ?, ?, ?, (SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1));";
+                   "effective_claiming_block_number, observing_state, recording_time, payment_key_id) "
+                   "VALUES(?, ?, ?, ?, ?, (SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1));";
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
@@ -86,15 +95,23 @@ void PaymentTransactionsHandlerSQLite::saveRecord(
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
+    // Bind effective claiming block number (includes dispute grace period)
+    rc = sqlite3_bind_blob(stmt.get(), 3, &effectiveClaimingBlockNumber, sizeof(BlockNumber), SQLITE_STATIC);
+    if (rc != SQLITE_OK) {
+        throw IOError("PaymentTransactionsHandlerSQLite::saveRecord: Failed to bind effective claiming block number. "
+                      "BlockNumber=" + to_string(effectiveClaimingBlockNumber) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
     // Set initial observing state to 0 (uncertain state)
-    rc = sqlite3_bind_int(stmt.get(), 3, 0);
+    rc = sqlite3_bind_int(stmt.get(), 4, 0);
     if (rc != SQLITE_OK) {
         throw IOError("PaymentTransactionsHandlerSQLite::saveRecord: Failed to bind observing state. "
                       "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     GEOEpochTimestamp timestamp = microsecondsSinceGEOEpoch(utc_now());
-    rc = sqlite3_bind_int64(stmt.get(), 4, timestamp);
+    rc = sqlite3_bind_int64(stmt.get(), 5, timestamp);
     if (rc != SQLITE_OK) {
         throw IOError("PaymentTransactionsHandlerSQLite::saveRecord: Failed to bind recording timestamp. "
                       "Timestamp=" + to_string(timestamp) +
@@ -110,23 +127,25 @@ void PaymentTransactionsHandlerSQLite::saveRecord(
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
     info() << "Payment transaction record saved: BlockNumber=" << maximalClaimingBlockNumber
+           << ", EffectiveBlockNumber=" << effectiveClaimingBlockNumber
            << ", Timestamp=" << timestamp;
 #endif
 }
 
 void PaymentTransactionsHandlerSQLite::updateTransactionState(
     const TransactionUUID &transactionUUID,
-    int observingTransactionState)
+    PaymentObservingState observingState)
 {
     string query = "UPDATE " + mTableName +
                    " SET observing_state = ? WHERE uuid = ?;";
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
-    int rc = sqlite3_bind_int(stmt.get(), 1, observingTransactionState);
+    int stateValue = static_cast<int>(observingState);
+    int rc = sqlite3_bind_int(stmt.get(), 1, stateValue);
     if (rc != SQLITE_OK) {
         throw IOError("PaymentTransactionsHandlerSQLite::updateTransactionState: Failed to bind observing state. "
-                      "State=" + to_string(observingTransactionState) +
+                      "State=" + to_string(stateValue) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
@@ -138,24 +157,24 @@ void PaymentTransactionsHandlerSQLite::updateTransactionState(
     rc = sqlite3_bind_blob(stmt.get(), 2, uuidData, TransactionUUID::kBytesSize, SQLITE_STATIC);
     if (rc != SQLITE_OK) {
         throw IOError("PaymentTransactionsHandlerSQLite::updateTransactionState: Failed to bind transaction UUID. "
-                      "State=" + to_string(observingTransactionState) +
+                      "State=" + to_string(stateValue) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     rc = sqlite3_step(stmt.get());
     if (rc != SQLITE_DONE) {
         throw IOError("PaymentTransactionsHandlerSQLite::updateTransactionState: Failed to execute UPDATE. "
-                      "State=" + to_string(observingTransactionState) +
+                      "State=" + to_string(stateValue) +
                       ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
     if (sqlite3_changes(mDataBase) == 0) {
         throw ValueError("PaymentTransactionsHandlerSQLite::updateTransactionState: No rows affected. "
-                         "Transaction UUID not found or state unchanged. State=" + to_string(observingTransactionState) + ".");
+                         "Transaction UUID not found or state unchanged. State=" + to_string(stateValue) + ".");
     }
 
 #ifdef STORAGE_HANDLER_DEBUG_LOG
-    info() << "Transaction state updated: State=" << observingTransactionState;
+    info() << "Transaction state updated: State=" << stateValue;
 #endif
 }
 
@@ -197,9 +216,11 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerSQLite::tra
 {
     vector<pair<TransactionUUID, BlockNumber>> result;
 
-    // Fetch transactions still within claiming window with uncertain observing state
+    // Fetch transactions still within effective claiming window (including dispute grace period)
+    // with uncertain observing state. The effective_claiming_block_number already includes
+    // the dispute grace period, so we compare directly against the current block number.
     string query = "SELECT uuid, maximal_claiming_block_number FROM " + mTableName +
-                   " WHERE maximal_claiming_block_number > ? AND observing_state = 0 "
+                   " WHERE effective_claiming_block_number > ? AND observing_state = 1 "
                    "ORDER BY maximal_claiming_block_number ASC LIMIT ?;";
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());

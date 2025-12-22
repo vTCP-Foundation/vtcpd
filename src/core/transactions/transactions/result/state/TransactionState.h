@@ -54,6 +54,11 @@ public:
         RpcMethod requiredRpcMethod,
         uint32_t noLongerThanMilliseconds = kDefaultRpcWaitMilliseconds);
 
+    static TransactionState::SharedConst waitForRcpResponseAndMessagesTypes(
+        RpcMethod requiredRpcMethod,
+        vector<Message::MessageType> &&requiredMessageType,
+        uint32_t noLongerThanMilliseconds = kDefaultRpcWaitMilliseconds);
+
     static TransactionState::SharedConst continueWithPreviousState();
 
     static TransactionState::SharedConst wait();

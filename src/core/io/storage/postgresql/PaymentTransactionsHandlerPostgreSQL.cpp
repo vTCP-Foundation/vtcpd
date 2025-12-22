@@ -32,9 +32,14 @@ PaymentTransactionsHandlerPostgreSQL::PaymentTransactionsHandlerPostgreSQL(
     if (!mDataBase) throw ValueError("PaymentTransactionsHandlerPostgreSQL: db null");
     if (mTableName.empty()) throw ValueError("PaymentTransactionsHandlerPostgreSQL: table name empty");
 
+    // Create main table
+    // effective_claiming_block_number stores the extended claiming deadline that includes
+    // the dispute grace period. This value equals maximal_claiming_block_number +
+    // disputeGracePeriodBlocksCount and is used for observer monitoring queries.
     string query = "CREATE TABLE IF NOT EXISTS " + mTableName +
                    " (uuid BYTEA NOT NULL, "
                    "maximal_claiming_block_number BYTEA NOT NULL, "
+                   "effective_claiming_block_number BYTEA NOT NULL, "
                    "observing_state INTEGER NOT NULL, "
                    "recording_time BIGINT NOT NULL, "
                    "payment_key_id BIGINT NOT NULL, "
@@ -59,20 +64,28 @@ PaymentTransactionsHandlerPostgreSQL::PaymentTransactionsHandlerPostgreSQL(
 
 void PaymentTransactionsHandlerPostgreSQL::saveRecord(
     const TransactionUUID &transactionUUID,
-    BlockNumber maximalClaimingBlockNumber)
+    BlockNumber maximalClaimingBlockNumber,
+    BlockNumber effectiveClaimingBlockNumber)
 {
+    // Insert payment transaction record with both claiming block numbers:
+    // - maximal_claiming_block_number: original claiming deadline
+    // - effective_claiming_block_number: extended deadline including dispute grace period
     const string query = "INSERT INTO " + mTableName +
-                         " (uuid, maximal_claiming_block_number, observing_state, recording_time, payment_key_id) VALUES ($1,$2,$3,$4,(SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1));";
-    const int kParams=4;
+                         " (uuid, maximal_claiming_block_number, effective_claiming_block_number, "
+                         "observing_state, recording_time, payment_key_id) "
+                         "VALUES ($1,$2,$3,$4,$5,(SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1));";
+    const int kParams=5;
     const char *params[kParams];
     int lengths[kParams];
-    int formats[kParams]={1,1,0,0};
+    int formats[kParams]={1,1,1,0,0};
 
     params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
     params[1]=reinterpret_cast<const char*>(&maximalClaimingBlockNumber); lengths[1]=sizeof(BlockNumber);
-    string stateStr="0"; params[2]=stateStr.c_str(); lengths[2]=0;
+    // Bind effective claiming block number (includes dispute grace period)
+    params[2]=reinterpret_cast<const char*>(&effectiveClaimingBlockNumber); lengths[2]=sizeof(BlockNumber);
+    string stateStr="0"; params[3]=stateStr.c_str(); lengths[3]=0;
     GEOEpochTimestamp ts = microsecondsSinceGEOEpoch(utc_now());
-    string tsStr=to_string(ts); params[3]=tsStr.c_str(); lengths[3]=0;
+    string tsStr=to_string(ts); params[4]=tsStr.c_str(); lengths[4]=0;
 
     PGresult *res = PQexecParams(mDataBase, query.c_str(),kParams,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"saveRecord");
@@ -81,11 +94,11 @@ void PaymentTransactionsHandlerPostgreSQL::saveRecord(
 
 void PaymentTransactionsHandlerPostgreSQL::updateTransactionState(
     const TransactionUUID &transactionUUID,
-    int observingTransactionState)
+    PaymentObservingState observingState)
 {
     const string query="UPDATE " + mTableName + " SET observing_state=$1 WHERE uuid=$2;";
     const int kParams=2; const char *params[kParams]; int lengths[kParams]; int formats[kParams]={0,1};
-    string stateStr=to_string(observingTransactionState); params[0]=stateStr.c_str(); lengths[0]=0;
+    string stateStr=to_string(static_cast<int>(observingState)); params[0]=stateStr.c_str(); lengths[0]=0;
     params[1]=reinterpret_cast<const char*>(transactionUUID.data); lengths[1]=TransactionUUID::kBytesSize;
     PGresult *res=PQexecParams(mDataBase,query.c_str(),kParams,nullptr,params,lengths,formats,0);
     checkCmd(mDataBase,res,"updateState");
@@ -116,8 +129,11 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerPostgreSQL:
     uint32_t limit)
 {
     vector<pair<TransactionUUID, BlockNumber>> result;
+    // Fetch transactions still within effective claiming window (including dispute grace period)
+    // with uncertain observing state. The effective_claiming_block_number already includes
+    // the dispute grace period, so we compare directly against the current block number.
     const string query = "SELECT uuid, maximal_claiming_block_number FROM " + mTableName +
-                         " WHERE maximal_claiming_block_number > $1 AND observing_state = 0 "
+                         " WHERE effective_claiming_block_number > $1 AND observing_state = 1 "
                          "ORDER BY maximal_claiming_block_number ASC LIMIT $2;";
 
     const int kParams = 2;

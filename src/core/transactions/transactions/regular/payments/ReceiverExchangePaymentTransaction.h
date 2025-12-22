@@ -57,6 +57,7 @@ protected:
     TransactionResult::SharedConst runFinalAmountsConfigurationConfirmation();
     TransactionResult::SharedConst runFinalReservationsCoordinatorConfirmation();
     TransactionResult::SharedConst runFinalReservationsNeighborConfirmation();
+    TransactionResult::SharedConst runCheckObservingBlockNumber();
     TransactionResult::SharedConst runVotesStageWithCoordinatorClarification();
 
     TransactionResult::SharedConst approve() override;

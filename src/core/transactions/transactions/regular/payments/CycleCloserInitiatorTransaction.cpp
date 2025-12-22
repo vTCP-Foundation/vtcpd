@@ -1149,8 +1149,11 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runVotesConsiste
                     kCoordinatorPaymentNodeID,
                     signature.value()));
 
+            // Save payment transaction record. For cycle closer transactions,
+            // effective claiming block equals maximal claiming block (no dispute grace period)
             ioTransaction->paymentTransactionsHandler()->saveRecord(
                 mTransactionUUID,
+                mMaximalClaimingBlockNumber,
                 mMaximalClaimingBlockNumber);
         }
         debug() << "Voted +";

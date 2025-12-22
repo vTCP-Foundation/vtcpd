@@ -212,10 +212,12 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, SaveRecord_ValidPara
     // Arrange
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 12345;
-    
+    // effectiveClaimingBlockNumber equals maximalClaimingBlockNumber for basic tests
+    BlockNumber effectiveBlockNumber = blockNumber;
+
     // Act
-    mHandler->saveRecord(transactionUUID, blockNumber);
-    
+    mHandler->saveRecord(transactionUUID, blockNumber, effectiveBlockNumber);
+
     // Assert
     EXPECT_EQ(getRowCount(), 1);
     EXPECT_TRUE(recordExists(transactionUUID));
@@ -229,11 +231,11 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, SaveRecord_MultipleR
     auto uuid2 = createTestTransactionUUID("uuid2");
     BlockNumber block1 = 100;
     BlockNumber block2 = 200;
-    
+
     // Save both records
-    mHandler->saveRecord(uuid1, block1);
-    mHandler->saveRecord(uuid2, block2);
-    
+    mHandler->saveRecord(uuid1, block1, block1);
+    mHandler->saveRecord(uuid2, block2, block2);
+
     EXPECT_EQ(getRowCount(), 2);
     EXPECT_TRUE(recordExists(uuid1));
     EXPECT_TRUE(recordExists(uuid2));
@@ -244,13 +246,13 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, SaveRecord_Duplicate
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 12345;
-    
+
     // Save first record
-    mHandler->saveRecord(transactionUUID, blockNumber);
+    mHandler->saveRecord(transactionUUID, blockNumber, blockNumber);
     EXPECT_EQ(getRowCount(), 1);
-    
+
     // Save duplicate (should be allowed)
-    EXPECT_NO_THROW(mHandler->saveRecord(transactionUUID, blockNumber));
+    EXPECT_NO_THROW(mHandler->saveRecord(transactionUUID, blockNumber, blockNumber));
     EXPECT_EQ(getRowCount(), 2); // Now we have 2 records
 }
 
@@ -259,18 +261,18 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, UpdateTransactionSta
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 12345;
-    
+
     // Save record
-    mHandler->saveRecord(transactionUUID, blockNumber);
-    EXPECT_EQ(getObservingState(transactionUUID), 0);
-    
-    // Update state
-    mHandler->updateTransactionState(transactionUUID, 1);
-    EXPECT_EQ(getObservingState(transactionUUID), 1);
-    
-    // Update state again
-    mHandler->updateTransactionState(transactionUUID, 2);
-    EXPECT_EQ(getObservingState(transactionUUID), 2);
+    mHandler->saveRecord(transactionUUID, blockNumber, blockNumber);
+    EXPECT_EQ(getObservingState(transactionUUID), static_cast<int>(PaymentObservingState::Init));
+
+    // Update state to Approved
+    mHandler->updateTransactionState(transactionUUID, PaymentObservingState::Committed);
+    EXPECT_EQ(getObservingState(transactionUUID), static_cast<int>(PaymentObservingState::Committed));
+
+    // Update state to ParticipantsVotesPresent
+    mHandler->updateTransactionState(transactionUUID, PaymentObservingState::ParticipantsVotesPresent);
+    EXPECT_EQ(getObservingState(transactionUUID), static_cast<int>(PaymentObservingState::ParticipantsVotesPresent));
 }
 
 // Test 6: Update non-existing transaction
@@ -279,7 +281,7 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, UpdateTransactionSta
     auto transactionUUID = createTestTransactionUUID();
     
     EXPECT_THROW(
-        mHandler->updateTransactionState(transactionUUID, 1),
+        mHandler->updateTransactionState(transactionUUID, PaymentObservingState::Committed),
         ValueError
     );
 }
@@ -293,26 +295,26 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsWithUnce
     BlockNumber block1 = 100;
     BlockNumber block2 = 200;
     BlockNumber block3 = 300;
-    
+
     // Save records
-    mHandler->saveRecord(uuid1, block1);
-    mHandler->saveRecord(uuid2, block2);
-    mHandler->saveRecord(uuid3, block3);
-    
+    mHandler->saveRecord(uuid1, block1, block1);
+    mHandler->saveRecord(uuid2, block2, block2);
+    mHandler->saveRecord(uuid3, block3, block3);
+
     // Update some states
-    mHandler->updateTransactionState(uuid2, 1);
-    // uuid1 and uuid3 remain with state 0
-    
+    mHandler->updateTransactionState(uuid2, PaymentObservingState::Committed);
+    // uuid1 and uuid3 remain with state Uncertain (0)
+
     // Get uncertain transactions
     auto uncertainTransactions = mHandler->transactionsWithUncertainObservingState();
-    
+
     ASSERT_EQ(uncertainTransactions.size(), 2);
-    
+
     // Verify that we got the correct transactions with correct BlockNumbers
     // Sort results by block number for consistent comparison
     std::sort(uncertainTransactions.begin(), uncertainTransactions.end(),
               [](const auto& a, const auto& b) { return a.second < b.second; });
-    
+
     EXPECT_EQ(uncertainTransactions[0].second, static_cast<BlockNumber>(100));
     EXPECT_EQ(uncertainTransactions[1].second, static_cast<BlockNumber>(300));
 }
@@ -322,11 +324,11 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsWithUnce
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 12345;
-    
+
     // Save and update state
-    mHandler->saveRecord(transactionUUID, blockNumber);
-    mHandler->updateTransactionState(transactionUUID, 1);
-    
+    mHandler->saveRecord(transactionUUID, blockNumber, blockNumber);
+    mHandler->updateTransactionState(transactionUUID, PaymentObservingState::Committed);
+
     auto uncertainTransactions = mHandler->transactionsWithUncertainObservingState();
     EXPECT_TRUE(uncertainTransactions.empty());
 }
@@ -336,13 +338,13 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, IsTransactionPresent
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 12345;
-    
+
     // Initially not present
     EXPECT_FALSE(mHandler->isTransactionPresent(transactionUUID));
-    
+
     // Save record
-    mHandler->saveRecord(transactionUUID, blockNumber);
-    
+    mHandler->saveRecord(transactionUUID, blockNumber, blockNumber);
+
     // Now present
     EXPECT_TRUE(mHandler->isTransactionPresent(transactionUUID));
 }
@@ -360,12 +362,12 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, DeleteRecord_Existin
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 12345;
-    
+
     // Save record
-    mHandler->saveRecord(transactionUUID, blockNumber);
+    mHandler->saveRecord(transactionUUID, blockNumber, blockNumber);
     EXPECT_TRUE(mHandler->isTransactionPresent(transactionUUID));
     EXPECT_EQ(getRowCount(), 1);
-    
+
     // Delete record
     mHandler->deleteRecord(transactionUUID);
     EXPECT_FALSE(mHandler->isTransactionPresent(transactionUUID));
@@ -388,16 +390,16 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, AllTransactionsUUID_
     auto uuid2 = createTestTransactionUUID("uuid2");
     auto uuid3 = createTestTransactionUUID("uuid3");
     BlockNumber blockNumber = 12345;
-    
+
     // Save records
-    mHandler->saveRecord(uuid1, blockNumber);
-    mHandler->saveRecord(uuid2, blockNumber);
-    mHandler->saveRecord(uuid3, blockNumber);
-    
+    mHandler->saveRecord(uuid1, blockNumber, blockNumber);
+    mHandler->saveRecord(uuid2, blockNumber, blockNumber);
+    mHandler->saveRecord(uuid3, blockNumber, blockNumber);
+
     // Get all UUIDs
     auto allUUIDs = mHandler->allTransactionsUUID();
     EXPECT_EQ(allUUIDs.size(), 3);
-    
+
     // Since we can't reliably compare binary UUIDs, just verify we got the correct count
     // which indicates the method works correctly
 }
@@ -414,20 +416,20 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, CompleteWorkflow_Sav
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 12345;
-    
+
     // Save
-    mHandler->saveRecord(transactionUUID, blockNumber);
+    mHandler->saveRecord(transactionUUID, blockNumber, blockNumber);
     EXPECT_TRUE(mHandler->isTransactionPresent(transactionUUID));
-    EXPECT_EQ(getObservingState(transactionUUID), 0);
-    
+    EXPECT_EQ(getObservingState(transactionUUID), static_cast<int>(PaymentObservingState::Init));
+
     // Update state
-    mHandler->updateTransactionState(transactionUUID, 1);
-    EXPECT_EQ(getObservingState(transactionUUID), 1);
-    
+    mHandler->updateTransactionState(transactionUUID, PaymentObservingState::Committed);
+    EXPECT_EQ(getObservingState(transactionUUID), static_cast<int>(PaymentObservingState::Committed));
+
     // Check uncertain transactions
     auto uncertainTransactions = mHandler->transactionsWithUncertainObservingState();
-    EXPECT_TRUE(uncertainTransactions.empty()); // state is 1, not 0
-    
+    EXPECT_TRUE(uncertainTransactions.empty()); // state is Approved, not Uncertain
+
     // Delete
     mHandler->deleteRecord(transactionUUID);
     EXPECT_FALSE(mHandler->isTransactionPresent(transactionUUID));
@@ -439,10 +441,10 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, LargeBlockNumbers_Su
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber largeBlock = UINT64_MAX - 1000; // Very large block number
-    
-    mHandler->saveRecord(transactionUUID, largeBlock);
+
+    mHandler->saveRecord(transactionUUID, largeBlock, largeBlock);
     EXPECT_TRUE(mHandler->isTransactionPresent(transactionUUID));
-    
+
     // Verify transaction was saved by checking uncertain transactions
     auto uncertainTransactions = mHandler->transactionsWithUncertainObservingState();
     ASSERT_EQ(uncertainTransactions.size(), 1);
@@ -456,25 +458,30 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, SchemaValidation_Cor
     std::string query = "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '" + mTableName + "' ORDER BY ordinal_position;";
     PGresult *result = PQexec(mConnection, query.c_str());
     EXPECT_EQ(PQresultStatus(result), PGRES_TUPLES_OK);
-    
-    EXPECT_EQ(PQntuples(result), 5); // Updated schema includes payment_key_id
-    
+
+    // Schema now includes effective_claiming_block_number field
+    EXPECT_EQ(PQntuples(result), 6);
+
     // Verify column names and types
     EXPECT_STREQ(PQgetvalue(result, 0, 0), "uuid");
     EXPECT_STREQ(PQgetvalue(result, 0, 1), "bytea");
-    
+
     EXPECT_STREQ(PQgetvalue(result, 1, 0), "maximal_claiming_block_number");
     EXPECT_STREQ(PQgetvalue(result, 1, 1), "bytea");
-    
-    EXPECT_STREQ(PQgetvalue(result, 2, 0), "observing_state");
-    EXPECT_STREQ(PQgetvalue(result, 2, 1), "integer");
-    
-    EXPECT_STREQ(PQgetvalue(result, 3, 0), "recording_time");
-    EXPECT_STREQ(PQgetvalue(result, 3, 1), "bigint");
-    
-    EXPECT_STREQ(PQgetvalue(result, 4, 0), "payment_key_id");
+
+    // New field: effective_claiming_block_number includes dispute grace period
+    EXPECT_STREQ(PQgetvalue(result, 2, 0), "effective_claiming_block_number");
+    EXPECT_STREQ(PQgetvalue(result, 2, 1), "bytea");
+
+    EXPECT_STREQ(PQgetvalue(result, 3, 0), "observing_state");
+    EXPECT_STREQ(PQgetvalue(result, 3, 1), "integer");
+
+    EXPECT_STREQ(PQgetvalue(result, 4, 0), "recording_time");
     EXPECT_STREQ(PQgetvalue(result, 4, 1), "bigint");
-    
+
+    EXPECT_STREQ(PQgetvalue(result, 5, 0), "payment_key_id");
+    EXPECT_STREQ(PQgetvalue(result, 5, 1), "bigint");
+
     PQclear(result);
 }
 
@@ -493,28 +500,29 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, RawDataValidation_Sa
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 12345;
-    
+
     // Save record
-    mHandler->saveRecord(transactionUUID, blockNumber);
-    
-    // Raw database verification
-    std::string query = "SELECT uuid, maximal_claiming_block_number, observing_state, recording_time FROM " + mTableName + ";";
+    mHandler->saveRecord(transactionUUID, blockNumber, blockNumber);
+
+    // Raw database verification (now includes effective_claiming_block_number)
+    std::string query = "SELECT uuid, maximal_claiming_block_number, effective_claiming_block_number, observing_state, recording_time FROM " + mTableName + ";";
     PGresult *result = PQexec(mConnection, query.c_str());
     EXPECT_EQ(PQresultStatus(result), PGRES_TUPLES_OK);
     EXPECT_EQ(PQntuples(result), 1);
-    
+
     // Verify observing state
-    std::string storedState = PQgetvalue(result, 0, 2);
+    std::string storedState = PQgetvalue(result, 0, 3);
     EXPECT_EQ(std::stoi(storedState), 0);
-    
+
     // Verify recording time is present
-    std::string storedTime = PQgetvalue(result, 0, 3);
+    std::string storedTime = PQgetvalue(result, 0, 4);
     EXPECT_GT(std::stoll(storedTime), 0);
-    
+
     // Verify fields are not null (basic validation)
     EXPECT_GT(PQgetlength(result, 0, 0), 0); // UUID field
     EXPECT_GT(PQgetlength(result, 0, 1), 0); // Block number field
-    
+    EXPECT_GT(PQgetlength(result, 0, 2), 0); // Effective block number field
+
     PQclear(result);
 }
 
@@ -523,36 +531,42 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, ReverseValidation_Di
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 54321;
-    
-    // Direct SQL insert - updated schema includes payment_key_id
-    std::string insertQuery = "INSERT INTO " + mTableName + " (uuid, maximal_claiming_block_number, observing_state, recording_time, payment_key_id) VALUES ($1, $2, $3, $4, (SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1));";
-    
-    const char *params[4];
-    int lengths[4];
-    int formats[4] = {1, 1, 0, 0};
-    
+    // For this test, effective_claiming_block_number equals maximal_claiming_block_number
+    BlockNumber effectiveBlockNumber = blockNumber;
+
+    // Direct SQL insert - updated schema includes effective_claiming_block_number and payment_key_id
+    std::string insertQuery = "INSERT INTO " + mTableName + " (uuid, maximal_claiming_block_number, effective_claiming_block_number, observing_state, recording_time, payment_key_id) VALUES ($1, $2, $3, $4, $5, (SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1));";
+
+    const char *params[5];
+    int lengths[5];
+    int formats[5] = {1, 1, 1, 0, 0};
+
     params[0] = reinterpret_cast<const char*>(transactionUUID.data);
     lengths[0] = TransactionUUID::kBytesSize;
-    
+
     params[1] = reinterpret_cast<const char*>(&blockNumber);
     lengths[1] = sizeof(BlockNumber);
-    
+
+    // Bind effective claiming block number
+    params[2] = reinterpret_cast<const char*>(&effectiveBlockNumber);
+    lengths[2] = sizeof(BlockNumber);
+
     std::string stateStr = "0";
-    params[2] = stateStr.c_str();
-    lengths[2] = 0;
-    
+    params[3] = stateStr.c_str();
+    lengths[3] = 0;
+
     GEOEpochTimestamp ts = microsecondsSinceGEOEpoch(utc_now());
     std::string tsStr = std::to_string(ts);
-    params[3] = tsStr.c_str();
-    lengths[3] = 0;
-    
-    PGresult *result = PQexecParams(mConnection, insertQuery.c_str(), 4, nullptr, params, lengths, formats, 0);
+    params[4] = tsStr.c_str();
+    lengths[4] = 0;
+
+    PGresult *result = PQexecParams(mConnection, insertQuery.c_str(), 5, nullptr, params, lengths, formats, 0);
     EXPECT_EQ(PQresultStatus(result), PGRES_COMMAND_OK);
     PQclear(result);
-    
+
     // Use handler to verify data
     EXPECT_TRUE(mHandler->isTransactionPresent(transactionUUID));
-    
+
     auto uncertainTransactions = mHandler->transactionsWithUncertainObservingState();
     ASSERT_EQ(uncertainTransactions.size(), 1);
     EXPECT_EQ(uncertainTransactions[0].second, blockNumber);
@@ -563,27 +577,34 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, MultipleStateTransit
 {
     auto transactionUUID = createTestTransactionUUID();
     BlockNumber blockNumber = 12345;
-    
+
     // Save record
-    mHandler->saveRecord(transactionUUID, blockNumber);
-    EXPECT_EQ(getObservingState(transactionUUID), 0);
-    
-    // Multiple state transitions
-    for (int state = 1; state <= 5; ++state) {
-        mHandler->updateTransactionState(transactionUUID, state);
-        EXPECT_EQ(getObservingState(transactionUUID), state);
-    }
+    mHandler->saveRecord(transactionUUID, blockNumber, blockNumber);
+    EXPECT_EQ(getObservingState(transactionUUID), static_cast<int>(PaymentObservingState::Init));
+
+    // Multiple state transitions through all valid states
+    mHandler->updateTransactionState(transactionUUID, PaymentObservingState::Committed);
+    EXPECT_EQ(getObservingState(transactionUUID), static_cast<int>(PaymentObservingState::Committed));
+
+    mHandler->updateTransactionState(transactionUUID, PaymentObservingState::ParticipantsVotesPresent);
+    EXPECT_EQ(getObservingState(transactionUUID), static_cast<int>(PaymentObservingState::ParticipantsVotesPresent));
+
+    mHandler->updateTransactionState(transactionUUID, PaymentObservingState::RejectedByObserving);
+    EXPECT_EQ(getObservingState(transactionUUID), static_cast<int>(PaymentObservingState::RejectedByObserving));
 }
 
 // transactionsForObserverMonitoring tests
+// Note: transactionsForObserverMonitoring now filters by effective_claiming_block_number
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_BasicRetrieval_ReturnsMatchingTransactions)
 {
-    mHandler->saveRecord(createTestTransactionUUID("bn50"), static_cast<BlockNumber>(50));
-    mHandler->saveRecord(createTestTransactionUUID("bn100"), static_cast<BlockNumber>(100));
-    mHandler->saveRecord(createTestTransactionUUID("bn150"), static_cast<BlockNumber>(150));
-    mHandler->saveRecord(createTestTransactionUUID("bn200"), static_cast<BlockNumber>(200));
-    mHandler->saveRecord(createTestTransactionUUID("bn250"), static_cast<BlockNumber>(250));
+    // Save records where effective_claiming_block_number equals maximal_claiming_block_number
+    mHandler->saveRecord(createTestTransactionUUID("bn50"), static_cast<BlockNumber>(50), static_cast<BlockNumber>(50));
+    mHandler->saveRecord(createTestTransactionUUID("bn100"), static_cast<BlockNumber>(100), static_cast<BlockNumber>(100));
+    mHandler->saveRecord(createTestTransactionUUID("bn150"), static_cast<BlockNumber>(150), static_cast<BlockNumber>(150));
+    mHandler->saveRecord(createTestTransactionUUID("bn200"), static_cast<BlockNumber>(200), static_cast<BlockNumber>(200));
+    mHandler->saveRecord(createTestTransactionUUID("bn250"), static_cast<BlockNumber>(250), static_cast<BlockNumber>(250));
 
+    // Filter by effective_claiming_block_number > 100
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(100), 10);
 
     ASSERT_EQ(result.size(), 3);
@@ -592,30 +613,35 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
     EXPECT_EQ(result[2].second, static_cast<BlockNumber>(250));
 }
 
-TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_StateFiltering_OnlyReturnsUncertainState)
+TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_StateFiltering_OnlyReturnsApprovedState)
 {
     auto uuidState0 = createTestTransactionUUID("state0");
     auto uuidState1 = createTestTransactionUUID("state1");
     auto uuidState2 = createTestTransactionUUID("state2");
 
-    mHandler->saveRecord(uuidState0, static_cast<BlockNumber>(100));
-    mHandler->saveRecord(uuidState1, static_cast<BlockNumber>(100));
-    mHandler->saveRecord(uuidState2, static_cast<BlockNumber>(100));
+    mHandler->saveRecord(uuidState0, static_cast<BlockNumber>(100), static_cast<BlockNumber>(100));
+    mHandler->saveRecord(uuidState1, static_cast<BlockNumber>(100), static_cast<BlockNumber>(100));
+    mHandler->saveRecord(uuidState2, static_cast<BlockNumber>(100), static_cast<BlockNumber>(100));
 
-    mHandler->updateTransactionState(uuidState1, 1);
-    mHandler->updateTransactionState(uuidState2, 2);
+    // uuidState0 stays Uncertain (0)
+    // uuidState1 becomes Approved (1) - this is what transactionsForObserverMonitoring filters for
+    // uuidState2 becomes ParticipantsVotesPresent (3)
+    mHandler->updateTransactionState(uuidState1, PaymentObservingState::Committed);
+    mHandler->updateTransactionState(uuidState2, PaymentObservingState::ParticipantsVotesPresent);
 
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(0), 10);
 
+    // transactionsForObserverMonitoring filters by observing_state = 1 (Approved)
     ASSERT_EQ(result.size(), 1);
-    EXPECT_EQ(result[0].first.stringUUID(), uuidState0.stringUUID());
+    EXPECT_EQ(result[0].first.stringUUID(), uuidState1.stringUUID());
     EXPECT_EQ(result[0].second, static_cast<BlockNumber>(100));
 }
 
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_LimitParameter_RespectsLimit)
 {
     for (uint64_t i = 1; i <= 10; ++i) {
-        mHandler->saveRecord(createTestTransactionUUID("limit" + std::to_string(i)), static_cast<BlockNumber>(i * 10));
+        auto blockNum = static_cast<BlockNumber>(i * 10);
+        mHandler->saveRecord(createTestTransactionUUID("limit" + std::to_string(i)), blockNum, blockNum);
     }
 
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(0), 3);
@@ -628,9 +654,9 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
 
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_AscendingOrder_OldestFirst)
 {
-    mHandler->saveRecord(createTestTransactionUUID("bn30"), static_cast<BlockNumber>(30));
-    mHandler->saveRecord(createTestTransactionUUID("bn10"), static_cast<BlockNumber>(10));
-    mHandler->saveRecord(createTestTransactionUUID("bn20"), static_cast<BlockNumber>(20));
+    mHandler->saveRecord(createTestTransactionUUID("bn30"), static_cast<BlockNumber>(30), static_cast<BlockNumber>(30));
+    mHandler->saveRecord(createTestTransactionUUID("bn10"), static_cast<BlockNumber>(10), static_cast<BlockNumber>(10));
+    mHandler->saveRecord(createTestTransactionUUID("bn20"), static_cast<BlockNumber>(20), static_cast<BlockNumber>(20));
 
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(0), 10);
 
@@ -642,9 +668,10 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
 
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_EmptyResult_NoMatchingTransactions)
 {
-    mHandler->saveRecord(createTestTransactionUUID("bn50"), static_cast<BlockNumber>(50));
-    mHandler->saveRecord(createTestTransactionUUID("bn100"), static_cast<BlockNumber>(100));
+    mHandler->saveRecord(createTestTransactionUUID("bn50"), static_cast<BlockNumber>(50), static_cast<BlockNumber>(50));
+    mHandler->saveRecord(createTestTransactionUUID("bn100"), static_cast<BlockNumber>(100), static_cast<BlockNumber>(100));
 
+    // effective_claiming_block_number must be > 100, but both are <= 100
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(100), 10);
 
     EXPECT_TRUE(result.empty());
@@ -652,8 +679,9 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
 
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_BoundaryCondition_ExactBlockNumber)
 {
-    mHandler->saveRecord(createTestTransactionUUID("bn100"), static_cast<BlockNumber>(100));
+    mHandler->saveRecord(createTestTransactionUUID("bn100"), static_cast<BlockNumber>(100), static_cast<BlockNumber>(100));
 
+    // effective_claiming_block_number must be > 100, but it equals 100
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(100), 10);
 
     EXPECT_TRUE(result.empty());
@@ -661,8 +689,8 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
 
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_ZeroLimit_ReturnsEmpty)
 {
-    mHandler->saveRecord(createTestTransactionUUID("bn100"), static_cast<BlockNumber>(100));
-    mHandler->saveRecord(createTestTransactionUUID("bn200"), static_cast<BlockNumber>(200));
+    mHandler->saveRecord(createTestTransactionUUID("bn100"), static_cast<BlockNumber>(100), static_cast<BlockNumber>(100));
+    mHandler->saveRecord(createTestTransactionUUID("bn200"), static_cast<BlockNumber>(200), static_cast<BlockNumber>(200));
 
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(0), 0);
 
@@ -672,9 +700,11 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_LargeDataset_ReturnsExpectedRange)
 {
     for (uint64_t i = 1; i <= 200; ++i) {
-        mHandler->saveRecord(createTestTransactionUUID("bulk" + std::to_string(i)), static_cast<BlockNumber>(i));
+        auto blockNum = static_cast<BlockNumber>(i);
+        mHandler->saveRecord(createTestTransactionUUID("bulk" + std::to_string(i)), blockNum, blockNum);
     }
 
+    // Filter by effective_claiming_block_number > 50
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(50), 100);
 
     ASSERT_EQ(result.size(), 100);
@@ -684,4 +714,27 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
     for (size_t i = 0; i < result.size(); ++i) {
         EXPECT_EQ(result[i].second, static_cast<BlockNumber>(51 + i));
     }
+}
+
+// Test to verify that effective_claiming_block_number filtering works correctly
+// when it differs from maximal_claiming_block_number
+TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_EffectiveBlockDiffersFromMaximal)
+{
+    // Transaction with maximal=50, effective=100 (dispute grace period of 50 blocks)
+    auto uuid1 = createTestTransactionUUID("tx1");
+    mHandler->saveRecord(uuid1, static_cast<BlockNumber>(50), static_cast<BlockNumber>(100));
+
+    // Transaction with maximal=60, effective=60 (no dispute grace period)
+    auto uuid2 = createTestTransactionUUID("tx2");
+    mHandler->saveRecord(uuid2, static_cast<BlockNumber>(60), static_cast<BlockNumber>(60));
+
+    // Query with minBlockNumber=70
+    // uuid1 should be returned (effective=100 > 70)
+    // uuid2 should NOT be returned (effective=60 <= 70)
+    auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(70), 10);
+
+    ASSERT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0].first.stringUUID(), uuid1.stringUUID());
+    // The returned maximal_claiming_block_number should be 50
+    EXPECT_EQ(result[0].second, static_cast<BlockNumber>(50));
 }

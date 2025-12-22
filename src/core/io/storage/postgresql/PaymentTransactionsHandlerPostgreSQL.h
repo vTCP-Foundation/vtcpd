@@ -20,20 +20,31 @@ public:
         const std::string &tableName,
         Logger &logger);
 
+    /**
+     * Saves new payment transaction record.
+     *
+     * @param transactionUUID Unique identifier of the payment transaction
+     * @param maximalClaimingBlockNumber The latest block number by which the transaction
+     *        can be claimed on the blockchain
+     * @param effectiveClaimingBlockNumber The extended claiming deadline that includes
+     *        the dispute grace period (maximalClaimingBlockNumber + disputeGracePeriodBlocksCount)
+     */
     void saveRecord(
         const TransactionUUID &transactionUUID,
-        BlockNumber maximalClaimingBlockNumber) override;
+        BlockNumber maximalClaimingBlockNumber,
+        BlockNumber effectiveClaimingBlockNumber) override;
 
     void updateTransactionState(
         const TransactionUUID &transactionUUID,
-        int observingTransactionState) override;
+        PaymentObservingState observingState) override;
 
     std::vector<std::pair<TransactionUUID, BlockNumber>> transactionsWithUncertainObservingState() override;
 
     /**
-     * Retrieves transactions still inside claiming window and in uncertain observing state.
+     * Retrieves transactions still inside effective claiming window (including dispute
+     * grace period) and in uncertain observing state.
      *
-     * @param minBlockNumber Lower exclusive bound for maximal_claiming_block_number
+     * @param minBlockNumber Lower exclusive bound for effective_claiming_block_number
      * @param limit Maximum number of transactions to return
      * @return Vector of (TransactionUUID, BlockNumber) ordered by claiming block
      */

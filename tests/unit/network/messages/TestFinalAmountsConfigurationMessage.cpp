@@ -71,6 +71,7 @@ TEST(FinalAmountsConfigurationMessage, SignaturesVectorAdded)
 
     map<PaymentNodeID, Contractor::Shared> participants;
     BlockNumber maxBlockNumber = 1000;
+    uint16_t disputeGracePeriodBlocksCount = 4000;
 
     // Create test signatures
     auto keys1 = MsgEncryptor::generateKeyTrio("");
@@ -92,6 +93,7 @@ TEST(FinalAmountsConfigurationMessage, SignaturesVectorAdded)
         finalAmountsConfig,
         participants,
         maxBlockNumber,
+        disputeGracePeriodBlocksCount,
         signatures);
 
     const auto& retrievedSignatures = message.signatures();
@@ -100,6 +102,7 @@ TEST(FinalAmountsConfigurationMessage, SignaturesVectorAdded)
     EXPECT_EQ(retrievedSignatures[1].first, SerializedEquivalent(2));
     EXPECT_EQ(retrievedSignatures[0].second, sig1);
     EXPECT_EQ(retrievedSignatures[1].second, sig2);
+    EXPECT_EQ(message.disputeGracePeriodBlocksCount(), disputeGracePeriodBlocksCount);
 }
 
 // Test 13.3: testIsReceiptContainsEmptyVector
@@ -143,6 +146,7 @@ TEST(FinalAmountsConfigurationMessage, IsReceiptContainsSingleElement)
 
     map<PaymentNodeID, Contractor::Shared> participants;
     BlockNumber maxBlockNumber = 1000;
+    uint16_t disputeGracePeriodBlocksCount = 4000;
 
     auto sig = make_shared<sphincs::Signature>();
 
@@ -157,10 +161,12 @@ TEST(FinalAmountsConfigurationMessage, IsReceiptContainsSingleElement)
         finalAmountsConfig,
         participants,
         maxBlockNumber,
+        disputeGracePeriodBlocksCount,
         signatures);
 
     EXPECT_TRUE(message.isReceiptContains());
     EXPECT_EQ(message.signatures().size(), 1);
+    EXPECT_EQ(message.disputeGracePeriodBlocksCount(), disputeGracePeriodBlocksCount);
 }
 
 // Test 13.5: testIsReceiptContainsMultipleElements
@@ -178,6 +184,7 @@ TEST(FinalAmountsConfigurationMessage, IsReceiptContainsMultipleElements)
 
     map<PaymentNodeID, Contractor::Shared> participants;
     BlockNumber maxBlockNumber = 1000;
+    uint16_t disputeGracePeriodBlocksCount = 4000;
 
     auto sig1 = make_shared<sphincs::Signature>();
     auto sig2 = make_shared<sphincs::Signature>();
@@ -196,10 +203,12 @@ TEST(FinalAmountsConfigurationMessage, IsReceiptContainsMultipleElements)
         finalAmountsConfig,
         participants,
         maxBlockNumber,
+        disputeGracePeriodBlocksCount,
         signatures);
 
     EXPECT_TRUE(message.isReceiptContains());
     EXPECT_EQ(message.signatures().size(), 3);
+    EXPECT_EQ(message.disputeGracePeriodBlocksCount(), disputeGracePeriodBlocksCount);
 }
 
 // Test 13.6: testDeprecatedConstructorNullSignature
@@ -278,6 +287,7 @@ TEST(FinalAmountsConfigurationMessage, SerializationDeserializationMultipleSigna
 
     map<PaymentNodeID, Contractor::Shared> participants;
     BlockNumber maxBlockNumber = 4000;
+    uint16_t disputeGracePeriodBlocksCount = 4000;
 
     auto sig1 = make_shared<sphincs::Signature>();
     auto sig2 = make_shared<sphincs::Signature>();
@@ -296,6 +306,7 @@ TEST(FinalAmountsConfigurationMessage, SerializationDeserializationMultipleSigna
         finalAmountsConfig,
         participants,
         maxBlockNumber,
+        disputeGracePeriodBlocksCount,
         signatures);
 
     auto [buffer, size] = originalMessage.serializeToBytes();
@@ -317,4 +328,5 @@ TEST(FinalAmountsConfigurationMessage, SerializationDeserializationMultipleSigna
     EXPECT_EQ(deserializedMessage.transactionUUID(), uuid);
     EXPECT_EQ(deserializedMessage.equivalent(), equivalent);
     EXPECT_EQ(deserializedMessage.maximalClaimingBlockNumber(), maxBlockNumber);
+    EXPECT_EQ(deserializedMessage.disputeGracePeriodBlocksCount(), disputeGracePeriodBlocksCount);
 }

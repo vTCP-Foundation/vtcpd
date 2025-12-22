@@ -339,8 +339,11 @@ TransactionResult::SharedConst BasePaymentTransaction::runVotesCheckingStage()
         debug() << "Voted +";
         mTransactionIsVoted = true;
 
+        // Save payment transaction record. For non-exchange payment transactions,
+        // effective claiming block equals maximal claiming block (no dispute grace period)
         ioTransaction->paymentTransactionsHandler()->saveRecord(
             mTransactionUUID,
+            mMaximalClaimingBlockNumber,
             mMaximalClaimingBlockNumber);
     } catch (IOError &e) {
         error() << "Can't sign the transaction. See logs for the details.";

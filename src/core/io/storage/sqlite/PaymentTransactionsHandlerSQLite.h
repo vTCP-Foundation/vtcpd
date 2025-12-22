@@ -36,17 +36,24 @@ public:
 
     /**
      * Saves new payment transaction record.
+     *
+     * @param transactionUUID Unique identifier of the payment transaction
+     * @param maximalClaimingBlockNumber The latest block number by which the transaction
+     *        can be claimed on the blockchain
+     * @param effectiveClaimingBlockNumber The extended claiming deadline that includes
+     *        the dispute grace period (maximalClaimingBlockNumber + disputeGracePeriodBlocksCount)
      */
     void saveRecord(
         const TransactionUUID &transactionUUID,
-        BlockNumber maximalClaimingBlockNumber) override;
+        BlockNumber maximalClaimingBlockNumber,
+        BlockNumber effectiveClaimingBlockNumber) override;
 
     /**
      * Updates transaction observing state.
      */
     void updateTransactionState(
         const TransactionUUID &transactionUUID,
-        int observingTransactionState) override;
+        PaymentObservingState observingState) override;
 
     /**
      * Retrieves transactions with uncertain observing state (state = 0).
@@ -54,10 +61,11 @@ public:
     vector<pair<TransactionUUID, BlockNumber>> transactionsWithUncertainObservingState() override;
 
     /**
-     * Retrieves transactions that are still within their claiming period and
-     * awaiting observer confirmation (state = 0), ordered by claiming block.
+     * Retrieves transactions that are still within their effective claiming period
+     * (including dispute grace period) and awaiting observer confirmation (state = 0),
+     * ordered by claiming block.
      *
-     * @param minBlockNumber Lower bound for maximal_claiming_block_number (exclusive)
+     * @param minBlockNumber Lower bound for effective_claiming_block_number (exclusive)
      * @param limit Maximum number of records to return
      * @return Vector of (TransactionUUID, BlockNumber) sorted by claiming block
      */

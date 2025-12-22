@@ -90,6 +90,9 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::run()
         case Stages::Coordinator_FinalAmountsConfigurationConfirmation:
             return runFinalAmountsConfigurationConfirmation();
 
+        case Stages::Common_ObservingBlockNumberProcessing:
+            return runCheckObservingBlockNumber();
+
         case Stages::Common_Voting:
             return runVotesStageWithCoordinatorClarification();
 
@@ -490,21 +493,8 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runFinalReser
 
     mMaximalClaimingBlockNumber = kMessage->maximalClaimingBlockNumber();
     debug() << "maximal claiming block number on Coordinator side: " << mMaximalClaimingBlockNumber;
-    BlockNumber maximalClaimingBlockNumber;
-    try {
-        maximalClaimingBlockNumber = mObservingHandler->getActualBlockNumber() + kCountBlocksForClaiming;
-    } catch (const NotFoundError& e) {
-        error() << "Failed to get actual block number: " << e.what();
-        removeAllDataFromStorageConcerningTransaction();
-        sendErrorMessageOnFinalAmountsConfiguration();
-        return reject("Failed to get actual block number. Rejected.");
-    }
-    debug() << "maximal claiming block number on own side: " << maximalClaimingBlockNumber;
-    if (!checkMaxClaimingBlockNumber(maximalClaimingBlockNumber)) {
-        removeAllDataFromStorageConcerningTransaction();
-        sendErrorMessageOnFinalAmountsConfiguration();
-        return reject("Max claiming block number sending by coordinator is invalid . Rejected.");
-    }
+    mDisputeGracePeriodBlocksCount = kMessage->disputeGracePeriodBlocksCount();
+    debug() << "dispute grace period blocks count on Coordinator side: " << mDisputeGracePeriodBlocksCount;
 
     debug() << "final amounts configuration size: " << kMessage->finalAmountsConfiguration().size();
     for (const auto &finalAmount : kMessage->finalAmountsConfiguration()) {
@@ -607,67 +597,16 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runFinalReser
         }
     }
 
-    mKeysStore->ensurePaymentKeyExists(ioTransaction);
-    mPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
-    mParticipantsPublicKeysHashes.insert(
-        make_pair(
-            mContractorsManager->selfContractor()->mainAddress()->fullAddress(),
-            make_pair(
-                mPaymentNodesIds[mContractorsManager->selfContractor()->mainAddress()->fullAddress()],
-                mPublicKey->hash())));
-
-    // send public key hash to all participants except coordinator
-    auto ownPaymentID = mPaymentNodesIds[mContractorsManager->selfContractor()->mainAddress()->fullAddress()];
-    for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
-        if (paymentNodeIdAndContractor.second == mCoordinator) {
-            continue;
-        }
-        if (paymentNodeIdAndContractor.second == mContractorsManager->selfContractor()) {
-            continue;
-        }
-        info() << "Send public key hash to " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress();
-        sendMessage<TransactionPublicKeyHashMessage>(
-            paymentNodeIdAndContractor.second->mainAddress(),
-            mEquivalent,
-            mContractorsManager->ownAddresses(),
-            currentTransactionUUID(),
-            ownPaymentID,
-            mPublicKey->hash());
-    }
-
-    // coordinator don't send public key hash
-    if (mPaymentParticipants.size() == mParticipantsPublicKeysHashes.size() + 1) {
-        info() << "All neighbors send theirs reservations";
-        // all neighbors sent theirs reservations
-        if (!checkAllPublicKeyHashesProperly()) {
-            removeAllDataFromStorageConcerningTransaction(ioTransaction);
-            sendErrorMessageOnFinalAmountsConfiguration();
-            return reject("Public key hashes are not properly. Rejected");
-        }
-        info() << "All public key hashes are properly";
-
-        sendMessage<FinalAmountsConfigurationResponseMessage>(
-            mCoordinator->mainAddress(),
-            mEquivalent,
-            mContractorsManager->ownAddresses(),
-            currentTransactionUUID(),
-            FinalAmountsConfigurationResponseMessage::Accepted,
-            mPublicKey);
-        info() << "Accepted final amounts configuration";
-
-        mStep = Common_Voting;
-        mTTLRequestWasSend = false;
-        return resultWaitForMessageTypes( {
-            Message::Payments_ParticipantsPublicKeys,
-            Message::Payments_TTLProlongationResponse},
-        maxNetworkDelay(5)); // todo : need discuss this parameter (5)
-    }
-
-    mStep = Coordinator_FinalAmountsConfigurationConfirmation;
-    return resultWaitForMessageTypes( {
-        Message::Payments_TransactionPublicKeyHash,
+    mStep = Common_ObservingBlockNumberProcessing;
+    sendRpcRequest(
+        make_shared<GetBlockNumberRpcRequest>(
+            mTransactionUUID));
+    mBlockNumberObtainingInProcess = true;
+    return resultWaitForRpcResponseAndMessagesTypes(
+        RpcMethod::GetBlockNumber,
+        {Message::Payments_TransactionPublicKeyHash,
         Message::Payments_TTLProlongationResponse},
-    maxNetworkDelay(2));
+        maxNetworkDelay(1));
 }
 
 TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runFinalReservationsNeighborConfirmation()
@@ -746,6 +685,13 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runFinalReser
         maxNetworkDelay(1));
     }
 
+    if (mBlockNumberObtainingInProcess) {
+        return resultWaitForRpcResponseAndMessagesTypes(
+        RpcMethod::GetBlockNumber,
+        {Message::Payments_TransactionPublicKeyHash},
+        maxNetworkDelay(1));
+    }
+
     // coordinator already sent final amounts configuration
     // coordinator don't send public key hash
     if (mPaymentParticipants.size() == mParticipantsPublicKeysHashes.size() + 1) {
@@ -779,6 +725,103 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runFinalReser
         Message::Payments_TTLProlongationResponse},
     maxNetworkDelay(2));
 }
+
+TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runCheckObservingBlockNumber()
+{
+    info() << "runCheckObservingBlockNumber";
+    if (contextIsValid(Message::Payments_TransactionPublicKeyHash, false)) {
+        return runFinalReservationsNeighborConfirmation();
+    }
+
+    if (!rpcRequestIsValid(RpcMethod::GetBlockNumber)) {
+        removeAllDataFromStorageConcerningTransaction();
+        sendErrorMessageOnFinalAmountsConfiguration();
+        return reject("Can't check observing actual block number. Rejected.");
+    }
+    auto blockNumberRpcResponse = popRpcResponse<GetBlockNumberRpcResponse>();
+    if (blockNumberRpcResponse->status() != RpcResponseStatus::Success) {
+        removeAllDataFromStorageConcerningTransaction();
+        sendErrorMessageOnFinalAmountsConfiguration();
+        return reject("Can't check observing actual block number. RCP response is not successful. Rejected.");
+    }
+    auto maximalClaimingBlockNumber = blockNumberRpcResponse->blockNumber() + kCountBlocksForClaiming;
+    debug() << "maximal claiming block number on own side: " << maximalClaimingBlockNumber;
+    if (!checkMaxClaimingBlockNumber(maximalClaimingBlockNumber)) {
+        removeAllDataFromStorageConcerningTransaction();
+        sendErrorMessageOnFinalAmountsConfiguration();
+        return reject("Max claiming block number sending by coordinator is invalid . Rejected.");
+    }
+    if (mDisputeGracePeriodBlocksCount != kDisputeGracePeriodBlocksCount) {
+        removeAllDataFromStorageConcerningTransaction();
+        sendErrorMessageOnFinalAmountsConfiguration();
+        return reject("Dispute grace period blocks count is not properly. Rejected.");
+    }
+    mBlockNumberObtainingInProcess = false;
+
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    mKeysStore->ensurePaymentKeyExists(ioTransaction);
+    mPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+    mParticipantsPublicKeysHashes.insert(
+        make_pair(
+            mContractorsManager->selfContractor()->mainAddress()->fullAddress(),
+            make_pair(
+                mPaymentNodesIds[mContractorsManager->selfContractor()->mainAddress()->fullAddress()],
+                mPublicKey->hash())));
+
+    // send public key hash to all participants except coordinator
+    auto ownPaymentID = mPaymentNodesIds[mContractorsManager->selfContractor()->mainAddress()->fullAddress()];
+    for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
+        if (paymentNodeIdAndContractor.second == mCoordinator) {
+            continue;
+        }
+        if (paymentNodeIdAndContractor.second == mContractorsManager->selfContractor()) {
+            continue;
+        }
+        info() << "Send public key hash to " << paymentNodeIdAndContractor.second->mainAddress()->fullAddress();
+        sendMessage<TransactionPublicKeyHashMessage>(
+            paymentNodeIdAndContractor.second->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID(),
+            ownPaymentID,
+            mPublicKey->hash());
+    }
+
+    // coordinator don't send public key hash
+    if (mPaymentParticipants.size() == mParticipantsPublicKeysHashes.size() + 1) {
+        info() << "All neighbors send theirs reservations";
+        // all neighbors sent theirs reservations
+        if (!checkAllPublicKeyHashesProperly()) {
+            removeAllDataFromStorageConcerningTransaction(ioTransaction);
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Public key hashes are not properly. Rejected");
+        }
+        info() << "All public key hashes are properly";
+
+        sendMessage<FinalAmountsConfigurationResponseMessage>(
+            mCoordinator->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID(),
+            FinalAmountsConfigurationResponseMessage::Accepted,
+            mPublicKey);
+        info() << "Accepted final amounts configuration";
+
+        mStep = Common_Voting;
+        mTTLRequestWasSend = false;
+        return resultWaitForMessageTypes( {
+            Message::Payments_ParticipantsPublicKeys,
+            Message::Payments_TTLProlongationResponse},
+        maxNetworkDelay(5)); // todo : need discuss this parameter (5)
+    }
+
+    mStep = Coordinator_FinalAmountsConfigurationConfirmation;
+    return resultWaitForMessageTypes( {
+        Message::Payments_TransactionPublicKeyHash,
+        Message::Payments_TTLProlongationResponse},
+    maxNetworkDelay(2));
+}
+
 
 TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runVotesStageWithCoordinatorClarification()
 {

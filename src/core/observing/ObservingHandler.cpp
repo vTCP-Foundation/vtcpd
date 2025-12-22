@@ -267,7 +267,7 @@ bool ObservingHandler::performOneClaim(
                 auto ioTransaction = mStorageHandler->beginTransaction();
                 ioTransaction->paymentTransactionsHandler()->updateTransactionState(
                     observingTransaction->transactionUUID(),
-                    ObservingTransaction::RejectedByObserving);
+                    PaymentObservingState::RejectedByObserving);
                 return true;
             }
             observingTransaction->rescheduleNextActionTime();
@@ -386,7 +386,7 @@ bool ObservingHandler::getParticipantsVotes(
         auto ioTransaction = mStorageHandler->beginTransaction();
         ioTransaction->paymentTransactionsHandler()->updateTransactionState(
             transactionUUID,
-            ObservingTransaction::ParticipantsVotesPresent);
+            PaymentObservingState::ParticipantsVotesPresent);
         return true;
     }
 

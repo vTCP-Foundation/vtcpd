@@ -1,5 +1,4 @@
 #include "CoordinatorExchangePaymentTransaction.h"
-#include "../../../network/messages/payments/FinalPathExchangeConfigurationMessage.h"
 #include "../../../rates/Commission.h"
 #include "../../../rates/ExchangeRate.h"
 #include "../../../rates/manager/ExchangeRatesManager.h"
@@ -644,7 +643,12 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runDirectA
         debug() << "Begin processing participants votes.";
 
         mStep = Common_ObservingBlockNumberProcessing;
-        return resultAwakeAsFastAsPossible();
+        sendRpcRequest(
+            make_shared<GetBlockNumberRpcRequest>(
+                mTransactionUUID));
+        return resultWaitForRpcResponse(
+            RpcMethod::GetBlockNumber,
+            maxNetworkDelay(1));
     }
     mStep = Stages::Coordinator_AmountReservation;
     return tryProcessNextPath();
@@ -758,12 +762,16 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
 
     // suspending process means that we already have block number resource
     if (!mIsSuspendedOnFinalAmountsConfirmationStage) {
-        try {
-            mMaximalClaimingBlockNumber = mObservingHandler->getActualBlockNumber() + kCountBlocksForClaiming;
-        } catch (const NotFoundError& e) {
-            error() << "Failed to get actual block number: " << e.what();
+        if (!rpcRequestIsValid(RpcMethod::GetBlockNumber)) {
+            error() << "Can't check observing actual block number. There are no RCP response. Rejected.";
             return resultUnexpectedError();
         }
+        auto blockNumberRpcResponse = popRpcResponse<GetBlockNumberRpcResponse>();
+        if (blockNumberRpcResponse->status() != RpcResponseStatus::Success) {
+            return reject("Can't check observing actual block number. RCP response is not successful. Rejected.");
+        }
+        mMaximalClaimingBlockNumber = blockNumberRpcResponse->blockNumber() + kCountBlocksForClaiming;
+        debug() << "maximal claiming block number: " << mMaximalClaimingBlockNumber;
     }
 
     // check if reservation to contractor present
@@ -880,6 +888,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
                     nodeConfig->second,  // vector<PathReservation>
                     mPaymentParticipants,
                     mMaximalClaimingBlockNumber,
+                    kDisputeGracePeriodBlocksCount,
                     signatures);
             } else {
                 // Node not found in configuration - send empty vector
@@ -893,6 +902,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
                     emptyReservations,
                     mPaymentParticipants,
                     mMaximalClaimingBlockNumber,
+                    kDisputeGracePeriodBlocksCount,
                     signatures);
             }
         } else {
@@ -912,7 +922,8 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
                     currentTransactionUUID(),
                     nodeConfig->second,  // vector<PathReservation>
                     mPaymentParticipants,
-                    mMaximalClaimingBlockNumber);
+                    mMaximalClaimingBlockNumber,
+                    kDisputeGracePeriodBlocksCount);
             } else {
                 // Node not found in configuration - send empty vector
                 warning() << "Node " << nodeKey << " not found in mNodesFinalAmountsConfiguration";
@@ -924,7 +935,8 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
                     currentTransactionUUID(),
                     emptyReservations,
                     mPaymentParticipants,
-                    mMaximalClaimingBlockNumber);
+                    mMaximalClaimingBlockNumber,
+                    kDisputeGracePeriodBlocksCount);
             }
         }
     }
@@ -1036,9 +1048,12 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runVotesCo
                     kCoordinatorPaymentNodeID,
                     signature.value()));
 
+            // Save payment transaction with effective claiming block number
+            // that includes the dispute grace period for extended monitoring
             ioTransaction->paymentTransactionsHandler()->saveRecord(
                 mTransactionUUID,
-                mMaximalClaimingBlockNumber);
+                mMaximalClaimingBlockNumber,
+                mMaximalClaimingBlockNumber + mDisputeGracePeriodBlocksCount);
         }
         debug() << "Voted +";
         const auto ownAddresses = mContractorsManager->ownAddresses();
@@ -1131,9 +1146,14 @@ void CoordinatorExchangePaymentTransaction::initAmountsReservationOnNextPath()
                << totalReserved << " >= " << mAmount << "), proceeding to next stage";
 
         // Request observing block number resource and transition to next stage
-        mResourcesManager->requestObservingBlockNumber(mTransactionUUID);
         mStep = Stages::Common_ObservingBlockNumberProcessing;
 
+        sendRpcRequest(
+            make_shared<GetBlockNumberRpcRequest>(
+                mTransactionUUID));
+
+        // TODO : this is a temporary solution to break the call chain.
+        // TODO : we need to find a better solution to proceed to the next stage.
         throw CallChainBreakException("Sufficient capacity reserved, proceeding to next stage");
     }
 
@@ -2303,11 +2323,12 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processNei
             debug() << "Total exchange amount: " << mExchangeAmount << ". Collected.";
 
             mStep = Common_ObservingBlockNumberProcessing;
-            mResourcesManager->requestObservingBlockNumber(
-                mTransactionUUID);
-            return resultWaitForResourceTypes(
-            {BaseResource::ObservingBlockNumber},
-            maxNetworkDelay(1));
+            sendRpcRequest(
+                make_shared<GetBlockNumberRpcRequest>(
+                    mTransactionUUID));
+            return resultWaitForRpcResponse(
+                RpcMethod::GetBlockNumber,
+                maxNetworkDelay(1));
         }
         return tryProcessNextPath();
     }
@@ -2567,11 +2588,12 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::processRem
             debug() << "Total exchange amount: " << mExchangeAmount << ". Collected.";
 
             mStep = Common_ObservingBlockNumberProcessing;
-            mResourcesManager->requestObservingBlockNumber(
-                mTransactionUUID);
-            return resultWaitForResourceTypes(
-            {BaseResource::ObservingBlockNumber},
-            maxNetworkDelay(1));
+            sendRpcRequest(
+                make_shared<GetBlockNumberRpcRequest>(
+                    mTransactionUUID));
+            return resultWaitForRpcResponse(
+                RpcMethod::GetBlockNumber,
+                maxNetworkDelay(1));
         }
         return tryProcessNextPath();
     }
@@ -2597,11 +2619,13 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::tryProcess
                << totalReserved << " >= " << mAmount << "), proceeding to next stage";
 
         // Request observing block number resource and transition to next stage
-        mResourcesManager->requestObservingBlockNumber(mTransactionUUID);
         mStep = Stages::Common_ObservingBlockNumberProcessing;
 
-        return resultWaitForResourceTypes(
-            {BaseResource::ObservingBlockNumber},
+        sendRpcRequest(
+            make_shared<GetBlockNumberRpcRequest>(
+                mTransactionUUID));
+        return resultWaitForRpcResponse(
+            RpcMethod::GetBlockNumber,
             maxNetworkDelay(1));
     }
 
@@ -4283,13 +4307,16 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::proceedToN
     info() << "Sufficient capacity reserved, proceeding to final amounts configuration";
 
     // Request observing block number resource before proceeding
-    mResourcesManager->requestObservingBlockNumber(mTransactionUUID);
+    // mResourcesManager->requestObservingBlockNumber(mTransactionUUID);
+
+    sendRpcRequest(
+        make_shared<GetBlockNumberRpcRequest>(
+            mTransactionUUID));
 
     // Transition to final amounts configuration stage (via observing block number)
     mStep = Stages::Common_ObservingBlockNumberProcessing;
-
-    return resultWaitForResourceTypes(
-        {BaseResource::ObservingBlockNumber},
+    return resultWaitForRpcResponse(
+        RpcMethod::GetBlockNumber,
         maxNetworkDelay(1));
 }
 

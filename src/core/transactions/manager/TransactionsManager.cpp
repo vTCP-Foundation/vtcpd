@@ -1506,7 +1506,7 @@ void TransactionsManager::launchCoordinatorExchangePaymentTransaction(
             transaction->trustLineActionSignal);
         subscribeForKeysSharingSignal(
             transaction->publicKeysSharingSignal);
-        prepareAndSchedule(transaction, true, false, true);
+        prepareAndSchedule(transaction, true, false, true, true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for CoordinatorPaymentTransaction "
                    "with equivalent " << command->equivalent() << " Details are: " << e.what();
@@ -1597,7 +1597,7 @@ void TransactionsManager::launchReceiverExchangePaymentTransaction(
             transaction->trustLineActionSignal);
         subscribeForKeysSharingSignal(
             transaction->publicKeysSharingSignal);
-        prepareAndSchedule(transaction, false, false, true);
+        prepareAndSchedule(transaction, false, false, true, true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for ReceiverExchangePaymentTransaction "
                    "with equivalent " << message->equivalent() << " Details are: " << e.what();
@@ -1686,7 +1686,7 @@ void TransactionsManager::launchIntermediateNodeExchangePaymentTransaction(
             transaction->trustLineActionSignal);
         subscribeForKeysSharingSignal(
             transaction->publicKeysSharingSignal);
-        prepareAndSchedule(transaction, false, false, true);
+        prepareAndSchedule(transaction, false, false, true, true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for IntermediateNodeExchangePaymentTransaction "
                    "with equivalent " << message->equivalent() << " Details are: " << e.what();

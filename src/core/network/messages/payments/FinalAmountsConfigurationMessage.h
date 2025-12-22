@@ -31,7 +31,8 @@ public:
         const TransactionUUID &transactionUUID,
         const vector<PathReservation> &finalAmountsConfig,
         const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
-        const BlockNumber maximalClaimingBlockNumber);
+        const BlockNumber maximalClaimingBlockNumber,
+        const uint16_t disputeGracePeriodBlocksCount);
 
     // NEW: Constructor with PathReservation vector and multiple receipts
     FinalAmountsConfigurationMessage(
@@ -41,9 +42,11 @@ public:
         const vector<PathReservation> &finalAmountsConfig,
         const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
         const BlockNumber maximalClaimingBlockNumber,
+        const uint16_t disputeGracePeriodBlocksCount,
         const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures);
 
     // NEW: Constructor with PathReservation vector and single receipt
+    // TODO: Remove this constructor
     FinalAmountsConfigurationMessage(
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> senderAddresses,
@@ -51,9 +54,11 @@ public:
         const vector<PathReservation> &finalAmountsConfig,
         const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
         const BlockNumber maximalClaimingBlockNumber,
+        const uint16_t disputeGracePeriodBlocksCount,
         const sphincs::Signature::Shared signature);
 
     // NEW: Constructor with multiple receipts (for new transactions)
+    // TODO: Remove this constructor
     FinalAmountsConfigurationMessage(
         const SerializedEquivalent equivalent,
         vector<BaseAddress::Shared> senderAddresses,
@@ -61,6 +66,7 @@ public:
         const vector<pair<PathID, ConstSharedTrustLineAmount>> &finalAmountsConfig,
         const map<PaymentNodeID, Contractor::Shared> &paymentParticipants,
         const BlockNumber maximalClaimingBlockNumber,
+        const uint16_t disputeGracePeriodBlocksCount,
         const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> &signatures);
 
     // DEPRECATED: Constructor with single receipt (for old transactions backward compatibility)
@@ -82,6 +88,8 @@ public:
 
     const BlockNumber maximalClaimingBlockNumber() const;
 
+    const uint16_t disputeGracePeriodBlocksCount() const;
+
     bool isReceiptContains() const;
 
     const vector<pair<SerializedEquivalent, sphincs::Signature::Shared>>& signatures() const;
@@ -91,6 +99,7 @@ public:
 private:
     map<PaymentNodeID, Contractor::Shared> mPaymentParticipants;
     BlockNumber mMaximalClaimingBlockNumber;
+    uint16_t mDisputeGracePeriodBlocksCount;
     vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> mSignatures;
 };
 

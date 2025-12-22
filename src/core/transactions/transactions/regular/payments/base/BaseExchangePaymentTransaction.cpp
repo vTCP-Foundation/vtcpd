@@ -1,5 +1,8 @@
 #include "BaseExchangePaymentTransaction.h"
 
+// Out-of-class definition for ODR-used static const member
+const uint16_t BaseExchangePaymentTransaction::kDisputeGracePeriodBlocksCount;
+
 BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
     const TransactionType type,
     const SerializedEquivalent equivalent,
@@ -664,9 +667,12 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runVotesCheckingS
         debug() << "Voted +";
         mTransactionIsVoted = true;
 
+        // Save payment transaction with effective claiming block number
+        // that includes the dispute grace period for extended monitoring
         ioTransaction->paymentTransactionsHandler()->saveRecord(
             mTransactionUUID,
-            mMaximalClaimingBlockNumber);
+            mMaximalClaimingBlockNumber,
+            mMaximalClaimingBlockNumber + mDisputeGracePeriodBlocksCount);
     } catch (IOError &e) {
         error() << "Can't sign the transaction. See logs for the details.";
         removeAllDataFromStorageConcerningTransaction();
@@ -819,6 +825,9 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::approve()
     debug() << "Transaction approved. Committing.";
     auto ioTransaction = mStorageHandler->beginTransaction();
     commit(ioTransaction);
+    ioTransaction->paymentTransactionsHandler()->updateTransactionState(
+        mTransactionUUID,
+        PaymentObservingState::Committed);
     savePaymentOperationIntoHistory(ioTransaction);
     return resultDone();
 }
@@ -975,7 +984,7 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runCheckCoordinat
     }
     if (kMessage->participantsSignatures().empty()) {
         debug() << "Coordinator don't know result of this transaction yet.";
-        // todo : this is only for centralized model
+        // todo : this is only for centralized model. TODO: Remove this condition.
         auto ioTransaction = mStorageHandler->beginTransaction();
         debug() << "rollback";
         removeAllDataFromStorageConcerningTransaction(ioTransaction);
@@ -1276,6 +1285,19 @@ const bool BaseExchangePaymentTransaction::resourceIsValid(
         return false;
     }
 
+    return true;
+}
+
+const bool BaseExchangePaymentTransaction::rpcRequestIsValid(RpcMethod rpcMethod) const
+{
+    if (mRpcContext.empty()) {
+        warning() << "rpc requests are empty";
+        return false;
+    }
+    if (mRpcContext.at(0)->method() != rpcMethod) {
+        warning() << "Unexpected rpc responce received.";
+        return false;
+    }
     return true;
 }
 
