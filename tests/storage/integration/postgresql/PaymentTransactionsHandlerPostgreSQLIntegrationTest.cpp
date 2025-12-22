@@ -594,15 +594,28 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, MultipleStateTransit
 }
 
 // transactionsForObserverMonitoring tests
-// Note: transactionsForObserverMonitoring now filters by effective_claiming_block_number
+// Note: transactionsForObserverMonitoring filters by effective_claiming_block_number AND observing_state = Committed
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_BasicRetrieval_ReturnsMatchingTransactions)
 {
-    // Save records where effective_claiming_block_number equals maximal_claiming_block_number
-    mHandler->saveRecord(createTestTransactionUUID("bn50"), static_cast<BlockNumber>(50), static_cast<BlockNumber>(50));
-    mHandler->saveRecord(createTestTransactionUUID("bn100"), static_cast<BlockNumber>(100), static_cast<BlockNumber>(100));
-    mHandler->saveRecord(createTestTransactionUUID("bn150"), static_cast<BlockNumber>(150), static_cast<BlockNumber>(150));
-    mHandler->saveRecord(createTestTransactionUUID("bn200"), static_cast<BlockNumber>(200), static_cast<BlockNumber>(200));
-    mHandler->saveRecord(createTestTransactionUUID("bn250"), static_cast<BlockNumber>(250), static_cast<BlockNumber>(250));
+    // Save records and set them to Committed state (required for transactionsForObserverMonitoring)
+    auto uuid1 = createTestTransactionUUID("bn50");
+    auto uuid2 = createTestTransactionUUID("bn100");
+    auto uuid3 = createTestTransactionUUID("bn150");
+    auto uuid4 = createTestTransactionUUID("bn200");
+    auto uuid5 = createTestTransactionUUID("bn250");
+
+    mHandler->saveRecord(uuid1, static_cast<BlockNumber>(50), static_cast<BlockNumber>(50));
+    mHandler->saveRecord(uuid2, static_cast<BlockNumber>(100), static_cast<BlockNumber>(100));
+    mHandler->saveRecord(uuid3, static_cast<BlockNumber>(150), static_cast<BlockNumber>(150));
+    mHandler->saveRecord(uuid4, static_cast<BlockNumber>(200), static_cast<BlockNumber>(200));
+    mHandler->saveRecord(uuid5, static_cast<BlockNumber>(250), static_cast<BlockNumber>(250));
+
+    // Set all to Committed state
+    mHandler->updateTransactionState(uuid1, PaymentObservingState::Committed);
+    mHandler->updateTransactionState(uuid2, PaymentObservingState::Committed);
+    mHandler->updateTransactionState(uuid3, PaymentObservingState::Committed);
+    mHandler->updateTransactionState(uuid4, PaymentObservingState::Committed);
+    mHandler->updateTransactionState(uuid5, PaymentObservingState::Committed);
 
     // Filter by effective_claiming_block_number > 100
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(100), 10);
@@ -639,9 +652,17 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
 
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_LimitParameter_RespectsLimit)
 {
+    std::vector<TransactionUUID> uuids;
     for (uint64_t i = 1; i <= 10; ++i) {
+        auto uuid = createTestTransactionUUID("limit" + std::to_string(i));
         auto blockNum = static_cast<BlockNumber>(i * 10);
-        mHandler->saveRecord(createTestTransactionUUID("limit" + std::to_string(i)), blockNum, blockNum);
+        mHandler->saveRecord(uuid, blockNum, blockNum);
+        uuids.push_back(uuid);
+    }
+
+    // Set all to Committed state
+    for (const auto& uuid : uuids) {
+        mHandler->updateTransactionState(uuid, PaymentObservingState::Committed);
     }
 
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(0), 3);
@@ -654,9 +675,18 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
 
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_AscendingOrder_OldestFirst)
 {
-    mHandler->saveRecord(createTestTransactionUUID("bn30"), static_cast<BlockNumber>(30), static_cast<BlockNumber>(30));
-    mHandler->saveRecord(createTestTransactionUUID("bn10"), static_cast<BlockNumber>(10), static_cast<BlockNumber>(10));
-    mHandler->saveRecord(createTestTransactionUUID("bn20"), static_cast<BlockNumber>(20), static_cast<BlockNumber>(20));
+    auto uuid1 = createTestTransactionUUID("bn30");
+    auto uuid2 = createTestTransactionUUID("bn10");
+    auto uuid3 = createTestTransactionUUID("bn20");
+
+    mHandler->saveRecord(uuid1, static_cast<BlockNumber>(30), static_cast<BlockNumber>(30));
+    mHandler->saveRecord(uuid2, static_cast<BlockNumber>(10), static_cast<BlockNumber>(10));
+    mHandler->saveRecord(uuid3, static_cast<BlockNumber>(20), static_cast<BlockNumber>(20));
+
+    // Set all to Committed state
+    mHandler->updateTransactionState(uuid1, PaymentObservingState::Committed);
+    mHandler->updateTransactionState(uuid2, PaymentObservingState::Committed);
+    mHandler->updateTransactionState(uuid3, PaymentObservingState::Committed);
 
     auto result = mHandler->transactionsForObserverMonitoring(static_cast<BlockNumber>(0), 10);
 
@@ -699,9 +729,17 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
 
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObserverMonitoring_LargeDataset_ReturnsExpectedRange)
 {
+    std::vector<TransactionUUID> uuids;
     for (uint64_t i = 1; i <= 200; ++i) {
+        auto uuid = createTestTransactionUUID("bulk" + std::to_string(i));
         auto blockNum = static_cast<BlockNumber>(i);
-        mHandler->saveRecord(createTestTransactionUUID("bulk" + std::to_string(i)), blockNum, blockNum);
+        mHandler->saveRecord(uuid, blockNum, blockNum);
+        uuids.push_back(uuid);
+    }
+
+    // Set all to Committed state
+    for (const auto& uuid : uuids) {
+        mHandler->updateTransactionState(uuid, PaymentObservingState::Committed);
     }
 
     // Filter by effective_claiming_block_number > 50
@@ -727,6 +765,10 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, TransactionsForObser
     // Transaction with maximal=60, effective=60 (no dispute grace period)
     auto uuid2 = createTestTransactionUUID("tx2");
     mHandler->saveRecord(uuid2, static_cast<BlockNumber>(60), static_cast<BlockNumber>(60));
+
+    // Set both to Committed state
+    mHandler->updateTransactionState(uuid1, PaymentObservingState::Committed);
+    mHandler->updateTransactionState(uuid2, PaymentObservingState::Committed);
 
     // Query with minBlockNumber=70
     // uuid1 should be returned (effective=100 > 70)
