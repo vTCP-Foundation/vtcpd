@@ -48,6 +48,8 @@ public:
     typedef signals::signal<void(CommandResult::SharedConst)> CommandResultSignal;
     typedef signals::signal<void(BaseTransaction::Shared)> SerializeTransactionSignal;
     typedef signals::signal<void(const SerializedEquivalent equivalent)> CycleCloserTransactionWasFinishedSignal;
+    // Alias for transaction type checks in scheduler queries.
+    typedef BaseTransaction::TransactionType TransactionType;
 
 
 public:
@@ -102,6 +104,15 @@ public:
     bool checkAuditTransactionPresence(
         SerializedEquivalent equivalent,
         ContractorID contractorId) const;
+
+    /**
+     * Task 15-03: Checks if any transaction of the specified type is active or scheduled.
+     *
+     * @param type The transaction type to search for.
+     * @return true if a transaction of this type exists, false otherwise.
+     */
+    bool hasActiveTransactionOfType(
+        TransactionType type) const;
 
 protected:
     static string logHeader()

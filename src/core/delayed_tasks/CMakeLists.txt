@@ -5,6 +5,9 @@ add_library(delayed_tasks
     TopologyCacheUpdateDelayedTask.cpp
     GatewayNotificationAndRoutingTablesDelayedTask.h
     GatewayNotificationAndRoutingTablesDelayedTask.cpp
+    # Task 15-02: completed payments monitoring delayed task.
+    CompletedPaymentsMonitoringDelayedTask.h
+    CompletedPaymentsMonitoringDelayedTask.cpp
     TopologyEventDelayedTask.h
     TopologyEventDelayedTask.cpp)
 

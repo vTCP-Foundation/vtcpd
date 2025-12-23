@@ -451,6 +451,18 @@ bool TransactionsScheduler::checkAuditTransactionPresence(
     return false;
 }
 
+bool TransactionsScheduler::hasActiveTransactionOfType(
+    TransactionType type) const
+{
+    // Scan all scheduled/running transactions for the requested type.
+    for (const auto &transactionAndState : *mTransactions) {
+        if (transactionAndState.first->transactionType() == type) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void TransactionsScheduler::adjustAwakeningToNextTransaction()
 {
     try {
