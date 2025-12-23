@@ -24,6 +24,26 @@ const vector<GetClaimStatusesRpcRequest::ClaimInfo>& GetClaimStatusesRpcRequest:
     return mClaims;
 }
 
+sphincs::PublicKey::Shared GetClaimStatusesRpcRequest::publicKey() const
+{
+    return mPublicKey;
+}
+
+sphincs::Signature::Shared GetClaimStatusesRpcRequest::signature() const
+{
+    return mSignature;
+}
+
+void GetClaimStatusesRpcRequest::setPublicKey(sphincs::PublicKey::Shared publicKey)
+{
+    mPublicKey = move(publicKey);
+}
+
+void GetClaimStatusesRpcRequest::setSignature(sphincs::Signature::Shared signature)
+{
+    mSignature = move(signature);
+}
+
 json GetClaimStatusesRpcRequest::toJson() const
 {
     json::array_t claimsArray;
@@ -36,7 +56,9 @@ json GetClaimStatusesRpcRequest::toJson() const
 
     json::array_t params = {
         json::object({
-            {"claims", claimsArray}
+            {"claims", claimsArray},
+            {"public_key", mPublicKey != nullptr ? mPublicKey->toString() : ""},
+            {"signature", mSignature != nullptr ? mSignature->toString() : ""}
         })
     };
 

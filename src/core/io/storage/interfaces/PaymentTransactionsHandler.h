@@ -69,7 +69,7 @@ public:
 
     /**
      * Retrieves transactions that still have time left in their effective claiming window
-     * (including dispute grace period) and are in uncertain observing state (state = 0),
+     * (including dispute grace period) and are in committed observing state (state = 1),
      * ordered by claiming block.
      *
      * The method filters transactions where effective_claiming_block_number > minBlockNumber,
