@@ -73,6 +73,8 @@ add_executable(unit_tests
     transactions/TestCoordinatorConditionChangeHandling.cpp
     transactions/TestExchangePaymentConditionsRegression.cpp
     transactions/CoordinatorExchangePaymentAllowableAmountTest.cpp
+    transactions/CompletedPaymentsMonitoringDelayedTaskTest.cpp
+    transactions/CompletedPaymentsObserverMonitoringTransactionTest.cpp
     payments/TestAmountReservation.cpp
     payments/TestAmountReservationsHandler.cpp
     core/CoreORToolsStartupTest.cpp
@@ -145,6 +147,7 @@ target_link_libraries(unit_tests PRIVATE
     observing
     transactions
     transactions__payments
+    delayed_tasks
     observing__messages
     subsystems_controller
     resources_manager

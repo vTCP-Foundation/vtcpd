@@ -10,7 +10,7 @@
 #include <vector>
 
 /**
- * Task 15-04: Periodic transaction that checks observer claim statuses for completed payments
+ * Periodic transaction that checks observer claim statuses for completed payments
  * and submits participant vote signatures for observing claims.
  */
 class CompletedPaymentsObserverMonitoringTransaction : public BaseTransaction

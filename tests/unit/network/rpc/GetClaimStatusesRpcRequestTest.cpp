@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
 
 #include "core/network/rpc/requests/GetClaimStatusesRpcRequest.h"
+#include "core/crypto/sphincskeys.h"
+#include "core/crypto/sphincsscheme.h"
 
 using ClaimInfo = GetClaimStatusesRpcRequest::ClaimInfo;
+using namespace crypto::sphincs;
 
 
 // Test constructor with claims vector
@@ -125,5 +128,99 @@ TEST(GetClaimStatusesRpcRequestTest, SharedTypedefWorks)
 
     EXPECT_NE(request, nullptr);
     EXPECT_EQ(request->method(), RpcMethod::GetClaimStatuses);
+}
+
+// Task 15-06: Test public key getter/setter
+TEST(GetClaimStatusesRpcRequestTest, PublicKeyGetterSetter)
+{
+    const TransactionUUID transactionUUID(std::string("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"));
+    std::vector<ClaimInfo> claims;
+    GetClaimStatusesRpcRequest request(transactionUUID, claims);
+
+    // Create test public key with known data
+    std::vector<byte_t> keyData(PublicKey::keySize(), 0xAB);
+    auto testPublicKey = std::make_shared<PublicKey>(keyData.data());
+
+    request.setPublicKey(testPublicKey);
+    EXPECT_EQ(request.publicKey(), testPublicKey);
+}
+
+// Task 15-06: Test signature getter/setter
+TEST(GetClaimStatusesRpcRequestTest, SignatureGetterSetter)
+{
+    const TransactionUUID transactionUUID(std::string("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"));
+    std::vector<ClaimInfo> claims;
+    GetClaimStatusesRpcRequest request(transactionUUID, claims);
+
+    // Create test signature with known data
+    std::vector<byte_t> sigData(Signature::signatureSize(), 0xCD);
+    auto testSignature = std::make_shared<Signature>(sigData.data());
+
+    request.setSignature(testSignature);
+    EXPECT_EQ(request.signature(), testSignature);
+}
+
+// Task 15-06: Test JSON serialization includes public_key field
+TEST(GetClaimStatusesRpcRequestTest, JsonSerializationIncludesPublicKey)
+{
+    const TransactionUUID transactionUUID(std::string("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"));
+    std::vector<ClaimInfo> claims;
+    GetClaimStatusesRpcRequest request(transactionUUID, claims);
+
+    std::vector<byte_t> keyData(PublicKey::keySize(), 0xAB);
+    auto testPublicKey = std::make_shared<PublicKey>(keyData.data());
+    request.setPublicKey(testPublicKey);
+
+    auto jsonPayload = request.toJson();
+    const auto& params = jsonPayload["params"][0];
+
+    EXPECT_TRUE(params.contains("public_key"));
+    EXPECT_FALSE(params["public_key"].get<std::string>().empty());
+}
+
+// Task 15-06: Test JSON serialization includes signature field
+TEST(GetClaimStatusesRpcRequestTest, JsonSerializationIncludesSignature)
+{
+    const TransactionUUID transactionUUID(std::string("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"));
+    std::vector<ClaimInfo> claims;
+    GetClaimStatusesRpcRequest request(transactionUUID, claims);
+
+    std::vector<byte_t> sigData(Signature::signatureSize(), 0xCD);
+    auto testSignature = std::make_shared<Signature>(sigData.data());
+    request.setSignature(testSignature);
+
+    auto jsonPayload = request.toJson();
+    const auto& params = jsonPayload["params"][0];
+
+    EXPECT_TRUE(params.contains("signature"));
+    EXPECT_FALSE(params["signature"].get<std::string>().empty());
+}
+
+// Task 15-06: Test null public key serializes as empty string
+TEST(GetClaimStatusesRpcRequestTest, NullPublicKeySerializesEmpty)
+{
+    const TransactionUUID transactionUUID(std::string("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"));
+    std::vector<ClaimInfo> claims;
+    GetClaimStatusesRpcRequest request(transactionUUID, claims);
+    // Don't set public key - it should be nullptr
+
+    auto jsonPayload = request.toJson();
+    const auto& params = jsonPayload["params"][0];
+
+    EXPECT_TRUE(params["public_key"].get<std::string>().empty());
+}
+
+// Task 15-06: Test null signature serializes as empty string
+TEST(GetClaimStatusesRpcRequestTest, NullSignatureSerializesEmpty)
+{
+    const TransactionUUID transactionUUID(std::string("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"));
+    std::vector<ClaimInfo> claims;
+    GetClaimStatusesRpcRequest request(transactionUUID, claims);
+    // Don't set signature - it should be nullptr
+
+    auto jsonPayload = request.toJson();
+    const auto& params = jsonPayload["params"][0];
+
+    EXPECT_TRUE(params["signature"].get<std::string>().empty());
 }
 
