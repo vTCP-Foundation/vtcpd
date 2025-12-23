@@ -1,6 +1,10 @@
 #include "CompletedPaymentsMonitoringDelayedTask.h"
 
-// Task 15-02: delayed task implementation for completed payments monitoring.
+//  delayed task implementation for completed payments monitoring.
+
+//  Defines static timing constants for the monitoring schedule.
+const uint32_t CompletedPaymentsMonitoringDelayedTask::kInitialDelaySeconds;
+const uint32_t CompletedPaymentsMonitoringDelayedTask::kMonitoringIntervalSeconds;
 
 // Schedules the first monitoring run after the initial delay.
 CompletedPaymentsMonitoringDelayedTask::CompletedPaymentsMonitoringDelayedTask(

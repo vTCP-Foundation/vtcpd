@@ -20,6 +20,7 @@
 #include "contractors/ContractorsManager.h"
 #include "observing/ObservingHandler.h"
 #include "delayed_tasks/TopologyEventDelayedTask.h"
+#include "delayed_tasks/CompletedPaymentsMonitoringDelayedTask.h"
 #include "features/FeaturesManager.h"
 #include "providing/ProvidingHandler.h"
 #include "rates/manager/ExchangeRatesManager.h"
@@ -109,6 +110,9 @@ private:
     int initKeysStore();
 
     int initTopologyEventDelayedTask();
+
+    // Task 15-05: Initializes delayed task that triggers completed payments monitoring.
+    int initCompletedPaymentsMonitoringDelayedTask();
 
     int initFeaturesManager(
         const json &conf);
@@ -259,6 +263,8 @@ protected:
     unique_ptr<ContractorsManager> mContractorsManager;
     unique_ptr<ObservingHandler> mObservingHandler;
     unique_ptr<TopologyEventDelayedTask> mTopologyEventDelayedTask;
+    // Task 15-05: Periodic task that emits completed payments monitoring signal.
+    unique_ptr<CompletedPaymentsMonitoringDelayedTask> mCompletedPaymentsMonitoringDelayedTask;
     unique_ptr<TailManager> mTailManager;
     unique_ptr<FeaturesManager> mFeaturesManager;
     unique_ptr<ProvidingHandler> mProvidingHandler;

@@ -193,6 +193,11 @@ int Core::initSubsystems()
         return initCode;
     }
 
+    initCode = initCompletedPaymentsMonitoringDelayedTask();
+    if (initCode != 0) {
+        return initCode;
+    }
+
     initCode = initTopologyEventDelayedTask();
     if (initCode != 0) {
         return initCode;
@@ -655,6 +660,21 @@ int Core::initTopologyEventDelayedTask()
     }
 }
 
+// Initializes the delayed task that emits monitoring signals for completed payments.
+int Core::initCompletedPaymentsMonitoringDelayedTask()
+{
+    try {
+        mCompletedPaymentsMonitoringDelayedTask = make_unique<CompletedPaymentsMonitoringDelayedTask>(
+            mIOCtx,
+            *mLog);
+        info() << "Completed Payments Monitoring Delayed Task is successfully initialized";
+        return 0;
+    } catch (const std::exception &e) {
+        mLog->logException("Core", e);
+        return -1;
+    }
+}
+
 int Core::initFeaturesManager(
     const json &conf)
 {
@@ -906,6 +926,10 @@ void Core::connectSignalsToSlots()
     connectResourcesManagerSignals();
     connectObservingSignals();
     connectObserverRpcSignals();
+
+    // Hook delayed monitoring signal into the transactions manager.
+    mTransactionsManager->subscribeForCompletedPaymentsMonitoringSignal(
+        mCompletedPaymentsMonitoringDelayedTask->monitoringSignal);
 }
 
 void Core::onCommandReceivedSlot (

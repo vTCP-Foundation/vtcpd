@@ -89,6 +89,7 @@ public:
         VoutesStatusResponsePaymentTransaction = 304,
         Payments_CycleCloserInitiatorTransaction = 305,
         Payments_CycleCloserIntermediateNodeTransaction = 306,
+        Payments_CompletedPaymentsObserverMonitoring = 307, // Task 15-04
 
         // Max flow calculation
         CollectTopologyTransactionType = 401,

@@ -21,6 +21,8 @@ add_library(transactions__payments
     IntermediateNodeExchangePaymentTransaction.cpp
     VotesStatusResponsePaymentTransaction.h
     VotesStatusResponsePaymentTransaction.cpp
+    CompletedPaymentsObserverMonitoringTransaction.h
+    CompletedPaymentsObserverMonitoringTransaction.cpp
     CycleCloserInitiatorTransaction.h
     CycleCloserInitiatorTransaction.cpp
     CycleCloserIntermediateNodeTransaction.h

@@ -2625,6 +2625,30 @@ void TransactionsManager::launchRemoveOutdatedCryptoDataTransaction(
         false);
 }
 
+// Creates and schedules periodic observer monitoring transaction for completed payments.
+void TransactionsManager::launchCompletedPaymentsObserverMonitoringTransaction()
+{
+    try {
+        auto transaction = make_shared<CompletedPaymentsObserverMonitoringTransaction>(
+            mStorageHandler,
+            mKeysStore,
+            mLog);
+
+        // Monitoring transaction uses RPC requests only.
+        prepareAndSchedule(
+            transaction,
+            false,
+            false,
+            false,
+            true);
+
+        info() << "CompletedPaymentsObserverMonitoring transaction launched";
+    } catch (const exception &e) {
+        error() << "launchCompletedPaymentsObserverMonitoringTransaction: "
+                << e.what();
+    }
+}
+
 void TransactionsManager::attachResourceToTransaction(
     BaseResource::Shared resource)
 {
@@ -2832,6 +2856,16 @@ void TransactionsManager::subscribeForGatewayNotificationSignal(
     signal.connect(
         boost::bind(
             &TransactionsManager::onGatewayNotificationSlot,
+            this));
+}
+
+// Connects delayed monitoring signal to the handler slot.
+void TransactionsManager::subscribeForCompletedPaymentsMonitoringSignal(
+    CompletedPaymentsMonitoringDelayedTask::MonitoringSignal &signal)
+{
+    signal.connect(
+        boost::bind(
+            &TransactionsManager::onCompletedPaymentsMonitoringSlot,
             this));
 }
 
@@ -3067,6 +3101,21 @@ void TransactionsManager::onProcessPongMessageSlot(
 void TransactionsManager::onGatewayNotificationSlot()
 {
     launchGatewayNotificationSenderTransaction();
+}
+
+// Processes delayed monitoring signal and launches observer monitoring transaction if needed.
+void TransactionsManager::onCompletedPaymentsMonitoringSlot()
+{
+    info() << "Completed payments monitoring signal received";
+
+    // Prevent duplicate monitoring transactions.
+    if (mScheduler->hasActiveTransactionOfType(
+            BaseTransaction::Payments_CompletedPaymentsObserverMonitoring)) {
+        info() << "CompletedPaymentsObserverMonitoring transaction already active, skipping";
+        return;
+    }
+
+    launchCompletedPaymentsObserverMonitoringTransaction();
 }
 
 void TransactionsManager::onTrustLineActionSlot(

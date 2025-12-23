@@ -9,6 +9,7 @@
 #include "../../rates/manager/CommissionsManager.h"
 #include "../../paths/ExchangePathsManager.h"
 #include "../../observing/ObservingHandler.h"
+#include "../../delayed_tasks/CompletedPaymentsMonitoringDelayedTask.h"
 
 /*
  * Transactions
@@ -58,6 +59,7 @@
 #include "../transactions/regular/payments/VotesStatusResponsePaymentTransaction.h"
 #include "../transactions/regular/payments/CycleCloserInitiatorTransaction.h"
 #include "../transactions/regular/payments/CycleCloserIntermediateNodeTransaction.h"
+#include "../transactions/regular/payments/CompletedPaymentsObserverMonitoringTransaction.h"
 
 #include "../transactions/max_flow_calculation/InitiateMaxFlowCalculationTransaction.h"
 #include "../transactions/max_flow_calculation/InitiateMaxFlowExchangeCalculationTransaction.h"
@@ -202,6 +204,10 @@ public:
 
     void onRpcResponseReceived(
         RpcResponse::Shared response);
+
+    // Subscribes to delayed monitoring signal for completed payments.
+    void subscribeForCompletedPaymentsMonitoringSignal(
+        CompletedPaymentsMonitoringDelayedTask::MonitoringSignal &signal);
 
 protected: // Transactions
     /*
@@ -576,6 +582,9 @@ protected:
 
     void onGatewayNotificationSlot();
 
+    // Handles delayed monitoring signal and launches monitoring transaction.
+    void onCompletedPaymentsMonitoringSlot();
+
     void onTrustLineActionSlot(
         ContractorID contractorID,
         const SerializedEquivalent equivalent,
@@ -599,6 +608,9 @@ protected:
 
 private:
     void loadTransactionsFromStorage();
+
+    // Creates and schedules completed payments observer monitoring transaction.
+    void launchCompletedPaymentsObserverMonitoringTransaction();
 
     BasePaymentTransaction::Shared deserializePaymentTransaction(
         BytesShared buffer,
