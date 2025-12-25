@@ -1,7 +1,9 @@
 #include "BaseExchangePaymentTransaction.h"
 
 #include "../../../../../network/rpc/requests/AcceptClaimRpcRequest.h"
+#include "../../../../../network/rpc/requests/GetClaimStatusRpcRequest.h"
 #include "../../../../../network/rpc/responses/AcceptClaimRpcResponse.h"
+#include "../../../../../network/rpc/responses/GetClaimStatusRpcResponse.h"
 
 // Out-of-class definition for ODR-used static const member
 const uint16_t BaseExchangePaymentTransaction::kDisputeGracePeriodBlocksCount;
@@ -1114,13 +1116,171 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingAccep
     return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
 }
 
-// Placeholder implementation for claim status polling.
+// Polls the observer for the current claim status and reacts to the result.
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingGetClaimStatusStage()
 {
     info() << "runObservingGetClaimStatusStage";
 
-    // Delay before retrying until full polling logic is provided.
-    return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+    // Send request when no response is queued yet.
+    if (!hasRpcResponse()) {
+        info() << "Submitting GetClaimStatus RPC request";
+
+        // Build request for the current claim and wait for response.
+        const auto &transactionUUID = currentTransactionUUID();
+        auto request = make_shared<GetClaimStatusRpcRequest>(
+            transactionUUID,
+            transactionUUID,
+            mMaximalClaimingBlockNumber);
+        sendRpcRequest(request);
+
+        return resultWaitForRpcResponse(
+            RpcMethod::GetClaimStatus,
+            kObservingCheckPeriodMilliseconds);
+    }
+
+    // Ensure we are processing the expected RPC response.
+    if (!rpcRequestIsValid(RpcMethod::GetClaimStatus)) {
+        warning() << "Unexpected RPC response while awaiting GetClaimStatus";
+
+        // Drop unexpected response to keep the queue consistent.
+        mRpcContext.pop_front();
+        return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+    }
+
+    auto response = popRpcResponse<GetClaimStatusRpcResponse>();
+    if (response == nullptr) {
+        warning() << "Failed to read GetClaimStatus response";
+        return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+    }
+
+    if (response->status() != RpcResponseStatus::Success) {
+        warning() << "GetClaimStatus RPC failed: " << response->errorMessage();
+        return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+    }
+
+    // Handle claim status according to observer response.
+    const auto claimState = response->state();
+    switch (claimState) {
+    case GetClaimStatusRpcResponse::ClaimState::NotFound: {
+        info() << "Claim status: not found";
+        info() << "Claim is missing on observer, resubmitting AcceptClaim";
+        mStep = Stages::Observing_AcceptClaim;
+        return runObservingAcceptClaimStage();
+    }
+    case GetClaimStatusRpcResponse::ClaimState::Observing: {
+        info() << "Claim status: observing";
+        return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+    }
+    case GetClaimStatusRpcResponse::ClaimState::Approved: {
+        info() << "Claim status: approved";
+
+        // Extract votes from observer response.
+        const auto &votes = response->votes();
+        if (votes.empty()) {
+            warning() << "Approved response contains no votes, retrying";
+            return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+        }
+
+        // Store signatures for validation against known participants.
+        setObservingParticipantsSignatures(votes);
+
+        // Validate votes using the same signature checks as for participant messages.
+        if (!checkSignaturesAppropriate()) {
+            warning() << "Observer votes set is incomplete or inconsistent";
+            return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+        }
+
+        const auto coordinatorSignatureIt = mParticipantsSignatures.find(kCoordinatorPaymentNodeID);
+        if (coordinatorSignatureIt == mParticipantsSignatures.end() ||
+            coordinatorSignatureIt->second == nullptr) {
+            warning() << "Missing coordinator signature in observer votes";
+            return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+        }
+
+        const auto coordinatorPublicKeyIt = mParticipantsPublicKeys.find(kCoordinatorPaymentNodeID);
+        if (coordinatorPublicKeyIt == mParticipantsPublicKeys.end() ||
+            coordinatorPublicKeyIt->second == nullptr) {
+            warning() << "Missing coordinator public key for observer votes validation";
+            return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+        }
+
+        auto coordinatorSerializedVotesData = getSerializedParticipantsVotesData(
+            mPaymentParticipants[kCoordinatorPaymentNodeID]);
+        if (!coordinatorSignatureIt->second->verify(
+                *coordinatorPublicKeyIt->second,
+                coordinatorSerializedVotesData.first.get(),
+                coordinatorSerializedVotesData.second)) {
+            warning() << "Coordinator signature from observer is invalid";
+            return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+        }
+
+        bool signaturesValid = true;
+        for (const auto &paymentNodeIdAndContractor : mPaymentParticipants) {
+            if (paymentNodeIdAndContractor.second == mContractorsManager->selfContractor()) {
+                continue;
+            }
+            if (paymentNodeIdAndContractor.first == kCoordinatorPaymentNodeID) {
+                continue;
+            }
+
+            // Validate each participant signature against the expected signed data.
+            const auto signatureIt = mParticipantsSignatures.find(paymentNodeIdAndContractor.first);
+            if (signatureIt == mParticipantsSignatures.end() || signatureIt->second == nullptr) {
+                warning() << "Missing participant signature for node "
+                          << paymentNodeIdAndContractor.first;
+                signaturesValid = false;
+                break;
+            }
+
+            const auto publicKeyIt = mParticipantsPublicKeys.find(paymentNodeIdAndContractor.first);
+            if (publicKeyIt == mParticipantsPublicKeys.end() || publicKeyIt->second == nullptr) {
+                warning() << "Missing participant public key for node "
+                          << paymentNodeIdAndContractor.first;
+                signaturesValid = false;
+                break;
+            }
+
+            auto participantSerializedVotesData = getSerializedParticipantsVotesData(
+                paymentNodeIdAndContractor.second);
+            if (!signatureIt->second->verify(
+                    *publicKeyIt->second,
+                    participantSerializedVotesData.first.get(),
+                    participantSerializedVotesData.second)) {
+                warning() << "Participant signature from observer is invalid for node "
+                          << paymentNodeIdAndContractor.first;
+                signaturesValid = false;
+                break;
+            }
+        }
+
+        if (!signaturesValid) {
+            warning() << "Observer votes validation failed, retrying";
+            return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+        }
+
+        info() << "Observer votes validated successfully, approving transaction";
+        return approve();
+    }
+    case GetClaimStatusRpcResponse::ClaimState::Rejected: {
+        info() << "Claim status: rejected";
+        if (!response->rejectionSignature().empty()) {
+            info() << "Observer rejection signature received";
+        }
+
+        // Persist rejected observing state and release reservations.
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        ioTransaction->paymentTransactionsHandler()->updateTransactionState(
+            currentTransactionUUID(),
+            PaymentObservingState::RejectedByObserving);
+        rollBack();
+
+        info() << "Transaction rejected by observer and rolled back";
+        return resultDone();
+    }
+    default:
+        warning() << "Unknown claim state from observer";
+        return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+    }
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingResultStage()
