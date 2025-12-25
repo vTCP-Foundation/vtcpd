@@ -148,7 +148,12 @@ public:
         Common_ObservingReject,
 
         Common_RollbackByOtherTransaction,
-        Common_Uncertain
+        Common_Uncertain,
+
+        // Submitting claim to the observer.
+        Observing_AcceptClaim,
+        // Polling claim status from the observer.
+        Observing_GetClaimStatus
     };
 
     enum VotesRecoveryStages
@@ -252,6 +257,8 @@ protected:
     static const auto kMaxPathLength = 7;
     static const uint32_t kWaitMillisecondsToTryRecoverAgain = 30000;
     static const uint32_t kWaitMillisecondsToTryInitialRecoverAgain = 900000;
+    // Delay between observing polls.
+    static const uint32_t kObservingCheckPeriodMilliseconds = 60000;
     static const uint8_t kMaxRecoveryAttempts = 30;
     static const uint8_t kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage = 3;
     const PaymentNodeID kCoordinatorPaymentNodeID = 0;

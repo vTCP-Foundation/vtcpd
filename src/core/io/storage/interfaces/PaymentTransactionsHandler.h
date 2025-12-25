@@ -36,7 +36,13 @@ enum class PaymentObservingState : int
      * Transaction was rejected by the observer.
      * This can happen when claiming time has expired or other validation failures.
      */
-    RejectedByObserving = 3
+    RejectedByObserving = 3,
+
+    /**
+     * Transaction is conflicted when AcceptClaim was rejected
+     * because max_claim_block_number is less than current block number.
+     */
+    Conflicted = 4
 };
 
 class PaymentTransactionsHandler
