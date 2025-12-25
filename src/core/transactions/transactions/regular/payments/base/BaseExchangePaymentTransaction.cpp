@@ -920,14 +920,10 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::processNextNodeTo
         debug() << "No nodes left to be asked";
         mCountRecoveryAttempts++;
         if (mCountRecoveryAttempts >= kMaxRecoveryAttempts) {
-            debug() << "Max count recovery attempts. Send request to observers.";
-            mObservingHandler->addPaymentClaim(
-                mTransactionUUID,
-                mMaximalClaimingBlockNumber,
-                mParticipantsPublicKeys,
-                mPublicKey,
-                mSignedTransaction);
-            return resultDone();
+            info() << "Max recovery attempts reached, switching to observing flow";
+            // Transition to the observing stage handled by the transaction itself.
+            mStep = Stages::Observing_AcceptClaim;
+            return runObservingAcceptClaimStage();
         }
         debug() << "Sleep and try again later";
         mVotesRecoveryStep = VotesRecoveryStages::Common_PrepareNodesListToCheckVotes;

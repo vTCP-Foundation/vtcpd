@@ -102,6 +102,13 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::run()
         case Stages::Common_Recovery:
             return runVotesRecoveryParentStage();
 
+        // Observing stages are handled by the transaction state machine.
+        case Stages::Observing_AcceptClaim:
+            return runObservingAcceptClaimStage();
+
+        case Stages::Observing_GetClaimStatus:
+            return runObservingGetClaimStatusStage();
+
         case Stages::Common_Observing:
             return runObservingResultStage();
 
