@@ -178,6 +178,10 @@ protected:
     TransactionResult::SharedConst runCheckIntermediateNodeVotesStage();
     TransactionResult::SharedConst runObservingResultStage();
     TransactionResult::SharedConst runObservingRejectTransaction();
+    // Submits an observing claim and handles AcceptClaim responses.
+    TransactionResult::SharedConst runObservingAcceptClaimStage();
+    // Polls observer for the claim status.
+    TransactionResult::SharedConst runObservingGetClaimStatusStage();
 
 protected:
     const bool reserveOutgoingAmount(

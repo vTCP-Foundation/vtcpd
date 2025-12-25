@@ -1,5 +1,8 @@
 #include "BaseExchangePaymentTransaction.h"
 
+#include "../../../../../network/rpc/requests/AcceptClaimRpcRequest.h"
+#include "../../../../../network/rpc/responses/AcceptClaimRpcResponse.h"
+
 // Out-of-class definition for ODR-used static const member
 const uint16_t BaseExchangePaymentTransaction::kDisputeGracePeriodBlocksCount;
 
@@ -1030,6 +1033,94 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runCheckIntermedi
     mParticipantsSignatures = mParticipantsVotesMessage->participantsSignatures();
 
     return processParticipantsVotesMessage();
+}
+
+// Submits an observing claim to the observer and handles AcceptClaim responses.
+TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingAcceptClaimStage()
+{
+    info() << "runObservingAcceptClaimStage";
+
+    if (!hasRpcResponse()) {
+        info() << "Submitting AcceptClaim RPC request";
+
+        // Build the observer request with transaction data.
+        const auto &transactionUUID = currentTransactionUUID();
+        auto request = make_shared<AcceptClaimRpcRequest>(
+            transactionUUID,
+            transactionUUID,
+            mMaximalClaimingBlockNumber,
+            mParticipantsPublicKeys,
+            mPublicKey,
+            mSignedTransaction);
+        sendRpcRequest(request);
+
+        // Wait for the observer response or timeout.
+        return resultWaitForRpcResponse(
+            RpcMethod::AcceptClaim,
+            kObservingCheckPeriodMilliseconds);
+    }
+
+    if (!rpcRequestIsValid(RpcMethod::AcceptClaim)) {
+        warning() << "Unexpected RPC response while awaiting AcceptClaim";
+
+        // Drop unexpected response to keep the queue consistent.
+        mRpcContext.pop_front();
+        return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+    }
+
+    auto response = popRpcResponse<AcceptClaimRpcResponse>();
+    if (response == nullptr) {
+        warning() << "Failed to read AcceptClaim response";
+        return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+    }
+
+    if (response->status() != RpcResponseStatus::Success) {
+        warning() << "AcceptClaim RPC failed: " << response->errorMessage();
+        return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+    }
+
+    const auto &message = response->message();
+    info() << "AcceptClaim response: success=" << response->success()
+           << ", message=" << message;
+
+    if (response->success()) {
+        info() << "AcceptClaim succeeded, switching to GetClaimStatus stage";
+        mStep = Stages::Observing_GetClaimStatus;
+        return runObservingGetClaimStatusStage();
+    }
+
+    const string kClaimAlreadyExistsMessage = "claim already exists";
+    if (message.find(kClaimAlreadyExistsMessage) != string::npos) {
+        info() << "Claim already exists, switching to GetClaimStatus stage";
+        mStep = Stages::Observing_GetClaimStatus;
+        return runObservingGetClaimStatusStage();
+    }
+
+    const string kClaimWindowClosedMessage = "must be less than current block number";
+    if (message.find(kClaimWindowClosedMessage) != string::npos) {
+        warning() << "Claim window closed: " << message;
+
+        // Mark trust lines as conflicted and persist transaction state.
+        setTrustLinesToConflictState();
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        ioTransaction->paymentTransactionsHandler()->updateTransactionState(
+            mTransactionUUID,
+            PaymentObservingState::Conflicted);
+        info() << "Transaction set to Conflicted state";
+        return resultDone();
+    }
+
+    warning() << "AcceptClaim rejected: " << message;
+    return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
+}
+
+// Placeholder implementation for claim status polling.
+TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingGetClaimStatusStage()
+{
+    info() << "runObservingGetClaimStatusStage";
+
+    // Delay before retrying until full polling logic is provided.
+    return resultAwakeAfterMilliseconds(kObservingCheckPeriodMilliseconds);
 }
 
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingResultStage()
