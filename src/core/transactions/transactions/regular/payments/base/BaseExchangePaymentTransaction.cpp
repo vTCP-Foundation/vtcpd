@@ -1150,6 +1150,28 @@ void BaseExchangePaymentTransaction::invalidateCachedPathsDueToCommit()
     }
 }
 
+// Marks all trust lines with reservations as Conflict state.
+void BaseExchangePaymentTransaction::setTrustLinesToConflictState()
+{
+    info() << "Setting trust lines with reservations to Conflict state";
+
+    // Iterate over all reservations and mark related trust lines as Conflict.
+    for (const auto &nodeAndReservations : mReservations) {
+        auto contractorID = nodeAndReservations.first;
+        for (const auto &pathIDAndReservation : nodeAndReservations.second) {
+            auto equivalent = pathIDAndReservation.second->equivalent();
+            auto trustLineManager = trustLinesManager(equivalent);
+
+            debug() << "Setting trust line to Conflict: contractor " << contractorID
+                    << ", equivalent " << equivalent;
+
+            trustLineManager->setTrustLineState(
+                contractorID,
+                TrustLine::Conflict);
+        }
+    }
+}
+
 void BaseExchangePaymentTransaction::rollBack()
 {
     debug() << "rollback";

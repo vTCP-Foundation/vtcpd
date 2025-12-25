@@ -211,6 +211,8 @@ protected:
     void invalidateCachedPathsDueToCommit();
     void rollBack();
     void rollBack(const PathID &pathID);
+    // Marks all trust lines with reservations as Conflict state.
+    void setTrustLinesToConflictState();
     void removeAllDataFromStorageConcerningTransaction(IOTransaction::Shared ioTransaction = nullptr);
     uint32_t maxNetworkDelay(const uint16_t totalHopsCount) const;
     const bool contextIsValid(Message::MessageType messageType, bool showErrorMessage = true) const;
