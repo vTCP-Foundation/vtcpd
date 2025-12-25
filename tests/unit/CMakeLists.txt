@@ -25,6 +25,7 @@ add_executable(unit_tests
     sqlite/StorageHandlerSQLiteTest.cpp
     sqlite/TransactionsHandlerSQLiteTest.cpp
     sqlite/TrustLineHandlerSQLiteTest.cpp
+    sqlite/PaymentObservingStateTest.cpp
     postgresql/PaymentKeysHandlerPostgreSQLUnitTest.cpp
     rates/ExchangeRateTest.cpp
     rates/ExchangeRatesManagerTest.cpp
