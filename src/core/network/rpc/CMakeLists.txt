@@ -27,6 +27,8 @@ add_library(network__rpc
     RpcRequest.h
     RpcResponse.cpp
     RpcResponse.h
+    BlockNumberCache.cpp
+    BlockNumberCache.h
     requests/GetBlockNumberRpcRequest.cpp
     requests/GetBlockNumberRpcRequest.h
     requests/AcceptClaimRpcRequest.cpp
