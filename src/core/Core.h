@@ -11,6 +11,7 @@
 #include "interface/results_interface/interface/ResultsInterface.h"
 #include "interface/events_interface/interface/EventsInterfaceManager.h"
 #include "network/rpc/ObserverRpcCommunicator.h"
+#include "network/rpc/BlockNumberCache.h"
 #include "resources/manager/ResourcesManager.h"
 #include "transactions/manager/TransactionsManager.h"
 #include "io/storage/interfaces/StorageHandler.h"
@@ -253,6 +254,8 @@ protected:
     unique_ptr<ResultsInterface> mResultsInterface;
     unique_ptr<EventsInterfaceManager> mEventsInterfaceManager;
     unique_ptr<ObserverRpcCommunicator> mObserverRpcCommunicator;
+    // Caches block number responses to reduce observer RPC requests.
+    unique_ptr<BlockNumberCache> mBlockNumberCache;
     unique_ptr<ResourcesManager> mResourcesManager;
     unique_ptr<TransactionsManager> mTransactionsManager;
     unique_ptr<StorageHandler> mStorageHandler;

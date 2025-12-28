@@ -1,8 +1,14 @@
 ﻿#include "Core.h"
 #include "io/storage/sqlite/StorageHandlerSQLite.h"
+#include "network/rpc/responses/GetBlockNumberRpcResponse.h"
 
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/base/version.h"
+
+namespace {
+// RPC method identifier for block number cache integration.
+constexpr RpcMethod kBlockNumberRpcMethod = RpcMethod::GetBlockNumber;
+} // namespace
 
 Core::Core(
     char* pArgv)
@@ -85,6 +91,14 @@ int Core::initSubsystems()
     initCode = initLogger();
     if (initCode != 0) {
         return initCode;
+    }
+
+    try {
+        // Initialize cache after logger is ready for cache diagnostics.
+        mBlockNumberCache = make_unique<BlockNumberCache>(*mLog);
+    } catch (const std::exception &e) {
+        error() << "Failed to initialize block number cache: " << e.what();
+        return -1;
     }
 
     initCode = initORTools();
@@ -1224,7 +1238,8 @@ void Core::onProcessPongMessageSlot(
         contractorID);
 }
 
-// Forwards RPC requests emitted by transactions to the observer communicator.
+// Forwards RPC requests emitted by transactions to the observer communicator,
+// serving cached block number responses when available.
 void Core::onRpcRequestSlot(
     RpcRequest::Shared request)
 {
@@ -1240,6 +1255,25 @@ void Core::onRpcRequestSlot(
     }
 #endif
 
+    // Serve cached block number response before using the observer.
+    if (request->method() == kBlockNumberRpcMethod) {
+        if (mBlockNumberCache != nullptr && !mBlockNumberCache->needsRefresh()) {
+            info() << "GetBlockNumber cache hit for transaction "
+                   << request->transactionUUID();
+            auto response = make_shared<GetBlockNumberRpcResponse>(
+                request->transactionUUID(),
+                RpcResponseStatus::Success,
+                mBlockNumberCache->getCachedBlockNumber());
+            try {
+                mTransactionsManager->onRpcResponseReceived(response);
+            } catch (const exception &e) {
+                mLog->logException("Core", e);
+            }
+            return;
+        }
+        debug() << "GetBlockNumber cache miss, forwarding to observer";
+    }
+
     if (mObserverRpcCommunicator == nullptr) {
         warning() << "onRpcRequestSlot: RPC communicator is not initialised";
         return;
@@ -1253,7 +1287,8 @@ void Core::onRpcRequestSlot(
     }
 }
 
-// Delivers observer RPC responses back to the transactions manager.
+// Delivers observer RPC responses back to the transactions manager,
+// updating the block number cache on successful responses.
 void Core::onRpcResponseSlot(
     RpcResponse::Shared response)
 {
@@ -1263,6 +1298,15 @@ void Core::onRpcResponseSlot(
     }
 
     try {
+        // Refresh block number cache from successful observer response.
+        if (response->method() == kBlockNumberRpcMethod && response->isSuccess()) {
+            auto blockResponse = dynamic_pointer_cast<GetBlockNumberRpcResponse>(response);
+            if (blockResponse != nullptr && mBlockNumberCache != nullptr) {
+                mBlockNumberCache->update(blockResponse->blockNumber());
+                info() << "BlockNumber cache updated with block "
+                       << blockResponse->blockNumber();
+            }
+        }
         mTransactionsManager->onRpcResponseReceived(
             response);
 
