@@ -81,6 +81,10 @@ public:
 
     void testThrowExceptionOnCoordinatorAfterApproveBeforeSendMessage();
 
+    void testThrowExceptionOnObservingSubmitClaimStage();
+
+    void testThrowExceptionOnObservingCheckClaimStatusStage();
+
     void testTerminateProcessOnPreviousNeighborRequestProcessingStage();
 
     void testTerminateProcessOnCoordinatorRequestProcessingStage();
@@ -92,6 +96,10 @@ public:
     void testTerminateProcessOnVoteConsistencyStage();
 
     void testTerminateProcessOnCoordinatorAfterApproveBeforeSendMessage();
+
+    void testTerminateProcessOnObservingSubmitClaimStage();
+
+    void testTerminateProcessOnObservingCheckClaimStatusStage();
 
     void testSleepOnPreviousNeighborRequestProcessingStage(
         uint32_t millisecondsDelay);
@@ -144,6 +152,8 @@ private:
     bool mThrowExceptionOnVoteStage;
     bool mThrowExceptionOnVoteConsistencyStage;
     bool mThrowExceptionOnCoordinatorAfterApproveBeforeSendMessage;
+    bool mThrowExceptionOnObservingSubmitClaimStage;
+    bool mThrowExceptionOnObservingCheckClaimStatusStage;
 
     bool mTerminateProcessOnPreviousNeighborRequestProcessingStage;
     bool mTerminateProcessOnCoordinatorRequestProcessingStage;
@@ -151,6 +161,8 @@ private:
     bool mTerminateProcessOnVoteStage;
     bool mTerminateProcessOnVoteConsistencyStage;
     bool mTerminateProcessOnCoordinatorAfterApproveBeforeSendMessage;
+    bool mTerminateProcessOnObservingSubmitClaimStage;
+    bool mTerminateProcessOnObservingCheckClaimStatusStage;
 
     bool mSleepOnPreviousNeighborRequestProcessingStage;
     bool mSleepOnCoordinatorRequestProcessingStage;

@@ -22,10 +22,11 @@ PaymentTransactionsHandlerSQLite::PaymentTransactionsHandlerSQLite(
     // effective_claiming_block_number stores the extended claiming deadline that includes
     // the dispute grace period. This value equals maximal_claiming_block_number +
     // disputeGracePeriodBlocksCount and is used for observer monitoring queries.
+    // BlockNumber columns are stored as INTEGER (not BLOB) to enable correct numeric comparisons.
     string query = "CREATE TABLE IF NOT EXISTS " + mTableName +
                    " (uuid BLOB NOT NULL, "
-                   "maximal_claiming_block_number BLOB NOT NULL, "
-                   "effective_claiming_block_number BLOB NOT NULL, "
+                   "maximal_claiming_block_number INTEGER NOT NULL, "
+                   "effective_claiming_block_number INTEGER NOT NULL, "
                    "observing_state INTEGER NOT NULL, "
                    "recording_time INTEGER NOT NULL, "
                    "payment_key_id INTEGER NOT NULL);";
@@ -88,7 +89,7 @@ void PaymentTransactionsHandlerSQLite::saveRecord(
                       "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
     }
 
-    rc = sqlite3_bind_blob(stmt.get(), 2, &maximalClaimingBlockNumber, sizeof(BlockNumber), SQLITE_STATIC);
+    rc = sqlite3_bind_int64(stmt.get(), 2, static_cast<int64_t>(maximalClaimingBlockNumber));
     if (rc != SQLITE_OK) {
         throw IOError("PaymentTransactionsHandlerSQLite::saveRecord: Failed to bind maximal claiming block number. "
                       "BlockNumber=" + to_string(maximalClaimingBlockNumber) +
@@ -96,7 +97,7 @@ void PaymentTransactionsHandlerSQLite::saveRecord(
     }
 
     // Bind effective claiming block number (includes dispute grace period)
-    rc = sqlite3_bind_blob(stmt.get(), 3, &effectiveClaimingBlockNumber, sizeof(BlockNumber), SQLITE_STATIC);
+    rc = sqlite3_bind_int64(stmt.get(), 3, static_cast<int64_t>(effectiveClaimingBlockNumber));
     if (rc != SQLITE_OK) {
         throw IOError("PaymentTransactionsHandlerSQLite::saveRecord: Failed to bind effective claiming block number. "
                       "BlockNumber=" + to_string(effectiveClaimingBlockNumber) +
@@ -191,12 +192,8 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerSQLite::tra
     while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
         TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 0));
 
-        auto blockNumberBytes = sqlite3_column_blob(stmt.get(), 1);
-        BlockNumber maximalClaimingBlockNumber;
-        memcpy(
-            &maximalClaimingBlockNumber,
-            blockNumberBytes,
-            sizeof(BlockNumber));
+        BlockNumber maximalClaimingBlockNumber = static_cast<BlockNumber>(
+            sqlite3_column_int64(stmt.get(), 1));
 
         result.emplace_back(
             transactionUUID,
@@ -225,13 +222,7 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerSQLite::tra
 
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
 
-    BlockNumber minBlockNumberCopy = minBlockNumber;
-    int rc = sqlite3_bind_blob(
-        stmt.get(),
-        1,
-        &minBlockNumberCopy,
-        sizeof(BlockNumber),
-        SQLITE_STATIC);
+    int rc = sqlite3_bind_int64(stmt.get(), 1, static_cast<int64_t>(minBlockNumber));
     if (rc != SQLITE_OK) {
         throw IOError("PaymentTransactionsHandlerSQLite::transactionsForObserverMonitoring: Failed to bind min block number. "
                       "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
@@ -248,12 +239,8 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerSQLite::tra
         if (rc == SQLITE_ROW) {
             TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 0));
 
-            auto blockNumberBytes = sqlite3_column_blob(stmt.get(), 1);
-            BlockNumber maximalClaimingBlockNumber;
-            memcpy(
-                &maximalClaimingBlockNumber,
-                blockNumberBytes,
-                sizeof(BlockNumber));
+            BlockNumber maximalClaimingBlockNumber = static_cast<BlockNumber>(
+                sqlite3_column_int64(stmt.get(), 1));
 
             result.emplace_back(
                 transactionUUID,

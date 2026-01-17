@@ -125,6 +125,11 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
         sizeof(SerializedRecordsCount));
     bytesBufferOffset += sizeof(SerializedRecordsCount);
 
+    // Get the appropriate TrustLinesManager for this equivalent
+    auto trustLineManager = mEquivalentsSubsystemsRouter->trustLinesManager(mEquivalent);
+    bool isReserveAmounts = !trustLineManager->isReservationsPresentConsiderTransaction(
+                                mTransactionUUID);
+
     // Map values
     for (auto idx = 0; idx < reservationsCount; idx++) {
         // Map Key ContractorID
@@ -177,12 +182,6 @@ BaseExchangePaymentTransaction::BaseExchangePaymentTransaction(
                 buffer.get() + bytesBufferOffset,
                 sizeof(SerializedEquivalent));
             bytesBufferOffset += sizeof(SerializedEquivalent);
-
-            // Get the appropriate TrustLinesManager for this equivalent
-            auto trustLineManager = mEquivalentsSubsystemsRouter->trustLinesManager(stepEquivalent);
-
-            bool isReserveAmounts = !trustLineManager->isReservationsPresentConsiderTransaction(
-                                        mTransactionUUID);
 
             if (isReserveAmounts) {
                 if (stepEnumDirection == AmountReservation::ReservationDirection::Incoming) {
@@ -447,7 +446,7 @@ pair<BytesShared, size_t> BaseExchangePaymentTransaction::serializeToBytes() con
 
 BaseAddress::Shared BaseExchangePaymentTransaction::coordinatorAddress() const
 {
-    throw RuntimeError("BaseExchangePaymentTransaction::coordinatorAddress not yet implemented");
+    return mContractorsManager->selfContractor()->mainAddress();
 }
 
 const SerializedPathLengthSize BaseExchangePaymentTransaction::cycleLength() const
@@ -901,6 +900,11 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::sendVotesRequestM
     Contractor::Shared contractor)
 {
     debug() << "sendVotesRequestMessageAndWaitForResponse";
+
+#ifdef TESTS
+        mSubsystemsController->testForbidSendMessageOnRecoveryStage();
+#endif
+
     sendMessage<VotesStatusRequestMessage>(
         contractor->mainAddress(),
         mEquivalent,
@@ -1038,6 +1042,11 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingAccep
 {
     info() << "runObservingAcceptClaimStage";
 
+#ifdef TESTS
+    mSubsystemsController->testThrowExceptionOnObservingSubmitClaimStage();
+    mSubsystemsController->testTerminateProcessOnObservingSubmitClaimStage();
+#endif
+
     if (!hasRpcResponse()) {
         info() << "Submitting AcceptClaim RPC request";
 
@@ -1094,7 +1103,7 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingAccep
         return runObservingGetClaimStatusStage();
     }
 
-    const string kClaimWindowClosedMessage = "must be less than current block number";
+    const string kClaimWindowClosedMessage = "must be greater than or equal to current block number";
     if (message.find(kClaimWindowClosedMessage) != string::npos) {
         warning() << "Claim window closed: " << message;
 
@@ -1116,6 +1125,11 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingAccep
 TransactionResult::SharedConst BaseExchangePaymentTransaction::runObservingGetClaimStatusStage()
 {
     info() << "runObservingGetClaimStatusStage";
+
+#ifdef TESTS
+    mSubsystemsController->testThrowExceptionOnObservingCheckClaimStatusStage();
+    mSubsystemsController->testTerminateProcessOnObservingCheckClaimStatusStage();
+#endif
 
     // Send request when no response is queued yet.
     if (!hasRpcResponse()) {
@@ -1319,6 +1333,17 @@ void BaseExchangePaymentTransaction::commit(IOTransaction::Shared ioTransaction)
 {
     debug() << "Transaction committing...";
 
+    // reset initiator cache, because after changing balances
+    // we need updated information on max flow calculation transaction
+    // For exchange transactions, we need to reset cache for all equivalents involved
+    for (const auto &kNodeIDAndReservations : mReservations) {
+        for (const auto &kPathIDAndReservation : kNodeIDAndReservations.second) {
+            auto equiv = kPathIDAndReservation.second->equivalent();
+            topologyCacheManager(equiv)->resetInitiatorCache();
+            maxFlowCacheManager(equiv)->clearCashes();
+        }
+    }
+
     for (const auto &kNodeIDAndReservations : mReservations) {
         AmountReservation::ReservationDirection reservationDirection;
         for (const auto &kPathIDAndReservation : kNodeIDAndReservations.second) {
@@ -1366,17 +1391,6 @@ void BaseExchangePaymentTransaction::commit(IOTransaction::Shared ioTransaction)
 
     // delete transaction references on dropped reservations
     mReservations.clear();
-
-    // reset initiator cache, because after changing balances
-    // we need updated information on max flow calculation transaction
-    // For exchange transactions, we need to reset cache for all equivalents involved
-    for (const auto &kNodeIDAndReservations : mReservations) {
-        for (const auto &kPathIDAndReservation : kNodeIDAndReservations.second) {
-            auto equiv = kPathIDAndReservation.second->equivalent();
-            topologyCacheManager(equiv)->resetInitiatorCache();
-            maxFlowCacheManager(equiv)->clearCashes();
-        }
-    }
 
     debug() << "Transaction committed.";
     saveVotes(ioTransaction);

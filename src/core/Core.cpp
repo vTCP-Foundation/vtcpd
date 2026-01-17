@@ -1264,11 +1264,17 @@ void Core::onRpcRequestSlot(
                 request->transactionUUID(),
                 RpcResponseStatus::Success,
                 mBlockNumberCache->getCachedBlockNumber());
-            try {
-                mTransactionsManager->onRpcResponseReceived(response);
-            } catch (const exception &e) {
-                mLog->logException("Core", e);
-            }
+            // Defer response delivery to next event loop iteration.
+            // This allows the calling transaction to transition into the
+            // "waiting for RPC response" state before we attempt to attach
+            // the cached response.
+            as::post(mIOCtx, [this, response]() {
+                try {
+                    mTransactionsManager->onRpcResponseReceived(response);
+                } catch (const exception &e) {
+                    mLog->logException("Core", e);
+                }
+            });
             return;
         }
         debug() << "GetBlockNumber cache miss, forwarding to observer";

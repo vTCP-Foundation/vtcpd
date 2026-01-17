@@ -116,6 +116,23 @@ void TransactionsManager::loadTransactionsFromStorage()
                 true);
             break;
         }
+        case BaseTransaction::IntermediateNodeExchangePaymentTransaction:
+        case BaseTransaction::ReceiverExchangePaymentTransaction: {
+            auto exchangePaymentTransaction = deserializeExchangePaymentTransaction(
+                                          kTABuffer,
+                                          transactionTypeId,
+                                          *equivalent);
+            if (exchangePaymentTransaction == nullptr) {
+                continue;
+            }
+            prepareAndSchedule(
+                exchangePaymentTransaction,
+                false,
+                false,
+                true,
+                true);
+            break;
+        }
         case BaseTransaction::ConflictResolverInitiatorTransactionType: {
             try {
                 auto transaction = make_shared<ConflictResolverInitiatorTransaction>(
@@ -242,6 +259,82 @@ BasePaymentTransaction::Shared TransactionsManager::deserializePaymentTransactio
     default: {
         throw RuntimeError(
             "TrustLinesManager::deserializePaymentTransaction. "
+            "Unexpected transaction type identifier " + to_string(transactionType));
+    }
+    }
+}
+
+BaseExchangePaymentTransaction::Shared TransactionsManager::deserializeExchangePaymentTransaction(
+    BytesShared buffer,
+    BaseTransaction::SerializedTransactionType transactionType,
+    SerializedEquivalent equivalent)
+{
+    switch (transactionType) {
+    case BaseTransaction::IntermediateNodeExchangePaymentTransaction: {
+        try {
+            info() << "deserializeExchangePaymentTransaction: IntermediateNodeExchangePaymentTransaction";
+            auto transaction = make_shared<IntermediateNodeExchangePaymentTransaction>(
+                buffer,
+                mContractorsManager,
+                mEquivalentsSubsystemsRouter,
+                mStorageHandler,
+                mResourcesManager,
+                mExchangeRatesManager,
+                mCommissionsManager,
+                mExchangePathsManager,
+                mObservingHandler,
+                mKeysStore,
+                mLog,
+                mSubsystemsController);
+            subscribeForBuildCyclesThreeNodesTransaction(
+                transaction->mBuildCycleThreeNodesSignal);
+            subscribeForBuildCyclesFourNodesTransaction(
+                transaction->mBuildCycleFourNodesSignal);
+            subscribeForTrustLineActionSignal(
+                transaction->trustLineActionSignal);
+            subscribeForKeysSharingSignal(
+                transaction->publicKeysSharingSignal);
+            return transaction;
+        } catch (NotFoundError &e) {
+            error() << "There are no subsystems for serialized IntermediateNodeExchangePaymentTransaction "
+                       "with equivalent " << equivalent << " Details are: " << e.what();
+            return nullptr;
+        }
+    }
+    case BaseTransaction::ReceiverExchangePaymentTransaction: {
+        try {
+            auto transaction = make_shared<ReceiverExchangePaymentTransaction>(
+                buffer,
+                mContractorsManager,
+                mEquivalentsSubsystemsRouter,
+                mStorageHandler,
+                mResourcesManager,
+                mExchangeRatesManager,
+                mCommissionsManager,
+                mExchangePathsManager,
+                mObservingHandler,
+                mKeysStore,
+                mEventsInterfaceManager,
+                mLog,
+                mSubsystemsController);
+            subscribeForBuildCyclesThreeNodesTransaction(
+                transaction->mBuildCycleThreeNodesSignal);
+            subscribeForBuildCyclesFourNodesTransaction(
+                transaction->mBuildCycleFourNodesSignal);
+            subscribeForTrustLineActionSignal(
+                transaction->trustLineActionSignal);
+            subscribeForKeysSharingSignal(
+                transaction->publicKeysSharingSignal);
+            return transaction;
+        } catch (NotFoundError &e) {
+            error() << "There are no subsystems for serialized ReceiverExchangePaymentTransaction "
+                       "with equivalent " << equivalent << " Details are: " << e.what();
+            return nullptr;
+        }
+    }
+    default: {
+        throw RuntimeError(
+            "TrustLinesManager::deserializeExchangePaymentTransaction. "
             "Unexpected transaction type identifier " + to_string(transactionType));
     }
     }

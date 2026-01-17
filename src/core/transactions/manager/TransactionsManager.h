@@ -617,6 +617,11 @@ private:
         BaseTransaction::SerializedTransactionType transactionType,
         SerializedEquivalent equivalent);
 
+    BaseExchangePaymentTransaction::Shared deserializeExchangePaymentTransaction(
+        BytesShared buffer,
+        BaseTransaction::SerializedTransactionType transactionType,
+        SerializedEquivalent equivalent);
+
     void prepareAndSchedule(
         BaseTransaction::Shared transaction,
         bool regenerateUUID=false,

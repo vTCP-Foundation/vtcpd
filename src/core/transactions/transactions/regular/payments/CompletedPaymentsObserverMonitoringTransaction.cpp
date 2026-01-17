@@ -235,7 +235,8 @@ TransactionResult::SharedConst CompletedPaymentsObserverMonitoringTransaction::r
                << claimsInfo.size() << " claims";
         sendRpcRequest(request);
         mClaimStatusesRequestSent = true;
-        return resultWaitForRpcResponse(RpcMethod::GetClaimStatuses);
+        return resultWaitForRpcResponse(
+            RpcMethod::GetClaimStatuses);
     }
 
     // Timeout case: no response received within wait interval.
@@ -369,7 +370,8 @@ TransactionResult::SharedConst CompletedPaymentsObserverMonitoringTransaction::r
     }
 
     mStep = WaitForVotesSubmissionResponses;
-    return resultWaitForRpcResponse(RpcMethod::SubmitClaimVotes);
+    return resultWaitForRpcResponse(
+        RpcMethod::SubmitClaimVotes);
 }
 
 TransactionResult::SharedConst CompletedPaymentsObserverMonitoringTransaction::runWaitForVotesSubmissionResponsesStage()

@@ -67,6 +67,7 @@ CoordinatorExchangePaymentTransaction::CoordinatorExchangePaymentTransaction(
 {
     mStep = Stages::Coordinator_Initialization;
     mContractor = make_shared<Contractor>(command->contractorAddresses());
+    mDisputeGracePeriodBlocksCount = kDisputeGracePeriodBlocksCount;
     mExchangeEquivalent = command->exchangeEquivalents()[0];
     // Get ContractorID from first address
     if (!mContractorAddresses.empty()) {
@@ -888,7 +889,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
                     nodeConfig->second,  // vector<PathReservation>
                     mPaymentParticipants,
                     mMaximalClaimingBlockNumber,
-                    kDisputeGracePeriodBlocksCount,
+                    mDisputeGracePeriodBlocksCount,
                     signatures);
             } else {
                 // Node not found in configuration - send empty vector
@@ -902,7 +903,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
                     emptyReservations,
                     mPaymentParticipants,
                     mMaximalClaimingBlockNumber,
-                    kDisputeGracePeriodBlocksCount,
+                    mDisputeGracePeriodBlocksCount,
                     signatures);
             }
         } else {
@@ -923,7 +924,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
                     nodeConfig->second,  // vector<PathReservation>
                     mPaymentParticipants,
                     mMaximalClaimingBlockNumber,
-                    kDisputeGracePeriodBlocksCount);
+                    mDisputeGracePeriodBlocksCount);
             } else {
                 // Node not found in configuration - send empty vector
                 warning() << "Node " << nodeKey << " not found in mNodesFinalAmountsConfiguration";
@@ -936,7 +937,7 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
                     emptyReservations,
                     mPaymentParticipants,
                     mMaximalClaimingBlockNumber,
-                    kDisputeGracePeriodBlocksCount);
+                    mDisputeGracePeriodBlocksCount);
             }
         }
     }

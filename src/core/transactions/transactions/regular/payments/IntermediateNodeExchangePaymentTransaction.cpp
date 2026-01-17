@@ -23,7 +23,7 @@ IntermediateNodeExchangePaymentTransaction::IntermediateNodeExchangePaymentTrans
     SubsystemsController *subsystemsController) :
 
     BaseExchangePaymentTransaction(
-        BaseTransaction::IntermediateNodePaymentTransaction,
+        BaseTransaction::IntermediateNodeExchangePaymentTransaction,
         message->transactionUUID(),
         message->equivalent(),
         contractorsManager,
@@ -1045,7 +1045,7 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
     mMaximalClaimingBlockNumber = kMessage->maximalClaimingBlockNumber();
     debug() << "maximal claiming block number on Coordinator side: " << mMaximalClaimingBlockNumber;
     mDisputeGracePeriodBlocksCount = kMessage->disputeGracePeriodBlocksCount();
-    debug() << "dispute grace period blocks count: " << mDisputeGracePeriodBlocksCount;
+    debug() << "dispute grace period blocks count on Coordinator side: " << mDisputeGracePeriodBlocksCount;
     
     info() << "final amount configuration size: " << kMessage->finalAmountsConfiguration().size();
 

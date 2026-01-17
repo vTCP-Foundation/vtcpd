@@ -219,7 +219,8 @@ TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordWithSpecificUUID) {
 
 TEST_F(PaymentTransactionsHandlerSQLiteTest, SaveRecordLargeBlockNumber) {
     auto transactionUUID = createTestUUID();
-    auto blockNumber = createTestBlockNumber(std::numeric_limits<uint64_t>::max() - 1);
+    // Use max signed int64 value since SQLite INTEGER is signed 64-bit
+    auto blockNumber = createTestBlockNumber(static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
 
     EXPECT_NO_THROW(handler->saveRecord(transactionUUID, blockNumber, blockNumber));
 

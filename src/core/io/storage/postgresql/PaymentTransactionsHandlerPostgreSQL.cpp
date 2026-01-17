@@ -36,10 +36,11 @@ PaymentTransactionsHandlerPostgreSQL::PaymentTransactionsHandlerPostgreSQL(
     // effective_claiming_block_number stores the extended claiming deadline that includes
     // the dispute grace period. This value equals maximal_claiming_block_number +
     // disputeGracePeriodBlocksCount and is used for observer monitoring queries.
+    // BlockNumber columns are stored as BIGINT (not BYTEA) to enable correct numeric comparisons.
     string query = "CREATE TABLE IF NOT EXISTS " + mTableName +
                    " (uuid BYTEA NOT NULL, "
-                   "maximal_claiming_block_number BYTEA NOT NULL, "
-                   "effective_claiming_block_number BYTEA NOT NULL, "
+                   "maximal_claiming_block_number BIGINT NOT NULL, "
+                   "effective_claiming_block_number BIGINT NOT NULL, "
                    "observing_state INTEGER NOT NULL, "
                    "recording_time BIGINT NOT NULL, "
                    "payment_key_id BIGINT NOT NULL, "
@@ -77,12 +78,13 @@ void PaymentTransactionsHandlerPostgreSQL::saveRecord(
     const int kParams=5;
     const char *params[kParams];
     int lengths[kParams];
-    int formats[kParams]={1,1,1,0,0};
+    int formats[kParams]={1,0,0,0,0};
 
     params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
-    params[1]=reinterpret_cast<const char*>(&maximalClaimingBlockNumber); lengths[1]=sizeof(BlockNumber);
+    // Store BlockNumber as text (BIGINT requires text format for parameterized queries)
+    string maxBlockStr=to_string(maximalClaimingBlockNumber); params[1]=maxBlockStr.c_str(); lengths[1]=0;
     // Bind effective claiming block number (includes dispute grace period)
-    params[2]=reinterpret_cast<const char*>(&effectiveClaimingBlockNumber); lengths[2]=sizeof(BlockNumber);
+    string effBlockStr=to_string(effectiveClaimingBlockNumber); params[2]=effBlockStr.c_str(); lengths[2]=0;
     string stateStr="0"; params[3]=stateStr.c_str(); lengths[3]=0;
     GEOEpochTimestamp ts = microsecondsSinceGEOEpoch(utc_now());
     string tsStr=to_string(ts); params[4]=tsStr.c_str(); lengths[4]=0;
@@ -110,14 +112,19 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerPostgreSQL:
 {
     vector<pair<TransactionUUID, BlockNumber>> result;
     const string query="SELECT uuid, maximal_claiming_block_number FROM " + mTableName + " WHERE observing_state=0;";
-    PGresult *res = PQexecParams(mDataBase, query.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1);  // Request binary result format
+    // Use binary format (resultFormat=1) for proper data retrieval
+    PGresult *res = PQexecParams(mDataBase, query.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1);
     checkTuples(mDataBase,res,"transactionsWithUncertainState");
     int rows=PQntuples(res);
     for (int i=0;i<rows;++i) {
         const unsigned char *uuidBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,0));
-        const unsigned char *blockBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,1));
         TransactionUUID uuid(uuidBytes);
-        BlockNumber bn; memcpy(&bn, blockBytes, sizeof(BlockNumber));
+        // BIGINT in binary format is 8 bytes big-endian, convert to host byte order
+        const unsigned char *blockBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res,i,1));
+        BlockNumber bn = 0;
+        for (int j = 0; j < 8; ++j) {
+            bn = (bn << 8) | blockBytes[j];
+        }
         result.emplace_back(uuid,bn);
     }
     PQclear(res);
@@ -141,9 +148,11 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerPostgreSQL:
     int lengths[kParams];
     int formats[kParams];
 
-    params[0] = reinterpret_cast<const char*>(&minBlockNumber);
-    lengths[0] = sizeof(BlockNumber);
-    formats[0] = 1;
+    // Pass minBlockNumber as text for BIGINT comparison
+    string minBlockStr = to_string(minBlockNumber);
+    params[0] = minBlockStr.c_str();
+    lengths[0] = 0;
+    formats[0] = 0;
 
     string limitStr = to_string(limit);
     params[1] = limitStr.c_str();
@@ -164,10 +173,13 @@ vector<pair<TransactionUUID, BlockNumber>> PaymentTransactionsHandlerPostgreSQL:
     int rows = PQntuples(res);
     for (int i = 0; i < rows; ++i) {
         const unsigned char *uuidBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, i, 0));
-        const unsigned char *blockBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, i, 1));
         TransactionUUID uuid(uuidBytes);
-        BlockNumber maximalClaimingBlockNumber;
-        memcpy(&maximalClaimingBlockNumber, blockBytes, sizeof(BlockNumber));
+        // BIGINT in binary format is 8 bytes big-endian, convert to host byte order
+        const unsigned char *blockBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, i, 1));
+        BlockNumber maximalClaimingBlockNumber = 0;
+        for (int j = 0; j < 8; ++j) {
+            maximalClaimingBlockNumber = (maximalClaimingBlockNumber << 8) | blockBytes[j];
+        }
         result.emplace_back(uuid, maximalClaimingBlockNumber);
     }
     PQclear(res);

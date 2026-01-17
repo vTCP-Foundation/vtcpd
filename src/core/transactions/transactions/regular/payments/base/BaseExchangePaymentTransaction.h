@@ -261,11 +261,10 @@ protected:
     static const uint16_t kMaxMessageTransferLagMSec = 1500;
     static const uint16_t kMaxResourceTransferLagMSec = 2000;
     static const auto kMaxPathLength = 7;
-    static const uint32_t kWaitMillisecondsToTryRecoverAgain = 30000;
-    static const uint32_t kWaitMillisecondsToTryInitialRecoverAgain = 900000;
+    static const uint32_t kWaitMillisecondsToTryRecoverAgain = 60000;
     // Delay between observing polls.
     static const uint32_t kObservingCheckPeriodMilliseconds = 60000;
-    static const uint8_t kMaxRecoveryAttempts = 30;
+    static const uint8_t kMaxRecoveryAttempts = 10;
     static const uint8_t kMaxSuspendingAttemptsOnFinalAmountsConfirmationStage = 3;
     const PaymentNodeID kCoordinatorPaymentNodeID = 0;
     static const uint64_t kCountBlocksForClaiming = 10000;

@@ -84,12 +84,14 @@ public:
 
         // Payments
         CoordinatorPaymentTransaction = 301,
-        ReceiverPaymentTransaction = 302,
-        IntermediateNodePaymentTransaction = 303,
+        ReceiverPaymentTransaction = 308,
+        ReceiverExchangePaymentTransaction = 302,
+        IntermediateNodePaymentTransaction = 309,
+        IntermediateNodeExchangePaymentTransaction = 303,
         VoutesStatusResponsePaymentTransaction = 304,
         Payments_CycleCloserInitiatorTransaction = 305,
         Payments_CycleCloserIntermediateNodeTransaction = 306,
-        Payments_CompletedPaymentsObserverMonitoring = 307, // Task 15-04
+        Payments_CompletedPaymentsObserverMonitoring = 307,
 
         // Max flow calculation
         CollectTopologyTransactionType = 401,

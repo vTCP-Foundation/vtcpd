@@ -88,7 +88,7 @@ ObservingHandler::ObservingHandler(
             if (e == boost::asio::error::operation_aborted) {
                 return;
             }
-            monitorSuccessfulTransactions();
+            // monitorSuccessfulTransactions();
         });
 }
 

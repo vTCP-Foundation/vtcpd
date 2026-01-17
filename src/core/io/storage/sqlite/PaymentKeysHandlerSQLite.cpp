@@ -84,16 +84,12 @@ PrivateKey *PaymentKeysHandlerSQLite::getOwnPrivateKey()
     SQLiteStatementRAII stmt(mDataBase, query.c_str());
     int rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_ROW) {
-        info() << "Before private key deserializing";
         auto bytesCnt = sqlite3_column_bytes(stmt.get(), 0);
-        info() << "bytes cnt: " << bytesCnt;
         auto privateKeyBytesPtr = (byte*)sqlite3_column_blob(stmt.get(), 0);
-        info() << "privateKeyBytesPtr = " << reinterpret_cast<int64_t>(privateKeyBytesPtr);
         if (privateKeyBytesPtr == nullptr) {
             info() << "privateKeyBytesPtr is null";
         }
         auto result = new PrivateKey(reinterpret_cast<byte_t*>(privateKeyBytesPtr));
-        info() << "Private key deserialized. ";
         return result;
     } else {
         info() << "Private key was not found";

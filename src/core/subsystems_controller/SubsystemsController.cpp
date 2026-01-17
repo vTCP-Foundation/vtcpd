@@ -25,6 +25,8 @@ SubsystemsController::SubsystemsController(
     mThrowExceptionOnVoteStage = false;
     mThrowExceptionOnVoteConsistencyStage = false;
     mThrowExceptionOnCoordinatorAfterApproveBeforeSendMessage = false;
+    mThrowExceptionOnObservingSubmitClaimStage = false;
+    mThrowExceptionOnObservingCheckClaimStatusStage = false;
 
     mTerminateProcessOnPreviousNeighborRequestProcessingStage = false;
     mTerminateProcessOnCoordinatorRequestProcessingStage = false;
@@ -32,6 +34,8 @@ SubsystemsController::SubsystemsController(
     mTerminateProcessOnVoteStage = false;
     mTerminateProcessOnVoteConsistencyStage = false;
     mTerminateProcessOnCoordinatorAfterApproveBeforeSendMessage = false;
+    mTerminateProcessOnObservingSubmitClaimStage = false;
+    mTerminateProcessOnObservingCheckClaimStatusStage = false;
 
     mSleepOnPreviousNeighborRequestProcessingStage = false;
     mSleepOnCoordinatorRequestProcessingStage = false;
@@ -71,6 +75,8 @@ void SubsystemsController::setFlags(size_t flags)
     mThrowExceptionOnVoteStage = (flags & 0x4000) > 0;
     mThrowExceptionOnVoteConsistencyStage = (flags & 0x8000) > 0;
     mThrowExceptionOnCoordinatorAfterApproveBeforeSendMessage = (flags & 0x10000) > 0;
+    mThrowExceptionOnObservingSubmitClaimStage = (flags & 0x20000) > 0;
+    mThrowExceptionOnObservingCheckClaimStatusStage = (flags & 0x40000) > 0;
 
     mTerminateProcessOnPreviousNeighborRequestProcessingStage = (flags & 0x200000) > 0;
     mTerminateProcessOnCoordinatorRequestProcessingStage = (flags & 0x400000) > 0;
@@ -78,6 +84,8 @@ void SubsystemsController::setFlags(size_t flags)
     mTerminateProcessOnVoteStage = (flags & 0x1000000) > 0;
     mTerminateProcessOnVoteConsistencyStage = (flags & 0x2000000) > 0;
     mTerminateProcessOnCoordinatorAfterApproveBeforeSendMessage = (flags & 0x4000000) > 0;
+    mTerminateProcessOnObservingSubmitClaimStage = (flags & 0x8000000) > 0;
+    mTerminateProcessOnObservingCheckClaimStatusStage = (flags & 0x10000000) > 0;
 
     mSleepOnPreviousNeighborRequestProcessingStage = (flags & 0x80000000) > 0;
     mSleepOnCoordinatorRequestProcessingStage = (flags & 0x100000000) > 0;
@@ -320,6 +328,22 @@ void SubsystemsController::testThrowExceptionOnCoordinatorAfterApproveBeforeSend
     }
 }
 
+void SubsystemsController::testThrowExceptionOnObservingSubmitClaimStage()
+{
+    if (mThrowExceptionOnObservingSubmitClaimStage) {
+        mThrowExceptionOnObservingSubmitClaimStage = false;
+        throw Exception("Test exception on observing submit claim stage");
+    }
+}
+
+void SubsystemsController::testThrowExceptionOnObservingCheckClaimStatusStage()
+{
+    if (mThrowExceptionOnObservingCheckClaimStatusStage) {
+        mThrowExceptionOnObservingCheckClaimStatusStage = false;
+        throw Exception("Test exception on observing check claim status stage");
+    }
+}
+
 void SubsystemsController::testTerminateProcessOnPreviousNeighborRequestProcessingStage()
 {
     if (mTerminateProcessOnPreviousNeighborRequestProcessingStage) {
@@ -364,6 +388,22 @@ void SubsystemsController::testTerminateProcessOnCoordinatorAfterApproveBeforeSe
 {
     if (mTerminateProcessOnCoordinatorAfterApproveBeforeSendMessage) {
         debug() << "testTerminateProcessOnCoordinatorAfterApproveBeforeSendMessage";
+        exit(100);
+    }
+}
+
+void SubsystemsController::testTerminateProcessOnObservingSubmitClaimStage()
+{
+    if (mTerminateProcessOnObservingSubmitClaimStage) {
+        debug() << "testTerminateProcessOnObservingSubmitClaimStage";
+        exit(100);
+    }
+}
+
+void SubsystemsController::testTerminateProcessOnObservingCheckClaimStatusStage()
+{
+    if (mTerminateProcessOnObservingCheckClaimStatusStage) {
+        debug() << "testTerminateProcessOnObservingCheckClaimStatusStage";
         exit(100);
     }
 }

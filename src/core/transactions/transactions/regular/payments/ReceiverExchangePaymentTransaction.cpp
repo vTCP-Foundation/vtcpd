@@ -18,7 +18,7 @@ ReceiverExchangePaymentTransaction::ReceiverExchangePaymentTransaction(
     SubsystemsController *subsystemsController) :
 
     BaseExchangePaymentTransaction(
-        BaseTransaction::ReceiverPaymentTransaction,
+        BaseTransaction::ReceiverExchangePaymentTransaction,
         message->transactionUUID(),
         message->equivalent(),
         contractorsManager,
