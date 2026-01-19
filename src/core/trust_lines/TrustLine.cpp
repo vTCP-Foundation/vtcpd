@@ -306,31 +306,10 @@ bool operator==(
  *
  * @param amount - specifies how much should be cleared/used.
  */
-// TODO : check again this conditions
 void TrustLine::pay(
     const TrustLineAmount &amount)
 {
     const auto kNewBalance = mBalance - amount;
-    if (mBalance * kNewBalance > kZeroBalance()) {
-        if (mBalance > kZeroBalance() && mBalance > kNewBalance) {
-            mBalance = kNewBalance;
-            mTotalOutgoingReceiptsAmount = mTotalOutgoingReceiptsAmount + amount;
-            return;
-        }
-        if (mBalance < kZeroBalance() && mBalance < kNewBalance) {
-            mBalance = kNewBalance;
-            mTotalOutgoingReceiptsAmount = mTotalOutgoingReceiptsAmount + amount;
-            return;
-        }
-    }
-    if (kNewBalance < kZeroBalance() && abs(kNewBalance) > mIncomingTrustAmount) {
-        throw OverflowError(
-            "TrustLine::useCredit: attempt of using more than incoming credit amount.");
-    }
-    if (kNewBalance > kZeroBalance() && kNewBalance > mOutgoingTrustAmount) {
-        throw OverflowError(
-            "TrustLine::useCredit: attempt of using more than incoming credit amount.");
-    }
     mBalance = kNewBalance;
     mTotalOutgoingReceiptsAmount = mTotalOutgoingReceiptsAmount + amount;
 }
@@ -341,31 +320,10 @@ void TrustLine::pay(
  *
  * @param amount - specifies how much should be cleared/used.
  */
-// TODO : check again this conditions
 void TrustLine::acceptPayment(
     const TrustLineAmount &amount)
 {
     const auto kNewBalance = mBalance + amount;
-    if (mBalance * kNewBalance > kZeroBalance()) {
-        if (mBalance > kZeroBalance() && mBalance > kNewBalance) {
-            mBalance = kNewBalance;
-            mTotalIncomingReceiptsAmount = mTotalIncomingReceiptsAmount + amount;
-            return;
-        }
-        if (mBalance < kZeroBalance() && mBalance < kNewBalance) {
-            mBalance = kNewBalance;
-            mTotalIncomingReceiptsAmount = mTotalIncomingReceiptsAmount + amount;
-            return;
-        }
-    }
-    if (kNewBalance < kZeroBalance() && abs(kNewBalance) > mIncomingTrustAmount) {
-        throw OverflowError(
-            "TrustLine::useCredit: attempt of using more than incoming credit amount.");
-    }
-    if (kNewBalance > kZeroBalance() && kNewBalance > mOutgoingTrustAmount) {
-        throw OverflowError(
-            "TrustLine::useCredit: attempt of using more than incoming credit amount.");
-    }
     mBalance = kNewBalance;
     mTotalIncomingReceiptsAmount = mTotalIncomingReceiptsAmount + amount;
 }

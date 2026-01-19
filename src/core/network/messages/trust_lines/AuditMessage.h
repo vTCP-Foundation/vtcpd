@@ -4,6 +4,7 @@
 #include "../base/transaction/TransactionMessage.h"
 #include "../../../crypto/sphincsscheme.h"
 #include "../../../common/multiprecision/MultiprecisionUtils.h"
+#include <vector>
 
 using namespace crypto;
 
@@ -21,7 +22,8 @@ public:
         const AuditNumber auditNumber,
         const TrustLineAmount &incomingAmount,
         const TrustLineAmount &outgoingAmount,
-        const sphincs::Signature::Shared signature);
+        const sphincs::Signature::Shared signature,
+        const vector<TransactionUUID> &transactionUUIDs = {});
 
     AuditMessage(
         BytesShared buffer);
@@ -32,7 +34,25 @@ public:
 
     const TrustLineAmount& outgoingAmount() const;
 
+    // Returns the audit transaction UUID list.
+    const vector<TransactionUUID>& transactionUUIDs() const;
+
     const sphincs::Signature::Shared signature() const;
+
+    // Sorts UUIDs lexicographically by raw bytes for deterministic ordering.
+    static void sortTransactionUUIDs(
+        vector<TransactionUUID> &transactionUUIDs);
+
+    // Returns a sorted, unique copy of the UUID list.
+    static vector<TransactionUUID> normalizedTransactionUUIDs(
+        const vector<TransactionUUID> &transactionUUIDs);
+
+    // Computes SHA-256 over count + concatenated UUID bytes.
+    static BytesShared computeTransactionListHash(
+        const vector<TransactionUUID> &transactionUUIDs);
+
+    // Defines the hash size for transaction UUID lists.
+    static constexpr size_t kTransactionUUIDsHashSize = 32;
 
     const MessageType typeID() const override;
 
@@ -47,6 +67,8 @@ private:
     AuditNumber mAuditNumber;
     TrustLineAmount mIncomingAmount;
     TrustLineAmount mOutgoingAmount;
+    // Stores the audit transaction UUID list in canonical order.
+    vector<TransactionUUID> mTransactionUUIDs;
     sphincs::Signature::Shared mSignature;
 };
 

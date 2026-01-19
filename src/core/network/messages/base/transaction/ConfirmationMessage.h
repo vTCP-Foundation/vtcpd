@@ -26,6 +26,7 @@ public:
         OwnKeysAbsent = 12,
         ContractorKeysAbsent = 13,
         KeysSharingTxPresent = 14,
+        Audit_UpdateTransactionsList = 15,
     };
 
 public:

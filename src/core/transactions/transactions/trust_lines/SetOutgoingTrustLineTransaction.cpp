@@ -252,34 +252,6 @@ TransactionResult::SharedConst SetOutgoingTrustLineTransaction::runAuditPendingS
         return resultContractorKeysError();
     }
 
-    if (mTrustLines->isReservationsPresentOnTrustLine(mContractorID)) {
-        warning() << "There are some reservations on TL. Audit will be suspended";
-        auto incomingReservations = mTrustLines->reservationsFromContractor(mContractorID);
-        for (auto &incomingReservation : incomingReservations) {
-            info() << "Incoming reservation " << incomingReservation->transactionUUID()
-                   << " " << incomingReservation->amount();
-        }
-        auto outgoingReservations = mTrustLines->reservationsToContractor(mContractorID);
-        for (auto &outgoingReservation : outgoingReservations) {
-            info() << "Outgoing reservation " << outgoingReservation->transactionUUID()
-                   << " " << outgoingReservation->amount();
-        }
-        mCountPendingAttempts++;
-        if (mCountPendingAttempts > kMaxPendingAttempts) {
-            warning() << "Max pending attempts. TL will be conflicted";
-            auto ioTransaction = mStorageHandler->beginTransaction();
-            mTrustLines->setTrustLineState(
-                mContractorID,
-                TrustLine::ConflictResolving,
-                ioTransaction);
-            // todo run conflict resolving TA
-            return resultProtocolError();
-        }
-
-        return resultAwakeAfterMilliseconds(
-                   kPendingPeriodInMilliseconds);
-    }
-
     return initializeAudit();
 }
 
