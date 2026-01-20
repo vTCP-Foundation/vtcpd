@@ -836,6 +836,32 @@ bool TrustLinesManager::isTrustLineEmpty(
             and balance(contractorID) == TrustLine::kZeroBalance());
 }
 
+/**
+ * Updates balance by removing excluded receipts and preserves excluded totals.
+ */
+void TrustLinesManager::updateTrustLineTotalReceiptsAmounts(
+    ContractorID contractorID,
+    TrustLineAmount excludedIncoming,
+    TrustLineAmount excludedOutgoing)
+{
+    if (not trustLineIsPresent(contractorID)) {
+        throw NotFoundError(
+            logHeader() + "::updateTrustLineTotalReceiptsAmounts: "
+                      "There is no trust line to the contractor " + to_string(contractorID));
+    }
+
+    auto trustLine = mTrustLines[contractorID];
+
+    // Remove excluded receipts to keep only amounts finalized in the audit.
+    const TrustLineBalance kNewBalance =
+        trustLine->balance() - excludedIncoming + excludedOutgoing;
+    trustLine->setBalance(kNewBalance);
+
+    // Preserve excluded receipts totals for future audits.
+    trustLine->setTotalIncomingReceiptsAmount(excludedIncoming);
+    trustLine->setTotalOutgoingReceiptsAmount(excludedOutgoing);
+}
+
 void TrustLinesManager::resetTrustLineTotalReceiptsAmounts(
     ContractorID contractorID)
 {

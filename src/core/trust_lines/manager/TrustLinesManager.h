@@ -337,6 +337,15 @@ public:
     bool isTrustLineEmpty(
         ContractorID contractorID);
 
+    /**
+     * Updates trust line balance by removing excluded receipts
+     * and preserves excluded receipts amounts for future audits.
+     */
+    void updateTrustLineTotalReceiptsAmounts(
+        ContractorID contractorID,
+        TrustLineAmount excludedIncoming,
+        TrustLineAmount excludedOutgoing);
+
     void resetTrustLineTotalReceiptsAmounts(
         ContractorID contractorID);
 
