@@ -893,7 +893,6 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::sendFinalPathCon
                                              serializedOutgoingReceiptData.second);
             if (!keyChain.saveOutgoingPaymentReceipt(
                         ioTransaction,
-                        mTrustLinesManager->auditNumber(mNextNodeID),
                         mTransactionUUID,
                         mPathStats->maxFlow(),
                         signature)) {
@@ -1038,7 +1037,6 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runFinalReservat
     }
     if (!keyChain.saveIncomingPaymentReceipt(
                 ioTransaction,
-                mTrustLinesManager->auditNumber(mPreviousNodeID),
                 mTransactionUUID,
                 participantTotalIncomingReservationAmount,
                 kMessage->signatures()[0].second)) {

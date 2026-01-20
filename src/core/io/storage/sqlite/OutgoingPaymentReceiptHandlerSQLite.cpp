@@ -1,4 +1,8 @@
 #include "OutgoingPaymentReceiptHandlerSQLite.h"
+#include "../interfaces/PaymentTransactionsHandler.h"
+#include "StorageHandlerSQLite.h"
+
+
 
 OutgoingPaymentReceiptHandlerSQLite::OutgoingPaymentReceiptHandlerSQLite(
     sqlite3 *dbConnection,
@@ -267,6 +271,126 @@ vector<ReceiptRecord::Shared> OutgoingPaymentReceiptHandlerSQLite::receiptsLessE
 #endif
 
     return result;
+}
+
+vector<ReceiptRecord::Shared> OutgoingPaymentReceiptHandlerSQLite::getFinalizedReceiptsWithZeroAuditNumber(
+    const TrustLineID trustLineID)
+{
+    vector<ReceiptRecord::Shared> result;
+
+    // Join receipts with payment transactions to filter by finalized observing state.
+    string query = "SELECT r.amount, r.transaction_uuid, r.own_public_key_hash "
+                   "FROM " + mTableName + " r "
+                   "JOIN " + string(StorageHandlerSQLite::paymentTransactionsTableName()) + " pt ON r.transaction_uuid = pt.uuid "
+                   "WHERE r.trust_line_id = ? AND r.audit_number = ? AND pt.observing_state = ?";
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+
+    int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
+    if (rc != SQLITE_OK) {
+        throw IOError("OutgoingPaymentReceiptHandlerSQLite::getFinalizedReceiptsWithZeroAuditNumber: Failed to bind trust_line_id. "
+                      "TrustLine=" + to_string(trustLineID) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    rc = sqlite3_bind_int(stmt.get(), 2, kZeroAuditNumber);
+    if (rc != SQLITE_OK) {
+        throw IOError("OutgoingPaymentReceiptHandlerSQLite::getFinalizedReceiptsWithZeroAuditNumber: Failed to bind audit_number. "
+                      "TrustLine=" + to_string(trustLineID) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    rc = sqlite3_bind_int(stmt.get(), 3, kCommittedObservingState);
+    if (rc != SQLITE_OK) {
+        throw IOError("OutgoingPaymentReceiptHandlerSQLite::getFinalizedReceiptsWithZeroAuditNumber: Failed to bind observing_state. "
+                      "TrustLine=" + to_string(trustLineID) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
+        auto amountBytes = (byte_t*)sqlite3_column_blob(stmt.get(), 0);
+        vector<byte_t> amountBufferBytes(
+            amountBytes,
+            amountBytes + kTrustLineAmountBytesCount);
+
+        TransactionUUID transactionUUID((uint8_t*)sqlite3_column_blob(stmt.get(), 1));
+
+        auto ownKeyHash = make_shared<KeyHash>(
+                              (byte_t*)sqlite3_column_blob(stmt.get(), 2));
+
+        result.push_back(make_shared<ReceiptRecord>(
+                             kZeroAuditNumber,
+                             transactionUUID,
+                             bytesToTrustLineAmount(amountBufferBytes),
+                             ownKeyHash,
+                             nullptr));
+    }
+
+#ifdef STORAGE_HANDLER_DEBUG_LOG
+    info() << "Finalized receipts with zero audit number retrieved: TrustLine=" << trustLineID
+           << ", Count=" << result.size();
+#endif
+
+    return result;
+}
+
+void OutgoingPaymentReceiptHandlerSQLite::updateAuditNumberByTransactionUUIDs(
+    const TrustLineID trustLineID,
+    const AuditNumber auditNumber,
+    const vector<TransactionUUID> &transactionUUIDs)
+{
+    // Avoid generating invalid SQL when there are no transaction UUIDs to update.
+    if (transactionUUIDs.empty()) {
+        return;
+    }
+
+    string query = "UPDATE " + mTableName + " SET audit_number = ? "
+                   "WHERE trust_line_id = ? AND transaction_uuid IN (";
+    for (size_t i = 0; i < transactionUUIDs.size(); ++i) {
+        query += "?";
+        if (i + 1 < transactionUUIDs.size()) {
+            query += ", ";
+        }
+    }
+    query += ");";
+
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+
+    int rc = sqlite3_bind_int(stmt.get(), 1, auditNumber);
+    if (rc != SQLITE_OK) {
+        throw IOError("OutgoingPaymentReceiptHandlerSQLite::updateAuditNumberByTransactionUUIDs: Failed to bind audit_number. "
+                      "TrustLine=" + to_string(trustLineID) + ", AuditNumber=" + to_string(auditNumber) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    rc = sqlite3_bind_int(stmt.get(), 2, trustLineID);
+    if (rc != SQLITE_OK) {
+        throw IOError("OutgoingPaymentReceiptHandlerSQLite::updateAuditNumberByTransactionUUIDs: Failed to bind trust_line_id. "
+                      "TrustLine=" + to_string(trustLineID) + ", AuditNumber=" + to_string(auditNumber) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    int parameterIndex = 3;
+    for (const auto &transactionUUID : transactionUUIDs) {
+        rc = sqlite3_bind_blob(
+            stmt.get(),
+            parameterIndex,
+            transactionUUID.data,
+            TransactionUUID::kBytesSize,
+            SQLITE_STATIC);
+        if (rc != SQLITE_OK) {
+            throw IOError("OutgoingPaymentReceiptHandlerSQLite::updateAuditNumberByTransactionUUIDs: Failed to bind transaction_uuid. "
+                          "TrustLine=" + to_string(trustLineID) + ", AuditNumber=" + to_string(auditNumber) +
+                          ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+        }
+        ++parameterIndex;
+    }
+
+    rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw IOError("OutgoingPaymentReceiptHandlerSQLite::updateAuditNumberByTransactionUUIDs: Failed to execute UPDATE. "
+                      "TrustLine=" + to_string(trustLineID) + ", AuditNumber=" + to_string(auditNumber) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
 }
 
 size_t OutgoingPaymentReceiptHandlerSQLite::countReceiptsByNumber(

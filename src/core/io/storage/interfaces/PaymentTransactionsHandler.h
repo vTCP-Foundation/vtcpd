@@ -45,6 +45,11 @@ enum class PaymentObservingState : int
     Conflicted = 4
 };
 
+/**
+ * Stored observing state value for committed transactions in the database.
+ */
+static constexpr int kCommittedObservingState = static_cast<int>(PaymentObservingState::Committed);
+
 class PaymentTransactionsHandler
 {
 public:

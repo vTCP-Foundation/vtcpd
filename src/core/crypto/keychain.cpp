@@ -228,17 +228,18 @@ bool TrustLineKeychain::checkSign(IOTransaction::Shared ioTransaction,
 }
 
 bool TrustLineKeychain::saveOutgoingPaymentReceipt(IOTransaction::Shared ioTransaction,
-        const AuditNumber auditNumber,
         const TransactionUUID& transactionUUID,
         const TrustLineAmount& amount,
         const sphincs::Signature::Shared signature)
 {
+    // Receipts are stored as unaudited until an audit assigns a non-zero number.
+    const AuditNumber storedAuditNumber = kZeroAuditNumber;
     try {
         auto ownKeyHash =
             ioTransaction->ownKeysHandler()->getPublicKeyHash(mTrustLineID);
 
         ioTransaction->outgoingPaymentReceiptHandler()->saveRecord(
-            mTrustLineID, auditNumber, transactionUUID, ownKeyHash, amount);
+            mTrustLineID, storedAuditNumber, transactionUUID, ownKeyHash, amount);
 
     } catch (NotFoundError& e) {
         warning() << "There are no valid own key";
@@ -251,17 +252,18 @@ bool TrustLineKeychain::saveOutgoingPaymentReceipt(IOTransaction::Shared ioTrans
 }
 
 bool TrustLineKeychain::saveIncomingPaymentReceipt(IOTransaction::Shared ioTransaction,
-        const AuditNumber auditNumber,
         const TransactionUUID& transactionUUID,
         const TrustLineAmount& amount,
         const sphincs::Signature::Shared contractorSignature)
 {
+    // Receipts are stored as unaudited until an audit assigns a non-zero number.
+    const AuditNumber storedAuditNumber = kZeroAuditNumber;
     try {
         auto contractorKeyHash = ioTransaction->contractorKeysHandler()->getPublicKeyHash(
                                      mTrustLineID);
 
         ioTransaction->incomingPaymentReceiptHandler()->saveRecord(mTrustLineID,
-                auditNumber,
+                storedAuditNumber,
                 transactionUUID,
                 contractorKeyHash,
                 amount,

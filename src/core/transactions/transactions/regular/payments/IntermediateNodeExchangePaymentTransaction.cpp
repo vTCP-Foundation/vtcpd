@@ -1130,7 +1130,6 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
             }
             if (!keyChain.saveIncomingPaymentReceipt(
                         ioTransaction,
-                        trustLines->auditNumber(coordinatorID),
                         mTransactionUUID,
                         coordinatorTotalIncomingReservationAmount,
                         signature)) {
@@ -1232,7 +1231,6 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runFi
             }
             if (!keyChain.saveIncomingPaymentReceipt(
                         ioTransaction,
-                        trustLines->auditNumber(senderID),
                         mTransactionUUID,
                         participantTotalIncomingReservationAmount,
                         signature)) {
@@ -1447,7 +1445,6 @@ TransactionResult::SharedConst IntermediateNodeExchangePaymentTransaction::runCh
                                                  serializedOutgoingReceiptData.second);
                 if (!keyChain.saveOutgoingPaymentReceipt(
                             ioTransaction,
-                            trustLines->auditNumber(participantID),
                             mTransactionUUID,
                             amount,
                             signature)) {

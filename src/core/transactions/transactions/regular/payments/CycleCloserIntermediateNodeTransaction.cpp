@@ -652,7 +652,6 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalP
         }
         if (!keyChain.saveIncomingPaymentReceipt(
                     ioTransaction,
-                    mTrustLinesManager->auditNumber(coordinatorID),
                     mTransactionUUID,
                     coordinatorTotalIncomingReservationAmount,
                     kMessage->signature())) {
@@ -765,7 +764,6 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runCheckO
                                                  serializedOutgoingReceiptData.second);
                 if (!keyChain.saveOutgoingPaymentReceipt(
                             ioTransaction,
-                            mTrustLinesManager->auditNumber(participantID),
                             mTransactionUUID,
                             outgoingReservedAmount,
                             signature)) {
@@ -877,7 +875,6 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runFinalR
         }
         if (!keyChain.saveIncomingPaymentReceipt(
                     ioTransaction,
-                    mTrustLinesManager->auditNumber(senderID),
                     mTransactionUUID,
                     participantTotalIncomingReservationAmount,
                     kMessage->signatures()[0].second)) {

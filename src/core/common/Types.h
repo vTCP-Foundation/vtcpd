@@ -25,6 +25,8 @@ typedef uint32_t TrustLineID;
 typedef uint32_t KeyNumber;
 typedef uint32_t KeysCount;
 typedef uint32_t AuditNumber;
+// Indicates that a receipt has not been assigned to any audit yet.
+static const constexpr AuditNumber kZeroAuditNumber = 0;
 typedef uint8_t HopsCount_t;
 
 typedef multiprecision::int256_t TrustLineBalance;

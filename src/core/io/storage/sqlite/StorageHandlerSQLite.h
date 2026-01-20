@@ -34,6 +34,13 @@ public:
     ~StorageHandlerSQLite();
     IOTransaction::Shared beginTransaction() override;
     void vacuum() override;
+    /**
+     * Provides shared table name for payment transactions table.
+     */
+    static const char* paymentTransactionsTableName()
+    {
+        return kPaymentTransactionsTableName;
+    }
 private:
     static void checkDirectory(
         const string &directory);
@@ -56,7 +63,6 @@ private:
     const string kAuditTableName = "audit";
     const string kPaymentKeysTableName = "payment_keys";
     const string kPaymentParticipantsVotesTableName = "payment_participants_votes";
-    const string kPaymentTransactionsTableName = "payment_transactions";
     const string kContractorsTableName = "contractors";
     const string kContractorAddressesTableName = "contractors_addresses";
     const string kFeaturesTableName = "features";
@@ -79,5 +85,8 @@ private:
     FeaturesHandlerSQLite mFeaturesHandler;
     string mDirectory;
     string mDataBaseName;
+
+    // Table name for payment transactions used by storage handlers.
+    static constexpr const char kPaymentTransactionsTableName[] = "payment_transactions";
 };
 #endif //VTCPD_STORAGEHANDLERSQLITE_H

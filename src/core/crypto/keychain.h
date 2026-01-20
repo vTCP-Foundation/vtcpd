@@ -239,16 +239,20 @@ public:
         const size_t size,
         const sphincs::Signature::Shared signature);
 
+    /**
+     * Saves an outgoing payment receipt with audit number stored as zero until audited.
+     */
     bool saveOutgoingPaymentReceipt(
         IOTransaction::Shared ioTransaction,
-        const AuditNumber auditNumber,
         const TransactionUUID &transactionUUID,
         const TrustLineAmount &amount,
         const sphincs::Signature::Shared signature);
 
+    /**
+     * Saves an incoming payment receipt with audit number stored as zero until audited.
+     */
     bool saveIncomingPaymentReceipt(
         IOTransaction::Shared ioTransaction,
-        const AuditNumber auditNumber,
         const TransactionUUID &transactionUUID,
         const TrustLineAmount &amount,
         const sphincs::Signature::Shared contractorSignature);

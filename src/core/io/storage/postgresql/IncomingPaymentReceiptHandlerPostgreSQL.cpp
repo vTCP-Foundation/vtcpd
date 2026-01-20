@@ -1,4 +1,6 @@
 #include "IncomingPaymentReceiptHandlerPostgreSQL.h"
+#include "../interfaces/PaymentTransactionsHandler.h"
+#include "StorageHandlerPostgreSQL.h"
 #include <sstream>
 
 using namespace std;
@@ -201,6 +203,107 @@ vector<ReceiptRecord::Shared> IncomingPaymentReceiptHandlerPostgreSQL::receiptsL
     }
     PQclear(res);
     return result;
+}
+
+vector<ReceiptRecord::Shared> IncomingPaymentReceiptHandlerPostgreSQL::getFinalizedReceiptsWithZeroAuditNumber(
+    const TrustLineID trustLineID)
+{
+    vector<ReceiptRecord::Shared> result;
+
+    // Join receipts with payment transactions to filter by finalized observing state.
+    const string query = "SELECT r.amount, r.transaction_uuid, r.contractor_public_key_hash, r.contractor_signature FROM " + mTableName +
+        " r JOIN " + string(StorageHandlerPostgreSQL::paymentTransactionsTableName()) +
+        " pt ON r.transaction_uuid = pt.uuid WHERE r.trust_line_id=$1 AND r.audit_number=$2 AND pt.observing_state=$3;";
+
+    const int kParams = 3;
+    const char *params[kParams];
+    int lengths[kParams] = {0, 0, 0};
+    int formats[kParams] = {0, 0, 0};
+
+    string tlIdStr = to_string(trustLineID);
+    string auditStr = to_string(kZeroAuditNumber);
+    string observingStateStr = to_string(kCommittedObservingState);
+    params[0] = tlIdStr.c_str();
+    params[1] = auditStr.c_str();
+    params[2] = observingStateStr.c_str();
+
+    PGresult *res = PQexecParams(mDataBase, query.c_str(), kParams, nullptr, params, lengths, formats, 1);
+    checkTuples(mDataBase, res, "getFinalizedReceiptsWithZeroAuditNumber");
+
+    int rows = PQntuples(res);
+    for (int i = 0; i < rows; ++i) {
+        const unsigned char *amountBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, i, 0));
+        const unsigned char *uuidBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, i, 1));
+        const unsigned char *keyHashBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, i, 2));
+        const unsigned char *signatureBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, i, 3));
+
+        vector<byte_t> amountBuf(amountBytes, amountBytes + kTrustLineAmountBytesCount);
+        TransactionUUID tUUID(uuidBytes);
+        auto keyHash = make_shared<KeyHash>(keyHashBytes);
+        auto contractorSignature = make_shared<Signature>(signatureBytes);
+
+        result.push_back(make_shared<ReceiptRecord>(
+            kZeroAuditNumber,
+            tUUID,
+            bytesToTrustLineAmount(amountBuf),
+            keyHash,
+            contractorSignature));
+    }
+    PQclear(res);
+
+    return result;
+}
+
+void IncomingPaymentReceiptHandlerPostgreSQL::updateAuditNumberByTransactionUUIDs(
+    const TrustLineID trustLineID,
+    const AuditNumber auditNumber,
+    const vector<TransactionUUID> &transactionUUIDs)
+{
+    // Avoid generating invalid SQL when there are no transaction UUIDs to update.
+    if (transactionUUIDs.empty()) {
+        return;
+    }
+
+    string query = "UPDATE " + mTableName + " SET audit_number=$1 WHERE trust_line_id=$2 AND transaction_uuid IN (";
+    for (size_t i = 0; i < transactionUUIDs.size(); ++i) {
+        query += "$" + to_string(static_cast<int>(i) + 3);
+        if (i + 1 < transactionUUIDs.size()) {
+            query += ", ";
+        }
+    }
+    query += ");";
+
+    const size_t paramsCount = 2 + transactionUUIDs.size();
+    vector<const char*> params(paramsCount);
+    vector<int> lengths(paramsCount);
+    vector<int> formats(paramsCount);
+
+    string auditStr = to_string(auditNumber);
+    string tlIdStr = to_string(trustLineID);
+    params[0] = auditStr.c_str();
+    lengths[0] = 0;
+    formats[0] = 0;
+    params[1] = tlIdStr.c_str();
+    lengths[1] = 0;
+    formats[1] = 0;
+
+    for (size_t i = 0; i < transactionUUIDs.size(); ++i) {
+        params[i + 2] = reinterpret_cast<const char*>(transactionUUIDs[i].data);
+        lengths[i + 2] = TransactionUUID::kBytesSize;
+        formats[i + 2] = 1;
+    }
+
+    PGresult *res = PQexecParams(
+        mDataBase,
+        query.c_str(),
+        static_cast<int>(paramsCount),
+        nullptr,
+        params.data(),
+        lengths.data(),
+        formats.data(),
+        0);
+    checkCmd(mDataBase, res, "updateAuditNumberByTransactionUUIDs");
+    PQclear(res);
 }
 
 size_t IncomingPaymentReceiptHandlerPostgreSQL::countReceiptsByNumber(

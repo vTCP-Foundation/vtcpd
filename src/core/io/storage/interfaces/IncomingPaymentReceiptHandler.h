@@ -37,6 +37,20 @@ public:
         const TrustLineID trustLineID,
         const AuditNumber auditNumber) = 0;
 
+    /**
+     * Retrieves finalized receipts with zero audit number for specified trust line.
+     */
+    virtual vector<ReceiptRecord::Shared> getFinalizedReceiptsWithZeroAuditNumber(
+        const TrustLineID trustLineID) = 0;
+
+    /**
+     * Updates audit number for receipts identified by transaction UUIDs.
+     */
+    virtual void updateAuditNumberByTransactionUUIDs(
+        const TrustLineID trustLineID,
+        const AuditNumber auditNumber,
+        const vector<TransactionUUID> &transactionUUIDs) = 0;
+
     virtual void deleteRecords(
         const TransactionUUID &transactionUUID) = 0;
 

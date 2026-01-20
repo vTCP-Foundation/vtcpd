@@ -579,7 +579,6 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runFinalReser
         }
         if (!keyChain.saveIncomingPaymentReceipt(
                     ioTransaction,
-                    trustLines->auditNumber(coordinatorID),
                     mTransactionUUID,
                     coordinatorTotalIncomingReservationAmount,
                     kMessage->signatures()[0].second)) {
@@ -658,7 +657,6 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runFinalReser
         }
         if (!keyChain.saveIncomingPaymentReceipt(
                     ioTransaction,
-                    trustLines->auditNumber(senderID),
                     mTransactionUUID,
                     participantTotalIncomingReservationAmount,
                     kMessage->signatures()[0].second)) {

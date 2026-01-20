@@ -1499,7 +1499,6 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
                                              serializedOutgoingReceiptData.second);
             if (!keyChain.saveOutgoingPaymentReceipt(
                         ioTransaction,
-                        mTrustLinesManager->auditNumber(participantID),
                         mTransactionUUID,
                         outgoingReservedAmount,
                         signature)) {

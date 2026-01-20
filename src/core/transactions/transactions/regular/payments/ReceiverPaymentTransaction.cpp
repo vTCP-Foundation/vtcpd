@@ -541,7 +541,6 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsC
         }
         if (!keyChain.saveIncomingPaymentReceipt(
                     ioTransaction,
-                    mTrustLinesManager->auditNumber(coordinatorID),
                     mTransactionUUID,
                     coordinatorTotalIncomingReservationAmount,
                     kMessage->signatures()[0].second)) {
@@ -702,7 +701,6 @@ TransactionResult::SharedConst ReceiverPaymentTransaction::runFinalReservationsN
         }
         if (!keyChain.saveIncomingPaymentReceipt(
                     ioTransaction,
-                    mTrustLinesManager->auditNumber(senderID),
                     mTransactionUUID,
                     participantTotalIncomingReservationAmount,
                     kMessage->signatures()[0].second)) {

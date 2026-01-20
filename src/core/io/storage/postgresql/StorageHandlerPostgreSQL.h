@@ -31,6 +31,13 @@ public:
 
     IOTransaction::Shared beginTransaction() override;
     void vacuum() override;
+    /**
+     * Provides shared table name for payment transactions table.
+     */
+    static const char* paymentTransactionsTableName()
+    {
+        return kPaymentTransactionsTableName;
+    }
 
 private:
     static PGconn* connection(
@@ -59,7 +66,6 @@ private:
     const std::string kAuditTableName = "audit";
     const std::string kPaymentKeysTableName = "payment_keys";
     const std::string kPaymentParticipantsVotesTableName = "payment_participants_votes";
-    const std::string kPaymentTransactionsTableName = "payment_transactions";
     const std::string kFeaturesTableName = "features";
 
     // handlers
@@ -79,6 +85,9 @@ private:
     FeaturesHandlerPostgreSQL mFeaturesHandler;
 
     std::string mConnectionOptions;
+
+    // Table name for payment transactions used by storage handlers.
+    static constexpr const char kPaymentTransactionsTableName[] = "payment_transactions";
 };
 
 #endif // VTCPD_STORAGEHANDLERPOSTGRESQL_H 

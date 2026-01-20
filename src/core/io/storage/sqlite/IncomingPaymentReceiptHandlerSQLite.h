@@ -65,6 +65,20 @@ public:
         const AuditNumber auditNumber) override;
 
     /**
+     * Retrieves receipts with zero audit number that belong to finalized transactions.
+     */
+    vector<ReceiptRecord::Shared> getFinalizedReceiptsWithZeroAuditNumber(
+        const TrustLineID trustLineID) override;
+
+    /**
+     * Updates audit number for receipts identified by transaction UUIDs.
+     */
+    void updateAuditNumberByTransactionUUIDs(
+        const TrustLineID trustLineID,
+        const AuditNumber auditNumber,
+        const vector<TransactionUUID> &transactionUUIDs) override;
+
+    /**
      * Deletes all receipt records for a transaction.
      */
     void deleteRecords(
