@@ -80,6 +80,12 @@ public:
         const TransactionUUID &transactionUUID) override;
 
     /**
+     * Returns effective claiming block number for the specified transaction.
+     */
+    BlockNumber effectiveClaimingBlockNumber(
+        const TransactionUUID &transactionUUID) override;
+
+    /**
      * Deletes transaction record from database.
      */
     void deleteRecord(

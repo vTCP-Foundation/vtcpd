@@ -55,6 +55,12 @@ public:
     bool isTransactionPresent(
         const TransactionUUID &transactionUUID) override;
 
+    /**
+     * Returns effective claiming block number for the specified transaction.
+     */
+    BlockNumber effectiveClaimingBlockNumber(
+        const TransactionUUID &transactionUUID) override;
+
     void deleteRecord(
         const TransactionUUID &transactionUUID) override;
 

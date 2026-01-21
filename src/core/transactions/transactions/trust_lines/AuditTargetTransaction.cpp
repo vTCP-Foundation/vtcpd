@@ -1,5 +1,9 @@
 #include "AuditTargetTransaction.h"
 
+#include "../../../network/rpc/requests/GetBlockNumberRpcRequest.h"
+#include "../../../network/rpc/responses/GetBlockNumberRpcResponse.h"
+#include "../../../common/exceptions/NotFoundError.h"
+
 AuditTargetTransaction::AuditTargetTransaction(
     AuditMessage::Shared message,
     ContractorsManager *contractorsManager,
@@ -29,14 +33,34 @@ AuditTargetTransaction::AuditTargetTransaction(
     mContractorAddresses(message->senderAddresses),
     mTopologyTrustLinesManager(topologyTrustLinesManager),
     mTopologyCacheManager(topologyCacheManager),
-    mMaxFlowCacheManager(maxFlowCacheManager)
+    mMaxFlowCacheManager(maxFlowCacheManager),
+    mCurrentBlockNumber(0),
+    mBlockNumberRequestSent(false),
+    mInitiatorTransactionList()
 {
     mAuditNumber = mTrustLines->auditNumber(message->idOnReceiverSide) + 1;
+    mStep = Initialization;
 }
 
 TransactionResult::SharedConst AuditTargetTransaction::run()
 {
-    info() << "sender: " << mContractorID << " sender incoming IP " << mSenderIncomingIP;
+    switch (mStep) {
+    case Stages::Initialization: {
+        return runInitializationStage();
+    }
+    case Stages::BlockNumberRequest: {
+        return runBlockNumberRequestStage();
+    }
+    default:
+        throw ValueError(logHeader() + "::run: "
+                                       "wrong value of mStep " + to_string(mStep));
+    }
+}
+
+TransactionResult::SharedConst AuditTargetTransaction::runInitializationStage()
+{
+    info() << "runInitializationStage " << mContractorID
+           << " sender incoming IP " << mSenderIncomingIP;
 
     if (!mContractorsManager->contractorPresent(mContractorID)) {
         warning() << "There is no contractor with requested id";
@@ -118,7 +142,8 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
     }
 
     if (mAuditNumber < mMessage->auditNumber()) {
-        warning() << "Contractor's audit number " << mMessage->auditNumber() << " is greater than own " << mAuditNumber;
+        warning() << "Contractor's audit number " << mMessage->auditNumber()
+                  << " is greater than own " << mAuditNumber;
         // todo : need correct reaction
     }
 
@@ -128,9 +153,6 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
                    ConfirmationMessage::Audit_IncorrectNumber);
     }
 
-    // Trust line must be created (or updated) in the internal storage.
-    // Also, history record must be written about this operation.
-    // Both writes must be done atomically, so the IO transaction is used.
     auto ioTransaction = mStorageHandler->beginTransaction();
     auto keyChain = mKeysStore->keychain(
                         mTrustLines->trustLineID(mContractorID));
@@ -162,6 +184,209 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
     mPreviousOutgoingAmount = mTrustLines->outgoingTrustAmount(mContractorID);
     mPreviousState = mTrustLines->trustLineState(mContractorID);
 
+    return startBlockNumberRequest();
+}
+
+TransactionResult::SharedConst AuditTargetTransaction::startBlockNumberRequest()
+{
+    info() << "startBlockNumberRequest";
+    mBlockNumberRequestSent = false;
+    mStep = BlockNumberRequest;
+    info() << "Switching to block number request stage";
+    return runBlockNumberRequestStage();
+}
+
+TransactionResult::SharedConst AuditTargetTransaction::runBlockNumberRequestStage()
+{
+    info() << "runBlockNumberRequestStage";
+
+    // Send GetBlockNumber request once and wait for response.
+    if (!mBlockNumberRequestSent) {
+        info() << "Requesting current block number";
+        sendRpcRequest(
+            make_shared<GetBlockNumberRpcRequest>(
+                currentTransactionUUID()));
+        mBlockNumberRequestSent = true;
+        return resultWaitForRpcResponse(RpcMethod::GetBlockNumber);
+    }
+
+    if (!hasRpcResponse()) {
+        warning() << "GetBlockNumber RPC timed out";
+        // TODO: revisit block number retrieval failure handling.
+        return sendAuditErrorConfirmation(
+                   ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+    }
+
+    if (mRpcContext.front()->method() != RpcMethod::GetBlockNumber) {
+        warning() << "Unexpected RPC response in block number stage";
+        // TODO: revisit block number retrieval failure handling.
+        return sendAuditErrorConfirmation(
+                   ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+    }
+
+    auto response = popRpcResponse<GetBlockNumberRpcResponse>();
+    if (response->status() != RpcResponseStatus::Success) {
+        warning() << "Block number retrieval failed: " << response->errorMessage();
+        // TODO: revisit block number retrieval failure handling.
+        return sendAuditErrorConfirmation(
+                   ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+    }
+
+    mCurrentBlockNumber = response->blockNumber();
+    info() << "Current block number received: " << mCurrentBlockNumber;
+    mBlockNumberRequestSent = false;
+
+    return runAuditProcessingStage();
+}
+
+TransactionResult::SharedConst AuditTargetTransaction::runAuditProcessingStage()
+{
+    info() << "runAuditProcessingStage";
+
+    mInitiatorTransactionList = AuditMessage::normalizedTransactionUUIDs(
+        mMessage->transactionUUIDs());
+    info() << "Initiator transaction list size: " << mInitiatorTransactionList.size();
+
+    if (!loadReceiptsAndBuildTransactionList()) {
+        warning() << "Failed to load finalized receipts for audit";
+        return sendAuditErrorConfirmation(
+                   ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+    }
+
+    recalculateReceiptAmounts();
+    info() << "Local finalized transaction list size: " << mCurrentTransactionList.size();
+
+    vector<TransactionUUID> unknownTransactions;
+    vector<TransactionUUID> notFinalizedLocally;
+
+    // Compare initiator list with finalized local receipts.
+    try {
+        auto receiptsTransaction = mStorageHandler->beginTransaction();
+        for (const auto &transactionUUID : mInitiatorTransactionList) {
+            if (!containsTransactionUUID(mCurrentTransactionList, transactionUUID)) {
+                if (hasAnyReceiptForTransaction(receiptsTransaction, transactionUUID)) {
+                    notFinalizedLocally.push_back(transactionUUID);
+                } else {
+                    unknownTransactions.push_back(transactionUUID);
+                }
+            }
+        }
+    } catch (IOError &e) {
+        warning() << "Failed to check receipts presence. Details are: " << e.what();
+        return sendAuditErrorConfirmation(
+                   ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+    }
+
+    if (!unknownTransactions.empty()) {
+        warning() << "Initiator provided unknown finalized transactions: "
+                  << unknownTransactions.size();
+        setTrustLineToConflict();
+        return sendAuditResponse(
+                   ConfirmationMessage::Audit_Invalid);
+    }
+
+    if (!notFinalizedLocally.empty()) {
+        auto normalizedNotFinalized = AuditMessage::normalizedTransactionUUIDs(
+            notFinalizedLocally);
+        vector<TransactionUUID> cannotObserve;
+
+        auto observingTransaction = mStorageHandler->beginTransaction();
+        for (const auto &transactionUUID : normalizedNotFinalized) {
+            try {
+                const auto effectiveBlockNumber =
+                    effectiveClaimingBlockNumber(observingTransaction, transactionUUID);
+                if (mCurrentBlockNumber > effectiveBlockNumber) {
+                    cannotObserve.push_back(transactionUUID);
+                }
+            } catch (NotFoundError &e) {
+                warning() << "Missing payment transaction for "
+                          << transactionUUID.stringUUID() << ". Details are: " << e.what();
+                cannotObserve.push_back(transactionUUID);
+            } catch (IOError &e) {
+                warning() << "Failed to load payment transaction data. Details are: " << e.what();
+                return sendAuditErrorConfirmation(
+                           ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+            }
+        }
+
+        if (!cannotObserve.empty()) {
+            warning() << "Not finalized transactions can no longer be observed: "
+                      << cannotObserve.size();
+            setTrustLineToConflict();
+            return sendAuditResponse(
+                       ConfirmationMessage::Audit_Invalid);
+        }
+
+        info() << "Requesting audit update list for "
+               << normalizedNotFinalized.size() << " transactions";
+        return sendAuditResponse(
+                   ConfirmationMessage::Audit_UpdateTransactionsList,
+                   normalizedNotFinalized);
+    }
+
+    vector<TransactionUUID> extraOnContractor;
+    for (const auto &transactionUUID : mCurrentTransactionList) {
+        if (!containsTransactionUUID(mInitiatorTransactionList, transactionUUID)) {
+            extraOnContractor.push_back(transactionUUID);
+        }
+    }
+
+    if (!extraOnContractor.empty()) {
+        auto normalizedExtras = AuditMessage::normalizedTransactionUUIDs(
+            extraOnContractor);
+        vector<TransactionUUID> cannotObserve;
+
+        auto observingTransaction = mStorageHandler->beginTransaction();
+        for (const auto &transactionUUID : normalizedExtras) {
+            try {
+                const auto effectiveBlockNumber =
+                    effectiveClaimingBlockNumber(observingTransaction, transactionUUID);
+                if (mCurrentBlockNumber > effectiveBlockNumber) {
+                    cannotObserve.push_back(transactionUUID);
+                }
+            } catch (NotFoundError &e) {
+                warning() << "Missing payment transaction for "
+                          << transactionUUID.stringUUID() << ". Details are: " << e.what();
+                cannotObserve.push_back(transactionUUID);
+            } catch (IOError &e) {
+                warning() << "Failed to load payment transaction data. Details are: " << e.what();
+                return sendAuditErrorConfirmation(
+                           ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+            }
+        }
+
+        if (!cannotObserve.empty()) {
+            warning() << "Extra finalized transactions can no longer be observed: "
+                      << cannotObserve.size();
+            setTrustLineToConflict();
+            return sendAuditResponse(
+                       ConfirmationMessage::Audit_Invalid);
+        }
+
+        // Exclude locally finalized transactions that initiator couldn't observe.
+        excludeTransactions(normalizedExtras);
+    }
+
+    if (mCurrentTransactionList.size() != mInitiatorTransactionList.size()) {
+        warning() << "Transaction list mismatch after reconciliation";
+        setTrustLineToConflict();
+        return sendAuditResponse(
+                   ConfirmationMessage::Audit_Invalid);
+    }
+
+    for (size_t i = 0; i < mCurrentTransactionList.size(); ++i) {
+        if (mCurrentTransactionList[i] != mInitiatorTransactionList[i]) {
+            warning() << "Transaction list order mismatch after reconciliation";
+            setTrustLineToConflict();
+            return sendAuditResponse(
+                       ConfirmationMessage::Audit_Invalid);
+        }
+    }
+
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    auto keyChain = mKeysStore->keychain(
+                        mTrustLines->trustLineID(mContractorID));
+
     try {
         // note: io transaction would commit automatically on destructor call.
         // there is no need to call commit manually.
@@ -177,7 +402,7 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
             closeOutgoingTrustLine(ioTransaction);
         }
 
-        auto contractorSerializedAuditData = getContractorSerializedAuditData();
+        auto contractorSerializedAuditData = getContractorSerializedAuditDataWithTransactionHash();
 
         if (!keyChain.checkSign(
                     ioTransaction,
@@ -185,12 +410,13 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
                     contractorSerializedAuditData.second,
                     mMessage->signature())) {
             warning() << "Contractor didn't sign message correctly";
-            return sendAuditErrorConfirmation(
-                       ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+            setTrustLineToConflict();
+            return sendAuditResponse(
+                       ConfirmationMessage::Audit_Invalid);
         }
         info() << "Signature is correct";
 
-        auto serializedAuditData = getOwnSerializedAuditData();
+        auto serializedAuditData = getOwnSerializedAuditDataWithTransactionHash();
         mOwnSignature = keyChain.sign(
                                         ioTransaction,
                                         serializedAuditData.first,
@@ -205,13 +431,28 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
                 mContractorID),
             mTrustLines->outgoingTrustAmount(
                 mContractorID),
-            mTrustLines->balance(mContractorID));
+            mAuditBalance);
 
         mTrustLines->setTrustLineAuditNumber(
             mContractorID,
             mAuditNumber);
-        mTrustLines->resetTrustLineTotalReceiptsAmounts(
-            mContractorID);
+
+        const auto kTrustLineID = mTrustLines->trustLineID(mContractorID);
+        // Update receipt audit numbers and preserve excluded totals atomically.
+        ioTransaction->outgoingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
+            kTrustLineID,
+            mAuditNumber,
+            mCurrentTransactionList);
+        ioTransaction->incomingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
+            kTrustLineID,
+            mAuditNumber,
+            mCurrentTransactionList);
+
+        mTrustLines->updateTrustLineTotalReceiptsAmounts(
+            mContractorID,
+            mExcludedIncomingReceiptsAmount,
+            mExcludedOutgoingReceiptsAmount);
+
         mTrustLines->setTrustLineState(
             mContractorID,
             TrustLine::Active,
@@ -276,6 +517,58 @@ TransactionResult::SharedConst AuditTargetTransaction::run()
         mEquivalent,
         false);
 
+    return resultDone();
+}
+
+void AuditTargetTransaction::setTrustLineToConflict()
+{
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    mTrustLines->setTrustLineState(
+        mContractorID,
+        TrustLine::Conflict,
+        ioTransaction);
+    info() << "Trust line moved to Conflict state";
+}
+
+bool AuditTargetTransaction::hasAnyReceiptForTransaction(
+    IOTransaction::Shared ioTransaction,
+    const TransactionUUID &transactionUUID) const
+{
+    return ioTransaction->outgoingPaymentReceiptHandler()->isContainsTransaction(transactionUUID)
+        || ioTransaction->incomingPaymentReceiptHandler()->isContainsTransaction(transactionUUID);
+}
+
+BlockNumber AuditTargetTransaction::effectiveClaimingBlockNumber(
+    IOTransaction::Shared ioTransaction,
+    const TransactionUUID &transactionUUID) const
+{
+    return ioTransaction->paymentTransactionsHandler()->effectiveClaimingBlockNumber(
+        transactionUUID);
+}
+
+TransactionResult::SharedConst AuditTargetTransaction::sendAuditResponse(
+    ConfirmationMessage::OperationState state,
+    const vector<TransactionUUID> &transactionUUIDs)
+{
+    if (state == ConfirmationMessage::Audit_UpdateTransactionsList) {
+        const auto normalizedUUIDs = AuditMessage::normalizedTransactionUUIDs(
+            transactionUUIDs);
+        sendMessage<AuditResponseMessage>(
+            mContractorID,
+            mEquivalent,
+            mContractorsManager->contractor(mContractorID),
+            currentTransactionUUID(),
+            state,
+            normalizedUUIDs);
+        return resultDone();
+    }
+
+    sendMessage<AuditResponseMessage>(
+        mContractorID,
+        mEquivalent,
+        mContractorsManager->contractor(mContractorID),
+        currentTransactionUUID(),
+        state);
     return resultDone();
 }
 

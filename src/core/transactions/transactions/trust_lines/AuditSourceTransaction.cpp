@@ -385,9 +385,11 @@ TransactionResult::SharedConst AuditSourceTransaction::runResponseProcessingStag
     }
 
     if (message->state() == ConfirmationMessage::Audit_UpdateTransactionsList) {
-        info() << "Audit update list received with " << message->transactionUUIDs().size() << " UUIDs";
+        const auto normalizedUpdateList = AuditMessage::normalizedTransactionUUIDs(
+            message->transactionUUIDs());
+        info() << "Audit update list received with " << normalizedUpdateList.size() << " UUIDs";
         // Validate that all UUIDs belong to the original list.
-        for (const auto &transactionUUID : message->transactionUUIDs()) {
+        for (const auto &transactionUUID : normalizedUpdateList) {
             if (!containsTransactionUUID(mOriginalTransactionList, transactionUUID)) {
                 warning() << "Audit update list contains unknown transaction UUID";
                 setTrustLineToConflict();
@@ -401,8 +403,37 @@ TransactionResult::SharedConst AuditSourceTransaction::runResponseProcessingStag
             return resultDone();
         }
 
+        // Check observing window for listed transactions before retry.
+        vector<TransactionUUID> expiredTransactions;
+        auto observingTransaction = mStorageHandler->beginTransaction();
+        for (const auto &transactionUUID : normalizedUpdateList) {
+            try {
+                const auto effectiveBlockNumber =
+                    observingTransaction->paymentTransactionsHandler()->effectiveClaimingBlockNumber(
+                        transactionUUID);
+                if (mCurrentBlockNumber > effectiveBlockNumber) {
+                    expiredTransactions.push_back(transactionUUID);
+                }
+            } catch (NotFoundError &e) {
+                warning() << "Missing payment transaction for "
+                          << transactionUUID.stringUUID() << ". Details are: " << e.what();
+                expiredTransactions.push_back(transactionUUID);
+            } catch (IOError &e) {
+                observingTransaction->rollback();
+                warning() << "Failed to load payment transaction data. Details are: " << e.what();
+                return resultDone();
+            }
+        }
+
+        if (!expiredTransactions.empty()) {
+            warning() << "Audit update list includes transactions outside observing window: "
+                      << expiredTransactions.size();
+            setTrustLineToConflict();
+            return resultDone();
+        }
+
         ++mAuditRetryCount;
-        excludeTransactions(message->transactionUUIDs());
+        excludeTransactions(normalizedUpdateList);
         mCountSendingAttempts = 0;
 
         // Replace stored audit part to match the updated transaction list.

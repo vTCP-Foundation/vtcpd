@@ -204,6 +204,29 @@ bool PaymentTransactionsHandlerPostgreSQL::isTransactionPresent(
     return present;
 }
 
+BlockNumber PaymentTransactionsHandlerPostgreSQL::effectiveClaimingBlockNumber(
+    const TransactionUUID &transactionUUID)
+{
+    const string query = "SELECT effective_claiming_block_number FROM " + mTableName + " WHERE uuid=$1 LIMIT 1;";
+    const char *params[1]; int lengths[1]; int formats[1]={1};
+    params[0]=reinterpret_cast<const char*>(transactionUUID.data); lengths[0]=TransactionUUID::kBytesSize;
+    PGresult *res=PQexecParams(mDataBase, query.c_str(), 1, nullptr, params, lengths, formats, 1);
+    checkTuples(mDataBase, res, "effectiveClaimingBlockNumber");
+
+    if (PQntuples(res) == 0) {
+        PQclear(res);
+        throw NotFoundError("PaymentTransactionsHandlerPostgreSQL::effectiveClaimingBlockNumber: Transaction not found.");
+    }
+
+    const unsigned char *blockBytes = reinterpret_cast<const unsigned char*>(PQgetvalue(res, 0, 0));
+    BlockNumber effectiveClaimingBlockNumber = 0;
+    for (int i = 0; i < 8; ++i) {
+        effectiveClaimingBlockNumber = (effectiveClaimingBlockNumber << 8) | blockBytes[i];
+    }
+    PQclear(res);
+    return effectiveClaimingBlockNumber;
+}
+
 void PaymentTransactionsHandlerPostgreSQL::deleteRecord(
     const TransactionUUID &transactionUUID)
 {

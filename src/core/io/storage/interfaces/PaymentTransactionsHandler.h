@@ -98,6 +98,15 @@ public:
     virtual bool isTransactionPresent(
         const TransactionUUID& transactionUUID) = 0;
 
+    /**
+     * Returns effective claiming block number for the specified transaction.
+     *
+     * @param transactionUUID Transaction identifier to lookup
+     * @throws NotFoundError if transaction is missing
+     */
+    virtual BlockNumber effectiveClaimingBlockNumber(
+        const TransactionUUID &transactionUUID) = 0;
+
     virtual void deleteRecord(
         const TransactionUUID &transactionUUID) = 0;
 

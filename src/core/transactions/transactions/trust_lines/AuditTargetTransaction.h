@@ -34,6 +34,43 @@ protected:
     const string logHeader() const override;
 
 private:
+    // Extends base trust line stages with block number retrieval.
+    enum Stages
+    {
+        Initialization = BaseTrustLineTransaction::Initialization,
+        BlockNumberRequest = 7,
+    };
+
+    // Performs initial validation before starting block number request.
+    TransactionResult::SharedConst runInitializationStage();
+
+    // Switches to block number request stage.
+    TransactionResult::SharedConst startBlockNumberRequest();
+
+    // Requests block number and continues audit processing.
+    TransactionResult::SharedConst runBlockNumberRequestStage();
+
+    // Executes audit verification and state updates after block number retrieval.
+    TransactionResult::SharedConst runAuditProcessingStage();
+
+    // Sets trust line to Conflict state and persists the change.
+    void setTrustLineToConflict();
+
+    // Checks if any receipt exists for the specified transaction.
+    bool hasAnyReceiptForTransaction(
+        IOTransaction::Shared ioTransaction,
+        const TransactionUUID &transactionUUID) const;
+
+    // Loads effective claiming block number for a transaction.
+    BlockNumber effectiveClaimingBlockNumber(
+        IOTransaction::Shared ioTransaction,
+        const TransactionUUID &transactionUUID) const;
+
+    // Sends an audit response with optional transaction UUID list.
+    TransactionResult::SharedConst sendAuditResponse(
+        ConfirmationMessage::OperationState state,
+        const vector<TransactionUUID> &transactionUUIDs = {});
+
     void setIncomingTrustLineAmount(
         IOTransaction::Shared ioTransaction);
 
@@ -52,6 +89,13 @@ private:
     TopologyTrustLinesManager *mTopologyTrustLinesManager;
     TopologyCacheManager *mTopologyCacheManager;
     MaxFlowCacheManager *mMaxFlowCacheManager;
+
+    // Tracks current block number for observing checks.
+    BlockNumber mCurrentBlockNumber;
+    // Prevents duplicate block number RPC requests.
+    bool mBlockNumberRequestSent;
+    // Stores normalized initiator transaction list for comparison.
+    vector<TransactionUUID> mInitiatorTransactionList;
 
     TrustLineAmount mPreviousIncomingAmount;
     TrustLineAmount mPreviousOutgoingAmount;
