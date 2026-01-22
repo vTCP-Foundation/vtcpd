@@ -3,6 +3,8 @@
 #include "../../../../src/core/logger/Logger.h"
 #include "../../../../src/core/io/storage/record/audit/ReceiptRecord.h"
 #include "../../../../src/core/transactions/transactions/base/TransactionUUID.h"
+#include "../../../../src/core/io/storage/interfaces/PaymentTransactionsHandler.h"
+#include "../../../../src/core/io/storage/postgresql/StorageHandlerPostgreSQL.h"
 #include "../fixtures/DatabaseTestHelper.h"
 #include "../fixtures/PostgreSQLTestFixtures.h"
 #include <memory>
@@ -74,6 +76,24 @@ protected:
                "public_key BYTEA, "
                "private_key BYTEA)";
         DatabaseTestHelper::executeQuery(mConnection, query);
+
+        // Create payment_keys table (required by payment_transactions foreign key).
+        query = "CREATE TABLE IF NOT EXISTS payment_keys ("
+               "id BIGSERIAL PRIMARY KEY, "
+               "public_key BYTEA NOT NULL, "
+               "private_key BYTEA NOT NULL)";
+        DatabaseTestHelper::executeQuery(mConnection, query);
+
+        // Create payment_transactions table (used for finalized receipt selection).
+        query = "CREATE TABLE IF NOT EXISTS " + std::string(StorageHandlerPostgreSQL::paymentTransactionsTableName()) +
+               " (uuid BYTEA NOT NULL, "
+               "maximal_claiming_block_number BIGINT NOT NULL, "
+               "effective_claiming_block_number BIGINT NOT NULL, "
+               "observing_state INTEGER NOT NULL, "
+               "recording_time BIGINT NOT NULL, "
+               "payment_key_id BIGINT NOT NULL, "
+               "FOREIGN KEY(payment_key_id) REFERENCES payment_keys(id))";
+        DatabaseTestHelper::executeQuery(mConnection, query);
     }
     
     void insertTestData() {
@@ -120,6 +140,10 @@ protected:
         query += " ON CONFLICT (hash) DO NOTHING";
         
         DatabaseTestHelper::executeQuery(mConnection, query);
+
+        // Insert a payment key used by payment_transactions.
+        query = "INSERT INTO payment_keys (public_key, private_key) VALUES (decode('00', 'hex'), decode('00', 'hex'))";
+        DatabaseTestHelper::executeQuery(mConnection, query);
     }
     
     void cleanupTestData() {
@@ -127,6 +151,8 @@ protected:
             DatabaseTestHelper::cleanupTable(mConnection, mTestTableName);
             DatabaseTestHelper::cleanupTable(mConnection, "trust_lines");
             DatabaseTestHelper::cleanupTable(mConnection, "own_keys");
+            DatabaseTestHelper::cleanupTable(mConnection, StorageHandlerPostgreSQL::paymentTransactionsTableName());
+            DatabaseTestHelper::cleanupTable(mConnection, "payment_keys");
         } catch (const std::exception& e) {
             // Continue cleanup even if some operations fail
             std::cerr << "Cleanup warning: " << e.what() << std::endl;
@@ -241,6 +267,16 @@ protected:
                            "decode('" + transactionUuidHex + "', 'hex'), decode('" + ownKeyHashHex + "', 'hex'), "
                            "decode('" + amountHex + "', 'hex'))";
         
+        DatabaseTestHelper::executeQuery(mConnection, query);
+    }
+
+    void insertPaymentTransaction(const TransactionUUID &transactionUUID, int observingState) {
+        std::string uuidHex = bytesToHexString(transactionUUID.data, TransactionUUID::kBytesSize);
+        std::string query = "INSERT INTO " + std::string(StorageHandlerPostgreSQL::paymentTransactionsTableName()) +
+                           " (uuid, maximal_claiming_block_number, effective_claiming_block_number, "
+                           "observing_state, recording_time, payment_key_id) VALUES ("
+                           "decode('" + uuidHex + "', 'hex'), 1, 1, " + std::to_string(observingState) +
+                           ", 0, (SELECT id FROM payment_keys ORDER BY id DESC LIMIT 1))";
         DatabaseTestHelper::executeQuery(mConnection, query);
     }
 
@@ -394,6 +430,84 @@ TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, receiptsLessEqual
     auto receipts = mHandler->receiptsLessEqualThanAuditNumber(trustLineID, auditNumber);
     
     EXPECT_TRUE(receipts.empty());
+}
+
+// Test getFinalizedReceiptsWithZeroAuditNumber method
+TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, getFinalizedReceiptsWithZeroAuditNumber_FiltersByAuditAndState) {
+    TrustLineID trustLineID = getValidTrustLineID();
+    AuditNumber zeroAudit = 0;
+    AuditNumber nonZeroAudit = 2;
+
+    auto committedUUID = createTestTransactionUUID("committedTx");
+    auto pendingUUID = createTestTransactionUUID("pendingTx");
+    auto missingUUID = createTestTransactionUUID("missingTx");
+
+    insertPaymentTransaction(committedUUID, kCommittedObservingState);
+    insertPaymentTransaction(pendingUUID, static_cast<int>(PaymentObservingState::Init));
+
+    auto keyHash1 = createTestKeyHash("testOwnKey");
+    auto keyHash2 = createTestKeyHash("testOwnKey1");
+    auto keyHash3 = createTestKeyHash("testOwnKey2");
+    auto amount = createTestAmount(1000);
+
+    mHandler->saveRecord(trustLineID, zeroAudit, committedUUID, keyHash1, amount);
+    mHandler->saveRecord(trustLineID, zeroAudit, pendingUUID, keyHash2, amount);
+    mHandler->saveRecord(trustLineID, zeroAudit, missingUUID, keyHash3, amount);
+    mHandler->saveRecord(trustLineID, nonZeroAudit, committedUUID, keyHash1, amount);
+
+    auto receipts = mHandler->getFinalizedReceiptsWithZeroAuditNumber(trustLineID);
+    ASSERT_EQ(receipts.size(), 1);
+    EXPECT_EQ(receipts[0]->transactionUUID(), committedUUID);
+    EXPECT_EQ(receipts[0]->auditNumber(), zeroAudit);
+}
+
+TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, getFinalizedReceiptsWithZeroAuditNumber_NoMatches_ReturnsEmptyVector) {
+    TrustLineID trustLineID = getValidTrustLineID();
+    auto receipts = mHandler->getFinalizedReceiptsWithZeroAuditNumber(trustLineID);
+    EXPECT_TRUE(receipts.empty());
+}
+
+// Test updateAuditNumberByTransactionUUIDs method
+TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, updateAuditNumberByTransactionUUIDs_UpdatesSpecifiedReceipts) {
+    TrustLineID trustLineID = getValidTrustLineID();
+    TrustLineID otherTrustLineID = getValidTrustLineID2();
+    AuditNumber zeroAudit = 0;
+    AuditNumber updatedAudit = 8;
+
+    auto updateUUID = createTestTransactionUUID("updateTx");
+    auto keepUUID = createTestTransactionUUID("keepTx");
+
+    auto keyHash1 = createTestKeyHash("testOwnKey");
+    auto keyHash2 = createTestKeyHash("testOwnKey1");
+    auto keyHash3 = createTestKeyHash("testOwnKey2");
+    auto amount = createTestAmount(1000);
+
+    mHandler->saveRecord(trustLineID, zeroAudit, updateUUID, keyHash1, amount);
+    mHandler->saveRecord(trustLineID, zeroAudit, keepUUID, keyHash2, amount);
+    mHandler->saveRecord(otherTrustLineID, zeroAudit, updateUUID, keyHash3, amount);
+
+    mHandler->updateAuditNumberByTransactionUUIDs(trustLineID, updatedAudit, {updateUUID});
+
+    EXPECT_EQ(mHandler->countReceiptsByNumber(trustLineID, updatedAudit), 1);
+    EXPECT_EQ(mHandler->countReceiptsByNumber(trustLineID, zeroAudit), 1);
+    EXPECT_EQ(mHandler->countReceiptsByNumber(otherTrustLineID, updatedAudit), 0);
+    EXPECT_EQ(mHandler->countReceiptsByNumber(otherTrustLineID, zeroAudit), 1);
+}
+
+TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, updateAuditNumberByTransactionUUIDs_EmptyList_DoesNotChangeReceipts) {
+    TrustLineID trustLineID = getValidTrustLineID();
+    AuditNumber zeroAudit = 0;
+    AuditNumber updatedAudit = 8;
+
+    auto transactionUUID = createTestTransactionUUID("emptyListTx");
+    auto keyHash = createTestKeyHash("testOwnKey");
+    auto amount = createTestAmount(1000);
+
+    mHandler->saveRecord(trustLineID, zeroAudit, transactionUUID, keyHash, amount);
+    mHandler->updateAuditNumberByTransactionUUIDs(trustLineID, updatedAudit, {});
+
+    EXPECT_EQ(mHandler->countReceiptsByNumber(trustLineID, zeroAudit), 1);
+    EXPECT_EQ(mHandler->countReceiptsByNumber(trustLineID, updatedAudit), 0);
 }
 
 // Test deleteRecords by TransactionUUID

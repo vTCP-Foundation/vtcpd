@@ -440,7 +440,7 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, CompleteWorkflow_Sav
 TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, LargeBlockNumbers_Success)
 {
     auto transactionUUID = createTestTransactionUUID();
-    BlockNumber largeBlock = UINT64_MAX - 1000; // Very large block number
+    BlockNumber largeBlock = static_cast<BlockNumber>(INT64_MAX - 1000); // BIGINT max-safe range
 
     mHandler->saveRecord(transactionUUID, largeBlock, largeBlock);
     EXPECT_TRUE(mHandler->isTransactionPresent(transactionUUID));
@@ -467,11 +467,11 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, SchemaValidation_Cor
     EXPECT_STREQ(PQgetvalue(result, 0, 1), "bytea");
 
     EXPECT_STREQ(PQgetvalue(result, 1, 0), "maximal_claiming_block_number");
-    EXPECT_STREQ(PQgetvalue(result, 1, 1), "bytea");
+    EXPECT_STREQ(PQgetvalue(result, 1, 1), "bigint");
 
     // New field: effective_claiming_block_number includes dispute grace period
     EXPECT_STREQ(PQgetvalue(result, 2, 0), "effective_claiming_block_number");
-    EXPECT_STREQ(PQgetvalue(result, 2, 1), "bytea");
+    EXPECT_STREQ(PQgetvalue(result, 2, 1), "bigint");
 
     EXPECT_STREQ(PQgetvalue(result, 3, 0), "observing_state");
     EXPECT_STREQ(PQgetvalue(result, 3, 1), "integer");
@@ -539,17 +539,19 @@ TEST_F(PaymentTransactionsHandlerPostgreSQLIntegrationTest, ReverseValidation_Di
 
     const char *params[5];
     int lengths[5];
-    int formats[5] = {1, 1, 1, 0, 0};
+    int formats[5] = {1, 0, 0, 0, 0};
 
     params[0] = reinterpret_cast<const char*>(transactionUUID.data);
     lengths[0] = TransactionUUID::kBytesSize;
 
-    params[1] = reinterpret_cast<const char*>(&blockNumber);
-    lengths[1] = sizeof(BlockNumber);
+    std::string blockNumberStr = std::to_string(blockNumber);
+    params[1] = blockNumberStr.c_str();
+    lengths[1] = 0;
 
     // Bind effective claiming block number
-    params[2] = reinterpret_cast<const char*>(&effectiveBlockNumber);
-    lengths[2] = sizeof(BlockNumber);
+    std::string effectiveBlockNumberStr = std::to_string(effectiveBlockNumber);
+    params[2] = effectiveBlockNumberStr.c_str();
+    lengths[2] = 0;
 
     std::string stateStr = "0";
     params[3] = stateStr.c_str();

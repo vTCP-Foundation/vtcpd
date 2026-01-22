@@ -10,6 +10,9 @@
 #include <chrono>
 
 #include "../../../src/core/io/storage/sqlite/IncomingPaymentReceiptHandlerSQLite.h"
+#include "../../../src/core/io/storage/sqlite/PaymentTransactionsHandlerSQLite.h"
+#include "../../../src/core/io/storage/interfaces/PaymentTransactionsHandler.h"
+#include "../../../src/core/io/storage/sqlite/StorageHandlerSQLite.h"
 #include "../../../src/core/common/exceptions/IOError.h"
 #include "../../../src/core/common/exceptions/NotFoundError.h"
 #include "../../../src/core/common/exceptions/ValueError.h"
@@ -38,6 +41,35 @@ protected:
         handler = make_unique<IncomingPaymentReceiptHandlerSQLite>(
             db, 
             "incoming_receipts_test", 
+            *logger
+        );
+
+        // Create payment_keys table required by payment transactions handler.
+        const char* createKeysTable =
+            "CREATE TABLE IF NOT EXISTS payment_keys ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "public_key BLOB NOT NULL, "
+            "private_key BLOB NOT NULL);";
+        char* errMsg = nullptr;
+        int execRc = sqlite3_exec(db, createKeysTable, nullptr, nullptr, &errMsg);
+        ASSERT_EQ(execRc, SQLITE_OK) << "Failed to create payment_keys table: " << (errMsg ? errMsg : "");
+        if (errMsg) {
+            sqlite3_free(errMsg);
+            errMsg = nullptr;
+        }
+
+        const char* insertDummyKey =
+            "INSERT INTO payment_keys (public_key, private_key) VALUES (zeroblob(32), zeroblob(64));";
+        execRc = sqlite3_exec(db, insertDummyKey, nullptr, nullptr, &errMsg);
+        ASSERT_EQ(execRc, SQLITE_OK) << "Failed to insert dummy key into payment_keys: " << (errMsg ? errMsg : "");
+        if (errMsg) {
+            sqlite3_free(errMsg);
+            errMsg = nullptr;
+        }
+
+        paymentTransactionsHandler = make_unique<PaymentTransactionsHandlerSQLite>(
+            db,
+            StorageHandlerSQLite::paymentTransactionsTableName(),
             *logger
         );
     }
@@ -86,7 +118,33 @@ protected:
     sqlite3* db = nullptr;
     unique_ptr<Logger> logger;
     unique_ptr<IncomingPaymentReceiptHandlerSQLite> handler;
+    unique_ptr<PaymentTransactionsHandlerSQLite> paymentTransactionsHandler;
 };
+
+namespace {
+const AuditNumber kTestZeroAuditNumber = 0;
+const AuditNumber kTestUpdatedAuditNumber = 7;
+const BlockNumber kTestBlockNumber = 100;
+} // namespace
+
+static TransactionUUID makeUUIDWithPrefix(uint8_t prefix)
+{
+    uint8_t bytes[TransactionUUID::kBytesSize];
+    memset(bytes, 0, sizeof(bytes));
+    bytes[0] = prefix;
+    return TransactionUUID(bytes);
+}
+
+static void savePaymentTransaction(
+    PaymentTransactionsHandlerSQLite &handler,
+    const TransactionUUID &transactionUUID,
+    PaymentObservingState observingState)
+{
+    handler.saveRecord(transactionUUID, kTestBlockNumber, kTestBlockNumber);
+    if (observingState != PaymentObservingState::Init) {
+        handler.updateTransactionState(transactionUUID, observingState);
+    }
+}
 
 // Constructor Tests
 TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, Constructor_ValidParameters_CreatesTableAndIndexes) {
@@ -151,6 +209,81 @@ TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, SaveRecord_ValidParameters_Saves
     
     bool containsKeyHash = handler->isContainsKeyHash(keyHash);
     EXPECT_TRUE(containsKeyHash);
+}
+
+// getFinalizedReceiptsWithZeroAuditNumber Tests
+TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, GetFinalizedReceiptsWithZeroAuditNumber_FiltersByAuditNumberAndState) {
+    TrustLineID trustLineID = generateTestTrustLineID();
+
+    TransactionUUID committedUUID = makeUUIDWithPrefix(0x01);
+    TransactionUUID pendingUUID = makeUUIDWithPrefix(0x02);
+    TransactionUUID nonZeroAuditUUID = makeUUIDWithPrefix(0x03);
+
+    savePaymentTransaction(*paymentTransactionsHandler, committedUUID, PaymentObservingState::Committed);
+    savePaymentTransaction(*paymentTransactionsHandler, pendingUUID, PaymentObservingState::Init);
+    savePaymentTransaction(*paymentTransactionsHandler, nonZeroAuditUUID, PaymentObservingState::Committed);
+
+    handler->saveRecord(trustLineID, kTestZeroAuditNumber, committedUUID, generateTestKeyHash(),
+                        generateTestAmount(), generateTestSignature());
+    handler->saveRecord(trustLineID, kTestZeroAuditNumber, pendingUUID, generateTestKeyHash(),
+                        generateTestAmount(), generateTestSignature());
+    handler->saveRecord(trustLineID, 1, nonZeroAuditUUID, generateTestKeyHash(),
+                        generateTestAmount(), generateTestSignature());
+
+    auto results = handler->getFinalizedReceiptsWithZeroAuditNumber(trustLineID);
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results.front()->transactionUUID(), committedUUID);
+}
+
+TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, GetFinalizedReceiptsWithZeroAuditNumber_NoMatches_ReturnsEmpty) {
+    TrustLineID trustLineID = generateTestTrustLineID();
+
+    auto results = handler->getFinalizedReceiptsWithZeroAuditNumber(trustLineID);
+    EXPECT_TRUE(results.empty());
+}
+
+// updateAuditNumberByTransactionUUIDs Tests
+TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, UpdateAuditNumberByTransactionUUIDs_UpdatesOnlySpecifiedReceipts) {
+    TrustLineID trustLineID = generateTestTrustLineID();
+    TrustLineID otherTrustLineID = generateTestTrustLineID();
+
+    TransactionUUID updateUUID = makeUUIDWithPrefix(0x10);
+    TransactionUUID keepUUID = makeUUIDWithPrefix(0x11);
+
+    savePaymentTransaction(*paymentTransactionsHandler, updateUUID, PaymentObservingState::Committed);
+    savePaymentTransaction(*paymentTransactionsHandler, keepUUID, PaymentObservingState::Committed);
+
+    handler->saveRecord(trustLineID, kTestZeroAuditNumber, updateUUID, generateTestKeyHash(),
+                        generateTestAmount(), generateTestSignature());
+    handler->saveRecord(trustLineID, kTestZeroAuditNumber, keepUUID, generateTestKeyHash(),
+                        generateTestAmount(), generateTestSignature());
+    handler->saveRecord(otherTrustLineID, kTestZeroAuditNumber, updateUUID, generateTestKeyHash(),
+                        generateTestAmount(), generateTestSignature());
+
+    handler->updateAuditNumberByTransactionUUIDs(
+        trustLineID,
+        kTestUpdatedAuditNumber,
+        vector<TransactionUUID>{updateUUID});
+
+    EXPECT_EQ(handler->countReceiptsByNumber(trustLineID, kTestUpdatedAuditNumber), 1);
+    EXPECT_EQ(handler->countReceiptsByNumber(trustLineID, kTestZeroAuditNumber), 1);
+    EXPECT_EQ(handler->countReceiptsByNumber(otherTrustLineID, kTestUpdatedAuditNumber), 0);
+    EXPECT_EQ(handler->countReceiptsByNumber(otherTrustLineID, kTestZeroAuditNumber), 1);
+}
+
+TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, UpdateAuditNumberByTransactionUUIDs_EmptyList_DoesNotChangeReceipts) {
+    TrustLineID trustLineID = generateTestTrustLineID();
+
+    TransactionUUID transactionUUID = makeUUIDWithPrefix(0x20);
+    savePaymentTransaction(*paymentTransactionsHandler, transactionUUID, PaymentObservingState::Committed);
+
+    handler->saveRecord(trustLineID, kTestZeroAuditNumber, transactionUUID, generateTestKeyHash(),
+                        generateTestAmount(), generateTestSignature());
+
+    handler->updateAuditNumberByTransactionUUIDs(trustLineID, kTestUpdatedAuditNumber, {});
+
+    EXPECT_EQ(handler->countReceiptsByNumber(trustLineID, kTestZeroAuditNumber), 1);
+    EXPECT_EQ(handler->countReceiptsByNumber(trustLineID, kTestUpdatedAuditNumber), 0);
 }
 
 TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, SaveRecord_NullKeyHash_ThrowsException) {

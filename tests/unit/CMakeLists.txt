@@ -39,6 +39,8 @@ add_executable(unit_tests
     network/messages/TestFinalAmountsConfigurationMessage.cpp
     network/messages/TestTransactionPublicKeyHashMessage.cpp
     network/messages/CoordinatorReservationConditionsMessageTest.cpp
+    network/messages/AuditMessageTest.cpp
+    network/messages/AuditResponseMessageTest.cpp
     commissions/CommissionsManagerTest.cpp
     commissions/TopologyTrustLinesManagerCommissionsTest.cpp
     topology/TopologyTrustLinesManagerMutationTest.cpp
@@ -76,10 +78,12 @@ add_executable(unit_tests
     transactions/CoordinatorExchangePaymentAllowableAmountTest.cpp
     transactions/CompletedPaymentsMonitoringDelayedTaskTest.cpp
     transactions/CompletedPaymentsObserverMonitoringTransactionTest.cpp
+    transactions/AuditSignaturePayloadTest.cpp
     payments/TestAmountReservation.cpp
     payments/TestAmountReservationsHandler.cpp
     core/CoreORToolsStartupTest.cpp
     core/CoreSignalConnectionTest.cpp
+    core/TrustLinesManagerTest.cpp
     observing/ObservingPaymentClaimTest.cpp
     # RPC unit tests (PRD-14)
     network/rpc/RpcMethodTest.cpp
