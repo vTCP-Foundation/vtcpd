@@ -1,5 +1,8 @@
 #include "BaseTrustLineTransaction.h"
 
+#include "../../../../network/rpc/requests/GetBlockNumberRpcRequest.h"
+#include "../../../../network/rpc/responses/GetBlockNumberRpcResponse.h"
+
 #include <algorithm>
 #include <cstring>
 
@@ -202,6 +205,50 @@ pair<BytesShared, size_t> BaseTrustLineTransaction::getContractorSerializedAudit
     return make_pair(
                dataBytesShared,
                bytesCount);
+}
+
+bool BaseTrustLineTransaction::requestCurrentBlockNumber(
+    bool &requestSent,
+    BlockNumber &currentBlockNumber,
+    TransactionResult::SharedConst &result)
+{
+    // Send block number request once and wait for response.
+    if (!requestSent) {
+        info() << "Requesting current block number";
+        sendRpcRequest(
+            make_shared<GetBlockNumberRpcRequest>(
+                currentTransactionUUID()));
+        requestSent = true;
+        result = resultWaitForRpcResponse(RpcMethod::GetBlockNumber);
+        return false;
+    }
+
+    if (!hasRpcResponse()) {
+        error() << "GetBlockNumber RPC timed out";
+        // TODO: revisit block number retrieval failure handling.
+        result = resultDone();
+        return false;
+    }
+
+    if (mRpcContext.front()->method() != RpcMethod::GetBlockNumber) {
+        error() << "Unexpected RPC response in block number stage";
+        // TODO: revisit block number retrieval failure handling.
+        result = resultDone();
+        return false;
+    }
+
+    auto response = popRpcResponse<GetBlockNumberRpcResponse>();
+    if (response->status() != RpcResponseStatus::Success) {
+        error() << "Block number retrieval failed: " << response->errorMessage();
+        // TODO: revisit block number retrieval failure handling.
+        result = resultDone();
+        return false;
+    }
+
+    currentBlockNumber = response->blockNumber();
+    info() << "Current block number received: " << currentBlockNumber;
+    requestSent = false;
+    return true;
 }
 
 bool BaseTrustLineTransaction::loadReceiptsAndBuildTransactionList()
@@ -488,4 +535,131 @@ bool BaseTrustLineTransaction::containsTransactionUUID(
 ContractorID BaseTrustLineTransaction::contractorID() const
 {
     return mContractorID;
+}
+
+bool BaseTrustLineTransaction::validateUpdateTransactionsList(
+    const vector<TransactionUUID> &transactionUUIDs) const
+{
+    for (const auto &transactionUUID : transactionUUIDs) {
+        if (!containsTransactionUUID(mOriginalTransactionList, transactionUUID)) {
+            warning() << "Audit update list contains unknown transaction UUID";
+            return false;
+        }
+    }
+    return true;
+}
+
+BaseTrustLineTransaction::ObservingCheckResult
+BaseTrustLineTransaction::checkUpdateListObservingWindow(
+    const vector<TransactionUUID> &transactionUUIDs,
+    BlockNumber currentBlockNumber)
+{
+    vector<TransactionUUID> expiredTransactions;
+    auto observingTransaction = mStorageHandler->beginTransaction();
+
+    for (const auto &transactionUUID : transactionUUIDs) {
+        try {
+            const auto effectiveBlockNumber =
+                observingTransaction->paymentTransactionsHandler()->effectiveClaimingBlockNumber(
+                    transactionUUID);
+            if (currentBlockNumber > effectiveBlockNumber) {
+                expiredTransactions.push_back(transactionUUID);
+            }
+        } catch (NotFoundError &e) {
+            warning() << "Missing payment transaction for "
+                      << transactionUUID.stringUUID() << ". Details are: " << e.what();
+            expiredTransactions.push_back(transactionUUID);
+        } catch (IOError &e) {
+            observingTransaction->rollback();
+            warning() << "Failed to load payment transaction data. Details are: " << e.what();
+            return ObservingFailed;
+        }
+    }
+
+    if (!expiredTransactions.empty()) {
+        warning() << "Audit update list includes transactions outside observing window: "
+                  << expiredTransactions.size();
+        return ObservingExpired;
+    }
+
+    return ObservingOk;
+}
+
+bool BaseTrustLineTransaction::updateOwnAuditDataForCurrentList()
+{
+    // Refresh stored audit part to reflect updated transaction list.
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    auto keyChain = mKeysStore->keychain(
+        mTrustLines->trustLineID(mContractorID));
+    try {
+        ioTransaction->auditHandler()->deleteAuditByNumber(
+            mTrustLines->trustLineID(mContractorID),
+            mAuditNumber);
+
+        auto serializedAuditData = getOwnSerializedAuditDataWithTransactionHash();
+        mOwnSignature = keyChain.sign(
+            ioTransaction,
+            serializedAuditData.first,
+            serializedAuditData.second);
+
+        keyChain.saveOwnAuditPart(
+            ioTransaction,
+            mAuditNumber,
+            mOwnSignature,
+            mTrustLines->incomingTrustAmount(
+                mContractorID),
+            mTrustLines->outgoingTrustAmount(
+                mContractorID),
+            mAuditBalance);
+
+        mTrustLines->setTrustLineAuditNumber(
+            mContractorID,
+            mAuditNumber);
+
+    } catch (NotFoundError &e) {
+        ioTransaction->rollback();
+        warning() << "Attempt to update audit data failed. Details are: " << e.what();
+        return false;
+    } catch (IOError &e) {
+        ioTransaction->rollback();
+        mTrustLines->setTrustLineState(
+            mContractorID,
+            TrustLine::Active);
+        warning() << "Attempt to update audit data failed. "
+                  << "IO transaction can't be completed. Details are: " << e.what();
+        throw e;
+    }
+
+    return true;
+}
+
+void BaseTrustLineTransaction::sendAuditMessageWithCurrentList()
+{
+    // Normalize list to ensure deterministic ordering for signatures.
+    const auto normalizedList =
+        AuditMessage::normalizedTransactionUUIDs(mCurrentTransactionList);
+
+    sendMessage<AuditMessage>(
+        mContractorID,
+        mEquivalent,
+        mContractorsManager->contractor(mContractorID),
+        mTransactionUUID,
+        mAuditNumber,
+        mTrustLines->incomingTrustAmount(mContractorID),
+        mTrustLines->outgoingTrustAmount(mContractorID),
+        mOwnSignature,
+        normalizedList);
+
+    // Keep transaction in response processing stage after sending audit message.
+    mStep = ResponseProcessing;
+}
+
+void BaseTrustLineTransaction::setTrustLineToConflict()
+{
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    mTrustLines->setTrustLineState(
+        mContractorID,
+        TrustLine::Conflict,
+        ioTransaction);
+    info() << "Trust line moved to Conflict state";
 }

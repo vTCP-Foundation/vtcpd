@@ -63,12 +63,26 @@ protected:
     };
 
 protected:
+    // Result of verifying observing window for audit update list.
+    enum ObservingCheckResult
+    {
+        ObservingOk = 0,
+        ObservingExpired = 1,
+        ObservingFailed = 2,
+    };
+
     TransactionResult::SharedConst sendAuditErrorConfirmation(
         ConfirmationMessage::OperationState errorState);
 
     pair<BytesShared, size_t> getOwnSerializedAuditData();
 
     pair<BytesShared, size_t> getContractorSerializedAuditData();
+
+    // Requests current block number or consumes response for reuse in audit flows.
+    bool requestCurrentBlockNumber(
+        bool &requestSent,
+        BlockNumber &currentBlockNumber,
+        TransactionResult::SharedConst &result);
 
     // Loads finalized receipts and builds the canonical transaction UUID list.
     bool loadReceiptsAndBuildTransactionList();
@@ -90,6 +104,24 @@ protected:
     bool containsTransactionUUID(
         const vector<TransactionUUID> &transactionUUIDs,
         const TransactionUUID &transactionUUID) const;
+
+    // Validates that update list UUIDs are subset of the original list.
+    bool validateUpdateTransactionsList(
+        const vector<TransactionUUID> &transactionUUIDs) const;
+
+    // Confirms update list transactions are still within observing window.
+    ObservingCheckResult checkUpdateListObservingWindow(
+        const vector<TransactionUUID> &transactionUUIDs,
+        BlockNumber currentBlockNumber);
+
+    // Updates stored audit data to match current transaction list.
+    bool updateOwnAuditDataForCurrentList();
+
+    // Sends audit message with normalized current transaction list and switches to response processing.
+    void sendAuditMessageWithCurrentList();
+
+    // Switches trust line to Conflict state.
+    void setTrustLineToConflict();
 
 protected:
     static const uint32_t kWaitMillisecondsForResponse = 20000;

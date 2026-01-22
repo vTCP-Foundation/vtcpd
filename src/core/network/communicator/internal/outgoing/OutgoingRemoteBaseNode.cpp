@@ -164,10 +164,12 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
     }
 
     // Writing last packet
+    // Remaining payload is message tail plus CRC bytes not yet written.
+    const size_t remainingMessageBytes = messageBytesCount - messageContentBytesProcessed;
+    const size_t remainingCrcBytes = sizeof(crcChecksum) - messageCrc32ChecksumBytesProcessed;
+    const size_t remainingPayloadBytes = remainingMessageBytes + remainingCrcBytes;
     const PacketHeader::PacketSize kLastPacketSize =
-        static_cast<PacketHeader::PacketSize>(kMessageContentWithCRC32BytesCount -
-            messageContentBytesProcessed) +
-        PacketHeader::kSize;
+        static_cast<PacketHeader::PacketSize>(remainingPayloadBytes + PacketHeader::kSize);
 
     // Round up to next 8-byte boundary to prevent alignment issues
     size_t alignedSize = (kLastPacketSize + 7) & ~7;
@@ -199,8 +201,7 @@ void OutgoingRemoteBaseNode::populateQueueWithNewPackets(
         sizeof(packetIndex));
 
     size_t usefulBytesCount = kLastPacketSize - PacketHeader::kSize;
-    size_t messageLeftover = std::min(usefulBytesCount,
-                                      messageBytesCount - messageContentBytesProcessed);
+    size_t messageLeftover = std::min(usefulBytesCount, remainingMessageBytes);
 
     memcpy(
         buffer + PacketHeader::kDataOffset,

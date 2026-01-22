@@ -914,6 +914,7 @@ void TransactionsManager::launchSetOutgoingTrustLineTransaction(
             transaction,
             true,
             true,
+            true,
             true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for SetOutgoingTrustLineTransaction "
@@ -950,6 +951,7 @@ void TransactionsManager::launchCloseIncomingTrustLineTransaction(
             transaction->trustLineActionSignal);
         prepareAndSchedule(
             transaction,
+            true,
             true,
             true,
             true);
@@ -1079,6 +1081,7 @@ void TransactionsManager::launchAuditTargetTransaction(
             transaction,
             false,
             false,
+            true,
             true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for AuditTargetTransaction "
@@ -3305,6 +3308,7 @@ void TransactionsManager::onAuditSlot(
             transaction,
             true,
             false,
+            true,
             true);
     } catch (NotFoundError &e) {
         error() << "There are no subsystems for onAuditSlot "
@@ -3360,6 +3364,7 @@ void TransactionsManager::onResumeTransactionSlot(
             transaction,
             true,
             false,
+            true,
             true);
         break;
     }

@@ -53,14 +53,31 @@ protected:
     const string logHeader() const override;
 
 private:
+    // Extends base stages with block number retrieval.
+    enum Stages
+    {
+        Initialization = BaseTrustLineTransaction::Initialization,
+        Pending = BaseTrustLineTransaction::Pending,
+        ResponseProcessing = BaseTrustLineTransaction::ResponseProcessing,
+        ContractorPending = BaseTrustLineTransaction::ContractorPending,
+        BlockNumberRequest = 7,
+    };
+
     TransactionResult::SharedConst runInitializationStage();
 
     TransactionResult::SharedConst runAuditPendingStage();
+
+    // Switches to block number request stage before audit.
+    TransactionResult::SharedConst startBlockNumberRequest();
+
+    // Requests block number and resumes audit once available.
+    TransactionResult::SharedConst runBlockNumberRequestStage();
 
     TransactionResult::SharedConst runResponseProcessingStage();
 
     TransactionResult::SharedConst runContractorPendingStage();
 
+    // Initializes audit data and sends audit message.
     TransactionResult::SharedConst initializeAudit();
 
 private:
@@ -77,6 +94,15 @@ private:
 
     TrustLineAmount mPreviousIncomingAmount;
     TrustLine::TrustLineState mPreviousState;
+
+    // Stores current block number for observing checks.
+    BlockNumber mCurrentBlockNumber;
+    // Prevents duplicate block number RPC requests.
+    bool mBlockNumberRequestSent;
+    // Counts retries after update list response.
+    uint8_t mAuditRetryCount;
+    // Limits update list retries to a single attempt.
+    static const uint8_t kMaxAuditRetries = 1;
 };
 
 
