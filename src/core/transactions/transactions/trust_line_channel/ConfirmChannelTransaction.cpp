@@ -44,16 +44,20 @@ TransactionResult::SharedConst ConfirmChannelTransaction::run()
     }
     info() << "Channel ID " << contractorID;
 
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    // Load own payment public key for channel confirmation message.
+    auto paymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+
     if (mContractorsManager->channelConfirmed(contractorID)) {
         info() << "Channel already confirmed";
         sendMessage<ConfirmChannelMessage>(
             contractorID,
             mTransactionUUID,
-            mContractorsManager->contractor(contractorID));
+            mContractorsManager->contractor(contractorID),
+            paymentPublicKey);
         return resultDone();
     }
 
-    auto ioTransaction = mStorageHandler->beginTransaction();
     try {
         mContractorsManager->setConfirmationInfo(
             ioTransaction,
@@ -69,7 +73,8 @@ TransactionResult::SharedConst ConfirmChannelTransaction::run()
     sendMessage<ConfirmChannelMessage>(
         contractorID,
         mTransactionUUID,
-        mContractorsManager->contractor(contractorID));
+        mContractorsManager->contractor(contractorID),
+        paymentPublicKey);
     return resultDone();
 }
 

@@ -68,11 +68,14 @@ TransactionResult::SharedConst SetChannelContractorCryptoKeyTransaction::runInit
 
     auto contractor = mContractorsManager->contractor(
                           mCommand->contractorChannelID());
+    // Load own payment public key for channel init message.
+    auto paymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
     sendMessage<InitChannelMessage>(
         contractor->getID(),
         mContractorsManager->ownAddresses(),
         mTransactionUUID,
-        contractor);
+        contractor,
+        paymentPublicKey);
     mStep = ResponseProcessing;
     return resultOKAndWaitResponse();
 }
@@ -84,11 +87,15 @@ TransactionResult::SharedConst SetChannelContractorCryptoKeyTransaction::runResp
         if (mCountSendingAttempts < kMaxCountSendingAttempts) {
             auto contractor = mContractorsManager->contractor(
                                   mCommand->contractorChannelID());
+            auto ioTransaction = mStorageHandler->beginTransaction();
+            // Load own payment public key for channel init message.
+            auto paymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
             sendMessage<InitChannelMessage>(
                 contractor->getID(),
                 mContractorsManager->ownAddresses(),
                 mTransactionUUID,
-                contractor);
+                contractor,
+                paymentPublicKey);
             mCountSendingAttempts++;
             info() << "Send message " << mCountSendingAttempts << " times";
             return resultWaitForMessageTypes(

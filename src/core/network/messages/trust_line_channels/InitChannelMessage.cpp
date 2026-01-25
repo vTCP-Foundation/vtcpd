@@ -4,14 +4,16 @@
 InitChannelMessage::InitChannelMessage(
     vector<BaseAddress::Shared> senderAddresses,
     const TransactionUUID &transactionUUID,
-    Contractor::Shared contractor):
+    Contractor::Shared contractor,
+    const sphincs::PublicKey::Shared paymentPublicKey):
 
     TransactionMessage(
         0,
         senderAddresses,
         transactionUUID),
     mContractorID(contractor->getID()),
-    mPublicKey(contractor->cryptoKey()->publicKey)
+    mPublicKey(contractor->cryptoKey()->publicKey),
+    mPaymentPublicKey(paymentPublicKey)
 {
     encrypt(contractor);
 }
@@ -27,6 +29,12 @@ InitChannelMessage::InitChannelMessage(
 
     mPublicKey = make_shared<MsgEncryptor::PublicKey>();
     deserializer.copyInto(mPublicKey->key, mPublicKey->kBytesSize);
+
+    // Deserialize payment public key using SPHINCS+ serialization format.
+    const auto kPaymentPublicKeySize = sphincs::PublicKey::keySize();
+    auto currentOffset = deserializer.getCurrentOffset();
+    mPaymentPublicKey = make_shared<sphincs::PublicKey>(buffer.get() + currentOffset);
+    deserializer.skipBytes(kPaymentPublicKeySize);
 }
 
 
@@ -45,21 +53,22 @@ const MsgEncryptor::PublicKey::Shared InitChannelMessage::publicKey() const
     return mPublicKey;
 }
 
+const sphincs::PublicKey::Shared InitChannelMessage::paymentPublicKey() const
+{
+    return mPaymentPublicKey;
+}
+
 pair<BytesShared, size_t> InitChannelMessage::serializeToBytes() const
 {
-    // todo: use serializer
-
     auto parentBytesAndCount = TransactionMessage::serializeToBytes();
-
-    size_t bytesCount = parentBytesAndCount.second
-                        + sizeof(ContractorID)
-                        + mPublicKey->kBytesSize;
 
     // Use BytesSerializer for consistent serialization
     BytesSerializer serializer;
     serializer.enqueue(parentBytesAndCount);
     serializer.copy(mContractorID);
     serializer.copy(&mPublicKey->key, mPublicKey->kBytesSize);
+    // Serialize payment public key after channel crypto key.
+    serializer.copy(mPaymentPublicKey->data(), sphincs::PublicKey::keySize());
 
     return serializer.collect();
 }
