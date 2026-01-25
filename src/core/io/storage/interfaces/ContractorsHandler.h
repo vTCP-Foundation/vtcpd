@@ -27,6 +27,12 @@ public:
     virtual void updateCryptoKey(
         Contractor::Shared contractor) = 0;
 
+    /**
+     * Updates stored payment public key for contractor.
+     */
+    virtual void updatePaymentPublicKey(
+        Contractor::Shared contractor) = 0;
+
     virtual void updateChannelIdOnContractorSide(
         Contractor::Shared contractor) = 0;
 

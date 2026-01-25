@@ -3,6 +3,9 @@
 
 #include "../common/multiprecision/MultiprecisionUtils.h"
 #include "../crypto/MsgEncryptor.h"
+#include "../crypto/sphincskeys.h"
+
+namespace sphincs = crypto::sphincs;
 
 class Contractor
 {
@@ -37,6 +40,16 @@ public:
 
     void setCryptoKey(
         MsgEncryptor::KeyTrio::Shared cryptoKey);
+
+    /**
+     * Returns stored payment public key if available.
+     */
+    sphincs::PublicKey::Shared paymentPublicKey() const;
+
+    /**
+     * Updates payment public key used for receipts.
+     */
+    void setPaymentPublicKey(sphincs::PublicKey::Shared key);
 
     const bool isConfirmed() const;
 
@@ -75,6 +88,8 @@ private:
     ContractorID mID;
     ContractorID mOwnIdOnContractorSide;
     MsgEncryptor::KeyTrio::Shared mCryptoKey;
+    // Payment public key for receipt signing/verification; nullable for legacy channels.
+    sphincs::PublicKey::Shared mPaymentPublicKey;
     bool mIsConfirmed;
     vector<BaseAddress::Shared> mAddresses;
 };

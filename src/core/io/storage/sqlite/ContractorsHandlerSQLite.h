@@ -31,6 +31,12 @@ public:
     void updateCryptoKey(
         Contractor::Shared contractor) override;
 
+    /**
+     * Persists payment public key for contractor.
+     */
+    void updatePaymentPublicKey(
+        Contractor::Shared contractor) override;
+
     void updateChannelIdOnContractorSide(
         Contractor::Shared contractor) override;
 

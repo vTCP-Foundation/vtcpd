@@ -7,6 +7,7 @@ Contractor::Contractor(
     mID(id),
     mOwnIdOnContractorSide(0),
     mCryptoKey(cryptoKey),
+    mPaymentPublicKey(nullptr),
     mIsConfirmed(false),
     mAddresses(addresses)
 {
@@ -20,6 +21,7 @@ Contractor::Contractor(
     mID(id),
     mOwnIdOnContractorSide(idOnContractorSide),
     mCryptoKey(cryptoKey),
+    mPaymentPublicKey(nullptr),
     mIsConfirmed(isConfirmed)
 {
 }
@@ -28,6 +30,7 @@ Contractor::Contractor(
     vector<BaseAddress::Shared> addresses) :
     mID(0),
     mOwnIdOnContractorSide(0),
+    mPaymentPublicKey(nullptr),
     mIsConfirmed(false),
     mAddresses(addresses)
 {
@@ -37,6 +40,7 @@ Contractor::Contractor(
     byte_t* buffer) :
     mID(0),
     mOwnIdOnContractorSide(0),
+    mPaymentPublicKey(nullptr),
     mIsConfirmed(false)
 {
     size_t bufferDataOffset = 0;
@@ -82,6 +86,19 @@ void Contractor::setCryptoKey(
     MsgEncryptor::KeyTrio::Shared cryptoKey)
 {
     mCryptoKey = cryptoKey;
+}
+
+sphincs::PublicKey::Shared Contractor::paymentPublicKey() const
+{
+    // Payment public key may be absent for legacy channels.
+    return mPaymentPublicKey;
+}
+
+void Contractor::setPaymentPublicKey(
+    sphincs::PublicKey::Shared key)
+{
+    // Store payment public key for receipt signing/verification.
+    mPaymentPublicKey = key;
 }
 
 const bool Contractor::isConfirmed() const

@@ -19,6 +19,27 @@ inline void checkTuples(PGconn *db, PGresult *res, const string &prefix) {
         throw IOError(prefix + ": " + err);
     }
 }
+
+// Serialized payment public key size in bytes.
+constexpr size_t kPaymentPublicKeySize = crypto::sphincs::PublicKey::keySize();
+
+// Prepares nullable payment public key parameter for PQexecParams.
+inline void fillPaymentPublicKeyParam(
+    const crypto::sphincs::PublicKey::Shared &paymentPublicKey,
+    vector<byte_t> &buffer,
+    const char *&paramValue,
+    int &paramLength)
+{
+    if (!paymentPublicKey) {
+        paramValue = nullptr;
+        paramLength = 0;
+        return;
+    }
+    buffer.resize(kPaymentPublicKeySize);
+    paymentPublicKey->serialize(buffer.data());
+    paramValue = reinterpret_cast<const char *>(buffer.data());
+    paramLength = static_cast<int>(buffer.size());
+}
 }
 
 ContractorsHandlerPostgreSQL::ContractorsHandlerPostgreSQL(
@@ -36,6 +57,7 @@ ContractorsHandlerPostgreSQL::ContractorsHandlerPostgreSQL(
                    "(id INTEGER PRIMARY KEY, "
                    "id_on_contractor_side INTEGER, "
                    "crypto_key BYTEA NOT NULL, "
+                   "payment_public_key BYTEA, "
                    "is_confirmed INTEGER NOT NULL DEFAULT 0);";
     PGresult *res = PQexec(mDataBase, query.c_str());
     checkCmd(mDataBase, res, "ContractorsHandlerPostgreSQL::create table");
@@ -53,15 +75,19 @@ ContractorsHandlerPostgreSQL::ContractorsHandlerPostgreSQL(
 void ContractorsHandlerPostgreSQL::saveContractor(
     Contractor::Shared contractor)
 {
-    const string query = "INSERT INTO " + mTableName + "(id, crypto_key) VALUES ($1,$2);";
+    const string query = "INSERT INTO " + mTableName + "(id, crypto_key, payment_public_key) VALUES ($1,$2,$3);";
     vector<byte_t> cryptoBlob;
     auto cryptoKey = contractor->cryptoKey();
     if (cryptoKey) cryptoKey->serialize(cryptoBlob);
 
-    const char *p[2]; int l[2]; int f[2]={0,1};
+    vector<byte_t> paymentPublicKeyBlob;
+    constexpr int kParams = 3;
+    const char *p[kParams]; int l[kParams]; int f[kParams]={0,1,1};
     string idStr = to_string(contractor->getID()); p[0]=idStr.c_str(); l[0]=0;
-    p[1]=reinterpret_cast<const char *>(cryptoBlob.data()); l[1]=cryptoBlob.size();
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,p,l,f,0);
+    p[1]=reinterpret_cast<const char *>(cryptoBlob.data()); l[1]=static_cast<int>(cryptoBlob.size());
+    // Bind nullable payment public key for receipt verification.
+    fillPaymentPublicKeyParam(contractor->paymentPublicKey(), paymentPublicKeyBlob, p[2], l[2]);
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),kParams,nullptr,p,l,f,0);
     checkCmd(mDataBase,res,"saveContractor");
     PQclear(res);
 }
@@ -69,13 +95,17 @@ void ContractorsHandlerPostgreSQL::saveContractor(
 void ContractorsHandlerPostgreSQL::saveContractorFull(
     Contractor::Shared contractor)
 {
-    const string query = "INSERT INTO " + mTableName + "(id,id_on_contractor_side,crypto_key,is_confirmed) VALUES ($1,$2,$3,1);";
+    const string query = "INSERT INTO " + mTableName + "(id,id_on_contractor_side,crypto_key,payment_public_key,is_confirmed) VALUES ($1,$2,$3,$4,1);";
     vector<byte_t> cryptoBlob; if (contractor->cryptoKey()) contractor->cryptoKey()->serialize(cryptoBlob);
-    const char *p[3]; int l[3]; int f[3]={0,0,1};
+    vector<byte_t> paymentPublicKeyBlob;
+    constexpr int kParams = 4;
+    const char *p[kParams]; int l[kParams]; int f[kParams]={0,0,1,1};
     string idStr=to_string(contractor->getID()); p[0]=idStr.c_str(); l[0]=0;
     string idSideStr=to_string(contractor->ownIdOnContractorSide()); p[1]=idSideStr.c_str(); l[1]=0;
-    p[2]=reinterpret_cast<const char *>(cryptoBlob.data()); l[2]=cryptoBlob.size();
-    PGresult *res = PQexecParams(mDataBase, query.c_str(),3,nullptr,p,l,f,0);
+    p[2]=reinterpret_cast<const char *>(cryptoBlob.data()); l[2]=static_cast<int>(cryptoBlob.size());
+    // Bind nullable payment public key for receipt verification.
+    fillPaymentPublicKeyParam(contractor->paymentPublicKey(), paymentPublicKeyBlob, p[3], l[3]);
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),kParams,nullptr,p,l,f,0);
     checkCmd(mDataBase,res,"saveContractorFull");
     PQclear(res);
 }
@@ -109,6 +139,22 @@ void ContractorsHandlerPostgreSQL::updateCryptoKey(
     PQclear(res);
 }
 
+void ContractorsHandlerPostgreSQL::updatePaymentPublicKey(
+    Contractor::Shared contractor)
+{
+    const string query = "UPDATE " + mTableName + " SET payment_public_key=$1 WHERE id=$2;";
+    vector<byte_t> paymentPublicKeyBlob;
+    constexpr int kParams = 2;
+    const char *p[kParams]; int l[kParams]; int f[kParams]={1,0};
+    // Bind nullable payment public key for receipt verification.
+    fillPaymentPublicKeyParam(contractor->paymentPublicKey(), paymentPublicKeyBlob, p[0], l[0]);
+    string idStr=to_string(contractor->getID()); p[1]=idStr.c_str(); l[1]=0;
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),kParams,nullptr,p,l,f,0);
+    checkCmd(mDataBase,res,"updatePaymentPublicKey");
+    if (PQcmdTuples(res)[0]=='0') { PQclear(res); throw ValueError("No data modified"); }
+    PQclear(res);
+}
+
 void ContractorsHandlerPostgreSQL::updateChannelIdOnContractorSide(
     Contractor::Shared contractor)
 {
@@ -125,7 +171,7 @@ void ContractorsHandlerPostgreSQL::updateChannelIdOnContractorSide(
 vector<Contractor::Shared> ContractorsHandlerPostgreSQL::allContractors()
 {
     vector<Contractor::Shared> result;
-    const string query = "SELECT id,id_on_contractor_side,crypto_key,is_confirmed FROM " + mTableName + ";";
+    const string query = "SELECT id,id_on_contractor_side,crypto_key,is_confirmed,payment_public_key FROM " + mTableName + ";";
     PGresult *res = PQexecParams(mDataBase, query.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1);
     checkTuples(mDataBase,res,"allContractors");
     int rows = PQntuples(res);
@@ -148,9 +194,29 @@ vector<Contractor::Shared> ContractorsHandlerPostgreSQL::allContractors()
         
         // Read binary integer data for confirmed flag
         bool confirmed = ntohl(*reinterpret_cast<const uint32_t*>(PQgetvalue(res,i,3))) == 1;
-        
+
         try {
-            result.push_back(make_shared<Contractor>(id,idSide,key,confirmed));
+            // Load nullable payment public key for receipt verification.
+            sphincs::PublicKey::Shared paymentPublicKey = nullptr;
+            if (!PQgetisnull(res, i, 4)) {
+                int paymentSize = PQgetlength(res, i, 4);
+                if (static_cast<size_t>(paymentSize) != kPaymentPublicKeySize) {
+                    PQclear(res);
+                    throw Exception("allContractors: payment_public_key size mismatch");
+                }
+                auto paymentBlob = reinterpret_cast<const byte_t*>(PQgetvalue(res,i,4));
+                if (paymentBlob == nullptr) {
+                    PQclear(res);
+                    throw Exception("allContractors: payment_public_key is null");
+                }
+                paymentPublicKey = make_shared<crypto::sphincs::PublicKey>(paymentBlob);
+            }
+
+            auto contractor = make_shared<Contractor>(id,idSide,key,confirmed);
+            if (paymentPublicKey != nullptr) {
+                contractor->setPaymentPublicKey(paymentPublicKey);
+            }
+            result.push_back(contractor);
         } catch(...) {
             PQclear(res);
             throw Exception("allContractors: unable to create contractor");
