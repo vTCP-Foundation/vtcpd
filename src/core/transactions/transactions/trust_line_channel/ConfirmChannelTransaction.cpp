@@ -44,21 +44,23 @@ TransactionResult::SharedConst ConfirmChannelTransaction::run()
     }
     info() << "Channel ID " << contractorID;
 
+    // Extract initiator payment public key from init message.
+    const auto initiatorPaymentPublicKey = mMessage->paymentPublicKey();
     auto ioTransaction = mStorageHandler->beginTransaction();
     // Load own payment public key for channel confirmation message.
     auto paymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
-
-    if (mContractorsManager->channelConfirmed(contractorID)) {
-        info() << "Channel already confirmed";
-        sendMessage<ConfirmChannelMessage>(
-            contractorID,
-            mTransactionUUID,
-            mContractorsManager->contractor(contractorID),
-            paymentPublicKey);
+    if (paymentPublicKey == nullptr) {
+        // Silent termination if own payment key is missing.
+        error() << "Cannot retrieve own payment public key for confirmation.";
         return resultDone();
     }
 
+    auto contractor = mContractorsManager->contractor(contractorID);
+
     try {
+        // Persist initiator payment public key for receipt verification.
+        contractor->setPaymentPublicKey(initiatorPaymentPublicKey);
+        ioTransaction->contractorsHandler()->updatePaymentPublicKey(contractor);
         mContractorsManager->setConfirmationInfo(
             ioTransaction,
             contractorID,
@@ -73,7 +75,7 @@ TransactionResult::SharedConst ConfirmChannelTransaction::run()
     sendMessage<ConfirmChannelMessage>(
         contractorID,
         mTransactionUUID,
-        mContractorsManager->contractor(contractorID),
+        contractor,
         paymentPublicKey);
     return resultDone();
 }

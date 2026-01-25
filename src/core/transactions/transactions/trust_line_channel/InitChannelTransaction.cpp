@@ -59,6 +59,13 @@ TransactionResult::SharedConst InitChannelTransaction::runInitializationStage()
             return resultOK();
         } else {
             info() << "Channel crypto key: " << mCommand->cryptoKey();
+            // Load own payment public key needed for channel init handshake.
+            auto paymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+            if (paymentPublicKey == nullptr) {
+                // Own payment public key is required to start channel initialization.
+                return transactionResultFromCommand(
+                    mCommand->responseThereAreNoKeys());
+            }
             mContractor = mContractorsManager->createContractor(
                               ioTransaction,
                               mCommand->contractorAddresses(),
@@ -66,8 +73,6 @@ TransactionResult::SharedConst InitChannelTransaction::runInitializationStage()
                               mCommand->contractorChannelID());
             info() << "Init channel to contractor with ID " << mContractor->getID();
             info() << "Channel ID on contractor side " << mContractor->ownIdOnContractorSide();
-            // Load own payment public key for channel init message.
-            auto paymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
             sendMessage<InitChannelMessage>(
                 mContractor->getID(),
                 mContractorsManager->ownAddresses(),
@@ -100,6 +105,11 @@ TransactionResult::SharedConst InitChannelTransaction::runResponseProcessingStag
             auto ioTransaction = mStorageHandler->beginTransaction();
             // Load own payment public key for channel init message.
             auto paymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+            if (paymentPublicKey == nullptr) {
+                // No command response here; terminate to avoid duplicate replies.
+                error() << "Can't load own payment public key for channel init resend.";
+                return resultDone();
+            }
             sendMessage<InitChannelMessage>(
                 mContractor->getID(),
                 mContractorsManager->ownAddresses(),
@@ -116,6 +126,18 @@ TransactionResult::SharedConst InitChannelTransaction::runResponseProcessingStag
         return resultDone();
     }
     auto message = popNextMessage<ConfirmChannelMessage>();
+    // Persist counterparty payment public key received in confirmation.
+    auto counterpartyPaymentPublicKey = message->paymentPublicKey();
+    auto ioTransaction = mStorageHandler->beginTransaction();
+    try {
+        mContractor->setPaymentPublicKey(counterpartyPaymentPublicKey);
+        ioTransaction->contractorsHandler()->updatePaymentPublicKey(
+            mContractor);
+    } catch (IOError &e) {
+        error() << "Error during saving payment public key. Details: " << e.what();
+        ioTransaction->rollback();
+        throw e;
+    }
     // todo : check response
     info() << "contractor " << message->idOnReceiverSide << " send channel confirmation";
     return resultDone();
