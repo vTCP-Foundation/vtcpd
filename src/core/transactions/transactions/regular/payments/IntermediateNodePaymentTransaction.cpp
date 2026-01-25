@@ -729,11 +729,18 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runFinalReser
                 coordinatorID, mEquivalent);
         auto keyChain = mKeysStore->keychain(
                             mTrustLinesManager->trustLineID(coordinatorID));
+        // Receipt is addressed to current node; bind it to own payment public key.
+        mKeysStore->ensurePaymentKeyExists(ioTransaction);
+        auto recipientPaymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+        if (recipientPaymentPublicKey == nullptr) {
+            removeAllDataFromStorageConcerningTransaction(ioTransaction);
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Own payment public key is absent. Rejected");
+        }
         auto serializedIncomingReceiptData = getSerializedReceipt(
-                coordinatorID,
-                mContractorsManager->idOnContractorSide(coordinatorID),
+                recipientPaymentPublicKey,
                 coordinatorTotalIncomingReservationAmount,
-                false);
+                mEquivalent);
         if (!keyChain.checkSign(
                     ioTransaction,
                     serializedIncomingReceiptData.first,
@@ -890,11 +897,17 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runCheckObser
                 outgoingReservedAmount += pathIDAndReservation.second->amount();
             }
             debug() << "Try to get serialized receipt";
+            // Receipt is addressed to participant; bind it to participant payment public key.
+            auto recipientPaymentPublicKey = mContractorsManager->contractor(participantID)->paymentPublicKey();
+            if (recipientPaymentPublicKey == nullptr) {
+                removeAllDataFromStorageConcerningTransaction(ioTransaction);
+                sendErrorMessageOnFinalAmountsConfiguration();
+                return reject("Participant payment public key is absent. Rejected");
+            }
             auto serializedOutgoingReceiptData = getSerializedReceipt(
-                    mContractorsManager->idOnContractorSide(participantID),
-                    participantID,
+                    recipientPaymentPublicKey,
                     outgoingReservedAmount,
-                    true);
+                    mEquivalent);
             auto signature = keyChain.sign(
                                              ioTransaction,
                                              serializedOutgoingReceiptData.first,
@@ -988,11 +1001,18 @@ TransactionResult::SharedConst IntermediateNodePaymentTransaction::runFinalReser
                 senderID, mEquivalent);
         auto keyChain = mKeysStore->keychain(
                             mTrustLinesManager->trustLineID(senderID));
+        // Receipt is addressed to current node; bind it to own payment public key.
+        mKeysStore->ensurePaymentKeyExists(ioTransaction);
+        auto recipientPaymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+        if (recipientPaymentPublicKey == nullptr) {
+            removeAllDataFromStorageConcerningTransaction(ioTransaction);
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Own payment public key is absent. Rejected");
+        }
         auto serializedIncomingReceiptData = getSerializedReceipt(
-                senderID,
-                mContractorsManager->idOnContractorSide(senderID),
+                recipientPaymentPublicKey,
                 participantTotalIncomingReservationAmount,
-                false);
+                mEquivalent);
         if (!keyChain.checkSign(
                     ioTransaction,
                     serializedIncomingReceiptData.first,

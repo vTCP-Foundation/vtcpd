@@ -157,6 +157,31 @@ TransactionResult::SharedConst ConflictResolverContractorTransaction::run()
             // todo need correct reaction
         }
 
+        // Prepare recipient payment keys for receipt signature checks.
+        auto contractorPaymentPublicKey = mContractorsManager->contractor(mContractorID)->paymentPublicKey();
+        if (contractorPaymentPublicKey == nullptr) {
+            warning() << "Contractor payment public key is absent";
+            sendMessage<ConflictResolverResponseMessage>(
+                mContractorID,
+                mEquivalent,
+                mContractorsManager->idOnContractorSide(mContractorID),
+                mTransactionUUID,
+                ConfirmationMessage::Audit_KeyNotFound);
+            return resultDone();
+        }
+        mKeysStore->ensurePaymentKeyExists(ioTransaction);
+        auto ownPaymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+        if (ownPaymentPublicKey == nullptr) {
+            warning() << "Own payment public key is absent";
+            sendMessage<ConflictResolverResponseMessage>(
+                mContractorID,
+                mEquivalent,
+                mContractorsManager->idOnContractorSide(mContractorID),
+                mTransactionUUID,
+                ConfirmationMessage::Audit_KeyNotFound);
+            return resultDone();
+        }
+
         // check own outgoing receipts signature
         for (const auto &incomingReceipt : mMessage->incomingReceipts()) {
             try {
@@ -164,10 +189,14 @@ TransactionResult::SharedConst ConflictResolverContractorTransaction::run()
                     warning() << "Incoming receipt on TA " << incomingReceipt->transactionUUID()
                               << " sent by contractor has invalid audit number " << incomingReceipt->auditNumber();
                 }
+                // Receipt record doesn't store claiming block number; use stored claiming block number from DB.
+                const auto claimingBlockNumber = ioTransaction->paymentTransactionsHandler()->effectiveClaimingBlockNumber(
+                    incomingReceipt->transactionUUID());
                 auto serializedIncomingReceiptAndSize = getSerializedReceipt(
-                        mContractorsManager->idOnContractorSide(mContractorID),
-                        mContractorID,
-                        incomingReceipt);
+                        contractorPaymentPublicKey,
+                        incomingReceipt,
+                        claimingBlockNumber,
+                        mEquivalent);
                 if (!keyChain.checkConflictedIncomingReceipt(
                             ioTransaction,
                             serializedIncomingReceiptAndSize.first,
@@ -205,10 +234,14 @@ TransactionResult::SharedConst ConflictResolverContractorTransaction::run()
                     warning() << "Outgoing receipt on TA " << outgoingReceipt->transactionUUID()
                               << " sent by contractor has invalid audit number " << outgoingReceipt->auditNumber();
                 }
+                // Receipt record doesn't store claiming block number; use stored claiming block number from DB.
+                const auto claimingBlockNumber = ioTransaction->paymentTransactionsHandler()->effectiveClaimingBlockNumber(
+                    outgoingReceipt->transactionUUID());
                 auto serializedIncomingReceiptAndSize = getSerializedReceipt(
-                        mContractorID,
-                        mContractorsManager->idOnContractorSide(mContractorID),
-                        outgoingReceipt);
+                        ownPaymentPublicKey,
+                        outgoingReceipt,
+                        claimingBlockNumber,
+                        mEquivalent);
                 if (!keyChain.checkConflictedOutgoingReceipt(
                             ioTransaction,
                             serializedIncomingReceiptAndSize.first,
@@ -385,36 +418,42 @@ TransactionResult::SharedConst ConflictResolverContractorTransaction::run()
 }
 
 pair<BytesShared, size_t> ConflictResolverContractorTransaction::getSerializedReceipt(
-    ContractorID source,
-    ContractorID target,
-    const ReceiptRecord::Shared receiptRecord)
+    sphincs::PublicKey::Shared recipientPaymentPublicKey,
+    const ReceiptRecord::Shared receiptRecord,
+    BlockNumber claimingBlockNumber,
+    const SerializedEquivalent equivalent)
 {
-    size_t serializedDataSize = sizeof(ContractorID)
-                                + sizeof(ContractorID)
-                                + TransactionUUID::kBytesSize
-                                + kTrustLineAmountBytesCount
-                                + sizeof(AuditNumber);
+    const auto kPaymentPublicKeySize = sphincs::PublicKey::keySize();
+    const size_t serializedDataSize = kPaymentPublicKeySize
+        + sizeof(BlockNumber)
+        + TransactionUUID::kBytesSize
+        + kTrustLineAmountBytesCount
+        + sizeof(SerializedEquivalent);
     BytesShared serializedData = tryMalloc(serializedDataSize);
 
     size_t bytesBufferOffset = 0;
+    // Receipt recipient payment public key (raw bytes as in payment messages).
     memcpy(
         serializedData.get() + bytesBufferOffset,
-        &source,
-        sizeof(ContractorID));
-    bytesBufferOffset += sizeof(ContractorID);
+        recipientPaymentPublicKey->data(),
+        kPaymentPublicKeySize);
+    bytesBufferOffset += kPaymentPublicKeySize;
 
+    // Claiming block number.
     memcpy(
         serializedData.get() + bytesBufferOffset,
-        &target,
-        sizeof(ContractorID));
-    bytesBufferOffset += sizeof(ContractorID);
+        &claimingBlockNumber,
+        sizeof(BlockNumber));
+    bytesBufferOffset += sizeof(BlockNumber);
 
+    // Transaction UUID.
     memcpy(
         serializedData.get() + bytesBufferOffset,
         receiptRecord->transactionUUID().data,
         TransactionUUID::kBytesSize);
     bytesBufferOffset += TransactionUUID::kBytesSize;
 
+    // Amount.
     auto serializedAmount = trustLineAmountToBytes(receiptRecord->amount());
     memcpy(
         serializedData.get() + bytesBufferOffset,
@@ -422,11 +461,12 @@ pair<BytesShared, size_t> ConflictResolverContractorTransaction::getSerializedRe
         kTrustLineAmountBytesCount);
     bytesBufferOffset += kTrustLineAmountBytesCount;
 
-    auto auditNumber = receiptRecord->auditNumber();
+    // Equivalent.
     memcpy(
         serializedData.get() + bytesBufferOffset,
-        &auditNumber,
-        sizeof(AuditNumber));
+        &equivalent,
+        sizeof(SerializedEquivalent));
+    bytesBufferOffset += sizeof(SerializedEquivalent);
 
     return make_pair(
                serializedData,

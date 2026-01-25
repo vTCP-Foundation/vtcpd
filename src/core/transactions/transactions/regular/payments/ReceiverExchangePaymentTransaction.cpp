@@ -562,11 +562,17 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runFinalReser
                 mEquivalent);
         auto keyChain = mKeysStore->keychain(
                             trustLines->trustLineID(coordinatorID));
+        // Receipt is addressed to current node; bind it to own payment public key.
+        mKeysStore->ensurePaymentKeyExists(ioTransaction);
+        auto recipientPaymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+        if (recipientPaymentPublicKey == nullptr) {
+            removeAllDataFromStorageConcerningTransaction(ioTransaction);
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Own payment public key is absent. Rejected");
+        }
         auto serializedIncomingReceiptData = getSerializedReceipt(
-                coordinatorID,
-                mContractorsManager->idOnContractorSide(coordinatorID),
+                recipientPaymentPublicKey,
                 coordinatorTotalIncomingReservationAmount,
-                false,
                 mEquivalent);
         if (!keyChain.checkSign(
                     ioTransaction,
@@ -640,11 +646,17 @@ TransactionResult::SharedConst ReceiverExchangePaymentTransaction::runFinalReser
                 mEquivalent);
         auto keyChain = mKeysStore->keychain(
                             trustLines->trustLineID(senderID));
+        // Receipt is addressed to current node; bind it to own payment public key.
+        mKeysStore->ensurePaymentKeyExists(ioTransaction);
+        auto recipientPaymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+        if (recipientPaymentPublicKey == nullptr) {
+            removeAllDataFromStorageConcerningTransaction(ioTransaction);
+            sendErrorMessageOnFinalAmountsConfiguration();
+            return reject("Own payment public key is absent. Rejected");
+        }
         auto serializedIncomingReceiptData = getSerializedReceipt(
-                senderID,
-                mContractorsManager->idOnContractorSide(senderID),
+                recipientPaymentPublicKey,
                 participantTotalIncomingReservationAmount,
-                false,
                 mEquivalent);
         if (!keyChain.checkSign(
                     ioTransaction,

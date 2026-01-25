@@ -240,11 +240,16 @@ protected:
     virtual void savePaymentOperationIntoHistory(IOTransaction::Shared ioTransaction) = 0;
     virtual bool checkReservationsDirections() const = 0;
 
+    /**
+     * Serializes receipt data for signing/verification.
+     *
+     * @param recipientPaymentPublicKey payment public key of receipt recipient.
+     * @param amount receipt amount.
+     * @param equivalent receipt equivalent.
+     */
     pair<BytesShared, size_t> getSerializedReceipt(
-        ContractorID source,
-        ContractorID target,
+        sphincs::PublicKey::Shared recipientPaymentPublicKey,
         const TrustLineAmount &amount,
-        bool isSource,
         const SerializedEquivalent equivalent);
 
     bool checkAllNeighborsWithReservationsAreInFinalParticipantsList();

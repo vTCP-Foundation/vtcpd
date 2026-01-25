@@ -845,15 +845,18 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::sendFinalA
 
             // Create signature for each equivalent
             vector<pair<SerializedEquivalent, sphincs::Signature::Shared>> signatures;
+            // Receipt is addressed to participant; bind it to participant payment public key.
+            auto recipientPaymentPublicKey = mContractorsManager->contractor(participantID)->paymentPublicKey();
+            if (recipientPaymentPublicKey == nullptr) {
+                return reject("Participant payment public key is absent. Rejected.");
+            }
             for (const auto &[equivalent, amount] : amountsByEquivalent) {
                 auto trustLines = trustLinesManager(equivalent);
                 auto keyChain = mKeysStore->keychain(trustLines->trustLineID(participantID));
 
                 auto serializedOutgoingReceiptData = getSerializedReceipt(
-                        mContractorsManager->idOnContractorSide(participantID),
-                        participantID,
+                        recipientPaymentPublicKey,
                         amount,
-                        true,
                         equivalent);
                 auto signature = keyChain.sign(
                                                  ioTransaction,

@@ -1183,39 +1183,41 @@ TransactionResult::SharedConst BasePaymentTransaction::runObservingRejectTransac
 }
 
 pair<BytesShared, size_t> BasePaymentTransaction::getSerializedReceipt(
-    ContractorID source,
-    ContractorID target,
+    sphincs::PublicKey::Shared recipientPaymentPublicKey,
     const TrustLineAmount &amount,
-    bool isSource)
+    const SerializedEquivalent equivalent)
 {
-    size_t serializedDataSize = sizeof(ContractorID) + sizeof(ContractorID) + sizeof(BlockNumber) + TransactionUUID::kBytesSize + kTrustLineAmountBytesCount + sizeof(AuditNumber);
+    const auto kPaymentPublicKeySize = sphincs::PublicKey::keySize();
+    const size_t serializedDataSize = kPaymentPublicKeySize
+        + sizeof(BlockNumber)
+        + TransactionUUID::kBytesSize
+        + kTrustLineAmountBytesCount
+        + sizeof(SerializedEquivalent);
     BytesShared serializedData = tryMalloc(serializedDataSize);
 
     size_t bytesBufferOffset = 0;
+    // Receipt recipient payment public key (raw bytes as in payment messages).
     memcpy(
         serializedData.get() + bytesBufferOffset,
-        &source,
-        sizeof(ContractorID));
-    bytesBufferOffset += sizeof(ContractorID);
+        recipientPaymentPublicKey->data(),
+        kPaymentPublicKeySize);
+    bytesBufferOffset += kPaymentPublicKeySize;
 
-    memcpy(
-        serializedData.get() + bytesBufferOffset,
-        &target,
-        sizeof(ContractorID));
-    bytesBufferOffset += sizeof(ContractorID);
-
+    // Maximal claiming block number.
     memcpy(
         serializedData.get() + bytesBufferOffset,
         &mMaximalClaimingBlockNumber,
         sizeof(BlockNumber));
     bytesBufferOffset += sizeof(BlockNumber);
 
+    // Transaction UUID.
     memcpy(
         serializedData.get() + bytesBufferOffset,
         mTransactionUUID.data,
         TransactionUUID::kBytesSize);
     bytesBufferOffset += TransactionUUID::kBytesSize;
 
+    // Amount.
     auto serializedAmount = trustLineAmountToBytes(amount);
     memcpy(
         serializedData.get() + bytesBufferOffset,
@@ -1223,19 +1225,15 @@ pair<BytesShared, size_t> BasePaymentTransaction::getSerializedReceipt(
         kTrustLineAmountBytesCount);
     bytesBufferOffset += kTrustLineAmountBytesCount;
 
-    AuditNumber currentAuditNumber;
-    if (isSource) {
-        currentAuditNumber = mTrustLinesManager->auditNumber(target);
-    } else {
-        currentAuditNumber = mTrustLinesManager->auditNumber(source);
-    }
+    // Equivalent.
     memcpy(
         serializedData.get() + bytesBufferOffset,
-        &currentAuditNumber,
-        sizeof(AuditNumber));
+        &equivalent,
+        sizeof(SerializedEquivalent));
+    bytesBufferOffset += sizeof(SerializedEquivalent);
 
-    debug() << "Receipt " << source << " " << target << " " << amount << " "
-            << mMaximalClaimingBlockNumber << " " << currentAuditNumber;
+    debug() << "Receipt " << amount << " " << mMaximalClaimingBlockNumber
+            << " [equiv: " << equivalent << "]";
 
     return make_pair(
                serializedData,

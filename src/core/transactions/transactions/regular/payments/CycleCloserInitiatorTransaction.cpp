@@ -882,11 +882,15 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::sendFinalPathCon
             auto keyChain = mKeysStore->keychain(
                                 mTrustLinesManager->trustLineID(mNextNodeID));
             // coordinator should have one outgoing reservation to first intermediate node
+            // Receipt is addressed to next node; bind it to its payment public key.
+            auto recipientPaymentPublicKey = mContractorsManager->contractor(mNextNodeID)->paymentPublicKey();
+            if (recipientPaymentPublicKey == nullptr) {
+                return reject("Next node payment public key is absent. Rejected.");
+            }
             auto serializedOutgoingReceiptData = getSerializedReceipt(
-                    mContractorsManager->idOnContractorSide(mNextNodeID),
-                    mNextNodeID,
+                    recipientPaymentPublicKey,
                     mPathStats->maxFlow(),
-                    true);
+                    mEquivalent);
             auto signature = keyChain.sign(
                                              ioTransaction,
                                              serializedOutgoingReceiptData.first,
@@ -1021,11 +1025,20 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::runFinalReservat
 
     auto keyChain = mKeysStore->keychain(
                         mTrustLinesManager->trustLineID(mPreviousNodeID));
+    // Receipt is addressed to current node; bind it to own payment public key.
+    auto recipientPaymentPublicKey = mPublicKey;
+    if (recipientPaymentPublicKey == nullptr) {
+        mKeysStore->ensurePaymentKeyExists(ioTransaction);
+        recipientPaymentPublicKey = ioTransaction->paymentKeysHandler()->getOwnPublicKey();
+        if (recipientPaymentPublicKey == nullptr) {
+            removeAllDataFromStorageConcerningTransaction(ioTransaction);
+            return reject("Own payment public key is absent. Rejected");
+        }
+    }
     auto serializedIncomingReceiptData = getSerializedReceipt(
-            mPreviousNodeID,
-            mContractorsManager->idOnContractorSide(mPreviousNodeID),
+            recipientPaymentPublicKey,
             participantTotalIncomingReservationAmount,
-            false);
+            mEquivalent);
     if (!keyChain.checkSign(
                 ioTransaction,
                 serializedIncomingReceiptData.first,

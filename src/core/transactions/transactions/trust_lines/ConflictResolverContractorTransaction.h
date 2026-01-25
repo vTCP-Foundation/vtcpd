@@ -34,10 +34,19 @@ protected:
     const string logHeader() const override;
 
 private:
+    /**
+     * Serializes receipt data for conflict resolution signature checks.
+     *
+     * @param recipientPaymentPublicKey payment public key of receipt recipient.
+     * @param receiptRecord receipt metadata.
+     * @param claimingBlockNumber maximal claiming block number used in receipt.
+     * @param equivalent receipt equivalent.
+     */
     pair<BytesShared, size_t> getSerializedReceipt(
-        ContractorID source,
-        ContractorID target,
-        const ReceiptRecord::Shared receiptRecord);
+        sphincs::PublicKey::Shared recipientPaymentPublicKey,
+        const ReceiptRecord::Shared receiptRecord,
+        BlockNumber claimingBlockNumber,
+        const SerializedEquivalent equivalent);
 
     void acceptContractorAuditData(
         IOTransaction::Shared ioTransaction,

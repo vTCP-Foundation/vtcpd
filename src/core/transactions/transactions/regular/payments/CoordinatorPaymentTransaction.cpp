@@ -1488,11 +1488,15 @@ TransactionResult::SharedConst CoordinatorPaymentTransaction::sendFinalAmountsCo
                 // todo check if all reservations is outgoing
                 outgoingReservedAmount += pathIDAndReservation.second->amount();
             }
+            // Receipt is addressed to participant; bind it to participant payment public key.
+            auto recipientPaymentPublicKey = mContractorsManager->contractor(participantID)->paymentPublicKey();
+            if (recipientPaymentPublicKey == nullptr) {
+                return reject("Participant payment public key is absent. Rejected.");
+            }
             auto serializedOutgoingReceiptData = getSerializedReceipt(
-                    mContractorsManager->idOnContractorSide(participantID),
-                    participantID,
+                    recipientPaymentPublicKey,
                     outgoingReservedAmount,
-                    true);
+                    mEquivalent);
             auto signature = keyChain.sign(
                                              ioTransaction,
                                              serializedOutgoingReceiptData.first,
