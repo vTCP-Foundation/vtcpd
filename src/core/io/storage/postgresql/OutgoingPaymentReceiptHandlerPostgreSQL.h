@@ -66,6 +66,13 @@ public:
     void deleteRecords(
         const TrustLineID trustLineID) override;
 
+    /**
+     * Task 20-01: Deletes all receipt records for a trust line and audit number.
+     */
+    void deleteRecordsByAuditNumber(
+        const TrustLineID trustLineID,
+        const AuditNumber auditNumber) override;
+
     bool isContainsKeyHash(
         KeyHash::Shared keyHash) override;
 

@@ -482,6 +482,44 @@ void OutgoingPaymentReceiptHandlerSQLite::deleteRecords(
 #endif
 }
 
+void OutgoingPaymentReceiptHandlerSQLite::deleteRecordsByAuditNumber(
+    const TrustLineID trustLineID,
+    const AuditNumber auditNumber)
+{
+    // Task 20-01: delete receipts scoped to trust line and audit number.
+    string query = "DELETE FROM " + mTableName + " WHERE trust_line_id = ? AND audit_number = ?";
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+
+    int rc = sqlite3_bind_int(stmt.get(), 1, trustLineID);
+    if (rc != SQLITE_OK) {
+        throw IOError("OutgoingPaymentReceiptHandlerSQLite::deleteRecordsByAuditNumber: Failed to bind trust_line_id. "
+                      "TrustLine=" + to_string(trustLineID) + ", AuditNumber=" + to_string(auditNumber) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    rc = sqlite3_bind_int(stmt.get(), 2, auditNumber);
+    if (rc != SQLITE_OK) {
+        throw IOError("OutgoingPaymentReceiptHandlerSQLite::deleteRecordsByAuditNumber: Failed to bind audit_number. "
+                      "TrustLine=" + to_string(trustLineID) + ", AuditNumber=" + to_string(auditNumber) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw IOError("OutgoingPaymentReceiptHandlerSQLite::deleteRecordsByAuditNumber: Failed to execute DELETE. "
+                      "TrustLine=" + to_string(trustLineID) + ", AuditNumber=" + to_string(auditNumber) +
+                      ". SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    int deletedRows = sqlite3_changes(mDataBase);
+
+#ifdef STORAGE_HANDLER_DEBUG_LOG
+    info() << "Records deleted by audit number: TrustLine=" << trustLineID
+           << ", AuditNumber=" << auditNumber
+           << ", DeletedCount=" << deletedRows;
+#endif
+}
+
 
 
 bool OutgoingPaymentReceiptHandlerSQLite::isContainsKeyHash(

@@ -325,6 +325,22 @@ void OutgoingPaymentReceiptHandlerPostgreSQL::deleteRecords(
     PQclear(res);
 }
 
+void OutgoingPaymentReceiptHandlerPostgreSQL::deleteRecordsByAuditNumber(
+    const TrustLineID trustLineID,
+    const AuditNumber auditNumber)
+{
+    // Task 20-01: delete receipts scoped to trust line and audit number.
+    const string query = "DELETE FROM " + mTableName + " WHERE trust_line_id=$1 AND audit_number=$2;";
+    const char *params[2]; int lengths[2]={0,0}; int formats[2]={0,0};
+    string tlIdStr = to_string(trustLineID);
+    string auditStr = to_string(auditNumber);
+    params[0]=tlIdStr.c_str();
+    params[1]=auditStr.c_str();
+    PGresult *res = PQexecParams(mDataBase, query.c_str(),2,nullptr,params,lengths,formats,0);
+    checkCmd(mDataBase,res,"deleteRecords audit number");
+    PQclear(res);
+}
+
 bool OutgoingPaymentReceiptHandlerPostgreSQL::isContainsKeyHash(
     KeyHash::Shared keyHash)
 {

@@ -57,6 +57,13 @@ public:
     virtual void deleteRecords(
         const TrustLineID trustLineID) = 0;
 
+    /**
+     * Task 20-01: Deletes all receipt records for a trust line and audit number.
+     */
+    virtual void deleteRecordsByAuditNumber(
+        const TrustLineID trustLineID,
+        const AuditNumber auditNumber) = 0;
+
     virtual bool isContainsKeyHash(
         KeyHash::Shared keyHash) = 0;
 
