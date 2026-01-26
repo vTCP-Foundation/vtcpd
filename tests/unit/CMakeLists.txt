@@ -27,6 +27,7 @@ add_executable(unit_tests
     sqlite/TrustLineHandlerSQLiteTest.cpp
     sqlite/PaymentObservingStateTest.cpp
     postgresql/PaymentKeysHandlerPostgreSQLUnitTest.cpp
+    contractors/ContractorTest.cpp
     rates/ExchangeRateTest.cpp
     rates/ExchangeRatesManagerTest.cpp
     equivalents/EquivalentsSubsystemsRouterTest.cpp
@@ -41,6 +42,8 @@ add_executable(unit_tests
     network/messages/CoordinatorReservationConditionsMessageTest.cpp
     network/messages/AuditMessageTest.cpp
     network/messages/AuditResponseMessageTest.cpp
+    network/messages/InitChannelMessageTest.cpp
+    network/messages/ConfirmChannelMessageTest.cpp
     commissions/CommissionsManagerTest.cpp
     commissions/TopologyTrustLinesManagerCommissionsTest.cpp
     topology/TopologyTrustLinesManagerMutationTest.cpp

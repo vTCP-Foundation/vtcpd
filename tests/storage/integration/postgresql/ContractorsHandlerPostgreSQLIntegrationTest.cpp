@@ -1,8 +1,10 @@
 #include "gtest/gtest.h"
 #include "../../../../src/core/io/storage/postgresql/ContractorsHandlerPostgreSQL.h"
 #include "../../../../src/core/logger/Logger.h"
+#include "../../../../src/core/crypto/sphincskeys.h"
 #include "../fixtures/DatabaseTestHelper.h"
 #include "../fixtures/PostgreSQLTestFixtures.h"
+#include <atomic>
 
 class ContractorsHandlerPostgreSQLIntegrationTest : public ::testing::Test {
 protected:
@@ -21,7 +23,11 @@ protected:
         mLogger = std::make_unique<Logger>();
         
         // Create unique test table name
-        mTestTableName = "test_contractors_" + std::to_string(rand() % 10000);
+        mTestTableName = "test_contractors_" + std::to_string(++sTestCounter);
+
+        // Force drop existing table to ensure fresh schema
+        std::string dropQuery = "DROP TABLE IF EXISTS " + mTestTableName + " CASCADE;";
+        DatabaseTestHelper::executeQuery(mConnection, dropQuery);
         
         // Create handler instance
         mHandler = std::make_unique<ContractorsHandlerPostgreSQL>(mConnection, mTestTableName, *mLogger);
@@ -127,13 +133,48 @@ protected:
         PQclear(result);
         return contractor;
     }
+
+    std::string getRawPaymentPublicKeyHex(ContractorID contractorID) {
+        std::string query = "SELECT payment_public_key FROM " + mTestTableName +
+                            " WHERE id = " + std::to_string(contractorID);
+        PGresult* result = PQexec(mConnection, query.c_str());
+
+        if (PQresultStatus(result) != PGRES_TUPLES_OK) {
+            PQclear(result);
+            throw std::runtime_error("Failed to get raw payment public key");
+        }
+
+        if (PQntuples(result) == 0) {
+            PQclear(result);
+            throw std::runtime_error("Contractor not found");
+        }
+
+        if (PQgetisnull(result, 0, 0)) {
+            PQclear(result);
+            return "";
+        }
+
+        std::string rawValue = PQgetvalue(result, 0, 0);
+        PQclear(result);
+        return rawValue;
+    }
+
+    sphincs::PublicKey::Shared createTestPaymentPublicKey(byte_t fill) {
+        const auto keySize = sphincs::PublicKey::keySize();
+        std::vector<byte_t> keyBytes(keySize, fill);
+        return std::make_shared<sphincs::PublicKey>(keyBytes.data());
+    }
     
     // Test data
     PGconn* mConnection = nullptr;
     std::unique_ptr<Logger> mLogger;
     std::unique_ptr<ContractorsHandlerPostgreSQL> mHandler;
     std::string mTestTableName;
+
+    static std::atomic_uint32_t sTestCounter;
 };
+
+std::atomic_uint32_t ContractorsHandlerPostgreSQLIntegrationTest::sTestCounter{0};
 
 // Test: Basic contractor saving
 TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, saveContractor_BasicContractor_SavesSuccessfully) {
@@ -155,6 +196,28 @@ TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, saveContractor_BasicContract
     EXPECT_EQ(savedContractor->getID(), contractor->getID());
     EXPECT_NE(savedContractor->cryptoKey(), nullptr);
     EXPECT_EQ(savedContractor->isConfirmed(), false); // saveContractor sets confirmed to false
+}
+
+TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, saveContractor_WithPaymentPublicKey_SavesSuccessfully) {
+    auto contractor = PostgreSQLTestFixtures::createBasicContractor(PostgreSQLTestFixtures::getValidContractorID());
+    auto paymentKey = createTestPaymentPublicKey(0x11);
+    contractor->setPaymentPublicKey(paymentKey);
+
+    mHandler->saveContractor(contractor);
+
+    auto allContractors = mHandler->allContractors();
+    ASSERT_EQ(allContractors.size(), 1);
+    ASSERT_NE(allContractors[0]->paymentPublicKey(), nullptr);
+    EXPECT_EQ(*allContractors[0]->paymentPublicKey(), *paymentKey);
+}
+
+TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, saveContractor_WithNullPaymentPublicKey_SavesSuccessfully) {
+    auto contractor = PostgreSQLTestFixtures::createBasicContractor(PostgreSQLTestFixtures::getValidContractorID());
+    mHandler->saveContractor(contractor);
+
+    auto allContractors = mHandler->allContractors();
+    ASSERT_EQ(allContractors.size(), 1);
+    EXPECT_EQ(allContractors[0]->paymentPublicKey(), nullptr);
 }
 
 // Test: Full contractor saving
@@ -179,6 +242,22 @@ TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, saveContractorFull_FullContr
     EXPECT_EQ(savedContractor->getID(), contractor->getID());
     EXPECT_EQ(savedContractor->ownIdOnContractorSide(), contractor->ownIdOnContractorSide());
     EXPECT_EQ(savedContractor->isConfirmed(), true); // saveContractorFull sets confirmed to true
+}
+
+TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, saveContractorFull_WithPaymentPublicKey_SavesSuccessfully) {
+    auto contractor = PostgreSQLTestFixtures::createFullContractor(
+        PostgreSQLTestFixtures::getValidContractorID(),
+        PostgreSQLTestFixtures::DEFAULT_CONTRACTOR_SIDE_ID,
+        true);
+    auto paymentKey = createTestPaymentPublicKey(0x22);
+    contractor->setPaymentPublicKey(paymentKey);
+
+    mHandler->saveContractorFull(contractor);
+
+    auto allContractors = mHandler->allContractors();
+    ASSERT_EQ(allContractors.size(), 1);
+    ASSERT_NE(allContractors[0]->paymentPublicKey(), nullptr);
+    EXPECT_EQ(*allContractors[0]->paymentPublicKey(), *paymentKey);
 }
 
 // Test: Confirmation info update
@@ -231,6 +310,31 @@ TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, updateCryptoKey_UpdatesExist
     EXPECT_EQ(updatedContractor->isConfirmed(), true); // updateCryptoKey sets confirmed to true
 }
 
+TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, updatePaymentPublicKey_ExistingContractor_UpdatesSuccessfully) {
+    auto contractor = PostgreSQLTestFixtures::createBasicContractor(PostgreSQLTestFixtures::getValidContractorID());
+    mHandler->saveContractor(contractor);
+
+    auto paymentKey = createTestPaymentPublicKey(0x33);
+    contractor->setPaymentPublicKey(paymentKey);
+
+    mHandler->updatePaymentPublicKey(contractor);
+
+    auto allContractors = mHandler->allContractors();
+    ASSERT_EQ(allContractors.size(), 1);
+    ASSERT_NE(allContractors[0]->paymentPublicKey(), nullptr);
+    EXPECT_EQ(*allContractors[0]->paymentPublicKey(), *paymentKey);
+}
+
+TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, updatePaymentPublicKey_NonExistentContractor_ThrowsValueError) {
+    auto contractor = PostgreSQLTestFixtures::createBasicContractor(PostgreSQLTestFixtures::getValidContractorID());
+    contractor->setPaymentPublicKey(createTestPaymentPublicKey(0x44));
+
+    EXPECT_THROW(
+        mHandler->updatePaymentPublicKey(contractor),
+        ValueError
+    );
+}
+
 // Test: Channel ID update
 TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, updateChannelIdOnContractorSide_UpdatesExistingContractor) {
     // Arrange - First save basic contractor
@@ -276,6 +380,19 @@ TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, allIDs_MultipleContractors_R
     for (auto& contractor : contractors) {
         EXPECT_NE(std::find(allIDs.begin(), allIDs.end(), contractor->getID()), allIDs.end());
     }
+}
+
+TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, allContractors_WithPaymentPublicKey_RetrievesCorrectly) {
+    auto contractor = PostgreSQLTestFixtures::createBasicContractor(PostgreSQLTestFixtures::getValidContractorID());
+    auto paymentKey = createTestPaymentPublicKey(0x55);
+    contractor->setPaymentPublicKey(paymentKey);
+
+    mHandler->saveContractor(contractor);
+
+    auto allContractors = mHandler->allContractors();
+    ASSERT_EQ(allContractors.size(), 1);
+    ASSERT_NE(allContractors[0]->paymentPublicKey(), nullptr);
+    EXPECT_EQ(*allContractors[0]->paymentPublicKey(), *paymentKey);
 }
 
 // Test: Contractor removal
@@ -330,6 +447,20 @@ TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, saveContractorFull_Validates
     EXPECT_EQ(hexData.length() % 2, 0); // Must be even number of hex chars
 }
 
+TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, rawDatabaseValidation_PaymentPublicKey_StoredAsBytea) {
+    ContractorID contractorId = PostgreSQLTestFixtures::getValidContractorID();
+    auto contractor = PostgreSQLTestFixtures::createBasicContractor(contractorId);
+    auto paymentKey = createTestPaymentPublicKey(0x66);
+    contractor->setPaymentPublicKey(paymentKey);
+
+    mHandler->saveContractor(contractor);
+
+    std::string rawValue = getRawPaymentPublicKeyHex(contractorId);
+    ASSERT_FALSE(rawValue.empty());
+    EXPECT_TRUE(rawValue.substr(0, 2) == "\\x");
+    const auto expectedHexSize = sphincs::PublicKey::keySize() * 2;
+    EXPECT_EQ(rawValue.size(), expectedHexSize + 2);
+}
 // Test: Reverse validation - Write via one method, read via another method
 TEST_F(ContractorsHandlerPostgreSQLIntegrationTest, crossMethodValidation_WriteReadDifferentMethods_WorksCorrectly) {
     // Arrange - Create test contractor

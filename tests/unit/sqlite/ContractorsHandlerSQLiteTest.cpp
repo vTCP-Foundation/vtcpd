@@ -11,6 +11,7 @@
 #include "../../../src/core/io/storage/sqlite/ContractorsHandlerSQLite.h"
 #include "../../../src/core/contractors/Contractor.h"
 #include "../../../src/core/crypto/MsgEncryptor.h"
+#include "../../../src/core/crypto/sphincskeys.h"
 #include "../../../src/core/contractors/addresses/IPv4WithPortAddress.h"
 #include "../../../src/core/contractors/addresses/GNSAddress.h"
 #include "../../../src/core/common/exceptions/IOError.h"
@@ -85,6 +86,13 @@ protected:
         addresses.push_back(std::make_shared<IPv4WithPortAddress>(ipv4Host, port));
         
         return std::make_shared<Contractor>(id, addresses, keyTrio);
+    }
+
+    sphincs::PublicKey::Shared createTestPaymentPublicKey(byte_t fill)
+    {
+        const auto keySize = sphincs::PublicKey::keySize();
+        std::vector<byte_t> keyBytes(keySize, fill);
+        return std::make_shared<sphincs::PublicKey>(keyBytes.data());
     }
     
     void verifyContractorFields(
@@ -201,6 +209,30 @@ TEST_F(ContractorsHandlerSQLiteTest, SaveContractorValidData) {
     verifyContractorFields(retrievedContractors[0], 1, 0, false);
 }
 
+TEST_F(ContractorsHandlerSQLiteTest, SaveContractor_WithPaymentPublicKey_SavesSuccessfully) {
+    auto contractor = createTestContractor(1, 0, false);
+    auto paymentKey = createTestPaymentPublicKey(0x11);
+    contractor->setPaymentPublicKey(paymentKey);
+
+    EXPECT_NO_THROW(handler->saveContractor(contractor));
+
+    auto retrievedContractors = handler->allContractors();
+    ASSERT_EQ(retrievedContractors.size(), 1);
+
+    ASSERT_NE(retrievedContractors[0]->paymentPublicKey(), nullptr);
+    EXPECT_EQ(*retrievedContractors[0]->paymentPublicKey(), *paymentKey);
+}
+
+TEST_F(ContractorsHandlerSQLiteTest, SaveContractor_WithNullPaymentPublicKey_SavesSuccessfully) {
+    auto contractor = createTestContractor(1, 0, false);
+
+    EXPECT_NO_THROW(handler->saveContractor(contractor));
+
+    auto retrievedContractors = handler->allContractors();
+    ASSERT_EQ(retrievedContractors.size(), 1);
+    EXPECT_EQ(retrievedContractors[0]->paymentPublicKey(), nullptr);
+}
+
 TEST_F(ContractorsHandlerSQLiteTest, SaveContractorNullPointer) {
     EXPECT_DEATH({
         handler->saveContractor(nullptr);
@@ -235,6 +267,20 @@ TEST_F(ContractorsHandlerSQLiteTest, SaveContractorFullValidData) {
     ASSERT_EQ(retrievedContractors.size(), 1);
     
     verifyContractorFields(retrievedContractors[0], 1, 100, true);
+}
+
+TEST_F(ContractorsHandlerSQLiteTest, SaveContractorFull_WithPaymentPublicKey_SavesSuccessfully) {
+    auto contractor = createTestContractor(1, 100, true);
+    auto paymentKey = createTestPaymentPublicKey(0x22);
+    contractor->setPaymentPublicKey(paymentKey);
+
+    EXPECT_NO_THROW(handler->saveContractorFull(contractor));
+
+    auto retrievedContractors = handler->allContractors();
+    ASSERT_EQ(retrievedContractors.size(), 1);
+
+    ASSERT_NE(retrievedContractors[0]->paymentPublicKey(), nullptr);
+    EXPECT_EQ(*retrievedContractors[0]->paymentPublicKey(), *paymentKey);
 }
 
 TEST_F(ContractorsHandlerSQLiteTest, SaveContractorFullNullPointer) {
@@ -312,6 +358,31 @@ TEST_F(ContractorsHandlerSQLiteTest, UpdateCryptoKeyValidData) {
     verifyContractorFields(retrievedContractors[0], 1, 0, true); // should be confirmed after update
 }
 
+TEST_F(ContractorsHandlerSQLiteTest, UpdatePaymentPublicKey_ExistingContractor_UpdatesSuccessfully) {
+    auto contractor = createTestContractor(1, 0, false);
+    handler->saveContractor(contractor);
+
+    auto paymentKey = createTestPaymentPublicKey(0x33);
+    contractor->setPaymentPublicKey(paymentKey);
+
+    EXPECT_NO_THROW(handler->updatePaymentPublicKey(contractor));
+
+    auto retrievedContractors = handler->allContractors();
+    ASSERT_EQ(retrievedContractors.size(), 1);
+    ASSERT_NE(retrievedContractors[0]->paymentPublicKey(), nullptr);
+    EXPECT_EQ(*retrievedContractors[0]->paymentPublicKey(), *paymentKey);
+}
+
+TEST_F(ContractorsHandlerSQLiteTest, UpdatePaymentPublicKey_NonExistentContractor_ThrowsError) {
+    auto contractor = createTestContractor(999, 0, false);
+    contractor->setPaymentPublicKey(createTestPaymentPublicKey(0x44));
+
+    EXPECT_THROW(
+        handler->updatePaymentPublicKey(contractor),
+        ValueError
+    );
+}
+
 TEST_F(ContractorsHandlerSQLiteTest, UpdateCryptoKeyNonExistentContractor) {
     auto contractor = createTestContractor(999, 0, false);
     
@@ -387,6 +458,28 @@ TEST_F(ContractorsHandlerSQLiteTest, AllContractorsValidData) {
     verifyContractorFields(retrievedContractors[0], 1, 100, true);
     verifyContractorFields(retrievedContractors[1], 2, 0, false);
     verifyContractorFields(retrievedContractors[2], 3, 300, true);
+}
+
+TEST_F(ContractorsHandlerSQLiteTest, AllContractors_WithPaymentPublicKey_RetrievesCorrectly) {
+    auto contractor = createTestContractor(1, 0, false);
+    auto paymentKey = createTestPaymentPublicKey(0x55);
+    contractor->setPaymentPublicKey(paymentKey);
+
+    handler->saveContractor(contractor);
+
+    auto retrievedContractors = handler->allContractors();
+    ASSERT_EQ(retrievedContractors.size(), 1);
+    ASSERT_NE(retrievedContractors[0]->paymentPublicKey(), nullptr);
+    EXPECT_EQ(*retrievedContractors[0]->paymentPublicKey(), *paymentKey);
+}
+
+TEST_F(ContractorsHandlerSQLiteTest, AllContractors_WithNullPaymentPublicKey_RetrievesNull) {
+    auto contractor = createTestContractor(1, 0, false);
+    handler->saveContractor(contractor);
+
+    auto retrievedContractors = handler->allContractors();
+    ASSERT_EQ(retrievedContractors.size(), 1);
+    EXPECT_EQ(retrievedContractors[0]->paymentPublicKey(), nullptr);
 }
 
 TEST_F(ContractorsHandlerSQLiteTest, AllContractorsEmpty) {
