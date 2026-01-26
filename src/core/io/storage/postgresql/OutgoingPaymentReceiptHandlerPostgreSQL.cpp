@@ -329,7 +329,7 @@ void OutgoingPaymentReceiptHandlerPostgreSQL::deleteRecordsByAuditNumber(
     const TrustLineID trustLineID,
     const AuditNumber auditNumber)
 {
-    // Task 20-01: delete receipts scoped to trust line and audit number.
+    // Task 20-02: delete receipts scoped to trust line and audit number.
     const string query = "DELETE FROM " + mTableName + " WHERE trust_line_id=$1 AND audit_number=$2;";
     const char *params[2]; int lengths[2]={0,0}; int formats[2]={0,0};
     string tlIdStr = to_string(trustLineID);

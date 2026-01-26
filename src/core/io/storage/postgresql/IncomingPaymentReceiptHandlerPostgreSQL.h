@@ -68,7 +68,7 @@ public:
         const TrustLineID trustLineID) override;
 
     /**
-     * Task 20-01: Deletes all receipt records for a trust line and audit number.
+     * Task 20-02: Deletes all receipt records for a trust line and audit number.
      */
     void deleteRecordsByAuditNumber(
         const TrustLineID trustLineID,
