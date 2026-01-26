@@ -678,8 +678,31 @@ TransactionResult::SharedConst CoordinatorExchangePaymentTransaction::runFinalAm
         removeAllDataFromStorageConcerningTransaction();
         return reject("Haven't reach consensus on reservation. Transaction rejected.");
     }
+    auto messagePublicKey = kMessage->publicKey();
+    // [19-05] Verify neighbor payment public key from final amounts confirmation.
+    const auto senderID = mContractorsManager->contractorIDByAddress(senderAddress);
+    if (senderID != ContractorsManager::kNotFoundContractorID) {
+        if (mReservations.find(senderID) != mReservations.end()) {
+            const auto storedPaymentPublicKey = mContractorsManager->contractor(senderID)->paymentPublicKey();
+            if (messagePublicKey == nullptr) {
+                removeAllDataFromStorageConcerningTransaction();
+                return reject("Neighbor payment public key is absent in payment. Rejected.");
+            }
+            if (storedPaymentPublicKey == nullptr) {
+                removeAllDataFromStorageConcerningTransaction();
+                return reject("Neighbor payment public key stored in channel is absent. Rejected.");
+            }
+            if (*storedPaymentPublicKey != *messagePublicKey) {
+                removeAllDataFromStorageConcerningTransaction();
+                return reject("Neighbor payment public key stored in channel does not match payment key. Rejected.");
+            }
+        }
+    } else {
+        // [19-05] Non-neighbor participants are not verified against channel keys.
+        debug() << "Sender is not a neighbor. Skip payment key verification.";
+    }
     debug() << "Sender confirmed final amounts";
-    mParticipantsPublicKeys[mPaymentNodesIds[senderAddress->fullAddress()]] = kMessage->publicKey();
+    mParticipantsPublicKeys[mPaymentNodesIds[senderAddress->fullAddress()]] = messagePublicKey;
     if (mParticipantsPublicKeys.size() < mPaymentNodesIds.size()) {
         debug() << "Some nodes are still not confirmed final amounts. Waiting.";
         return resultWaitForMessageTypes( {

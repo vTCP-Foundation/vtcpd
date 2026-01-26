@@ -632,6 +632,18 @@ TransactionResult::SharedConst BaseExchangePaymentTransaction::runVotesCheckingS
 
     // todo : check if received own public key is the same as local
 
+    // [19-05] Ensure neighbor payment public keys match stored channel keys.
+    string neighborKeyError;
+    if (!checkNeighborPaymentPublicKeys(neighborKeyError)) {
+        removeAllDataFromStorageConcerningTransaction();
+        sendMessage<ParticipantVoteMessage>(
+            coordinator->mainAddress(),
+            mEquivalent,
+            mContractorsManager->ownAddresses(),
+            currentTransactionUUID());
+        return reject(neighborKeyError.c_str());
+    }
+
     if (!checkPublicKeysAppropriate()) {
         removeAllDataFromStorageConcerningTransaction();
         sendMessage<ParticipantVoteMessage>(
@@ -1860,6 +1872,53 @@ const TrustLineAmount BaseExchangePaymentTransaction::totalReservedIncomingAmoun
         }
     }
     return result;
+}
+
+bool BaseExchangePaymentTransaction::checkNeighborPaymentPublicKeys(
+    string &errorMessage) const
+{
+    // [19-05] Verify participant keys from coordinator for neighbors with reservations.
+    const auto selfContractorID = mContractorsManager->selfContractor()->getID();
+    const auto logNeighborError = [this, &errorMessage](const string &neighborAddress) {
+        warning() << errorMessage << " Neighbor: " << neighborAddress;
+    };
+
+    for (const auto &neighborAndReservations : mReservations) {
+        const auto neighborID = neighborAndReservations.first;
+        if (neighborID == selfContractorID) {
+            continue;
+        }
+
+        const auto neighborContractor = mContractorsManager->contractor(neighborID);
+        const auto neighborAddress = neighborContractor->mainAddress()->fullAddress();
+        const auto paymentNodeIdIt = mPaymentNodesIds.find(neighborAddress);
+        if (paymentNodeIdIt == mPaymentNodesIds.end()) {
+            errorMessage = "Neighbor payment participant ID is absent. Rejected.";
+            logNeighborError(neighborAddress);
+            return false;
+        }
+
+        const auto participantKeyIt = mParticipantsPublicKeys.find(paymentNodeIdIt->second);
+        if (participantKeyIt == mParticipantsPublicKeys.end()) {
+            errorMessage = "Neighbor payment public key is absent in payment. Rejected.";
+            logNeighborError(neighborAddress);
+            return false;
+        }
+
+        const auto storedPaymentPublicKey = neighborContractor->paymentPublicKey();
+        if (storedPaymentPublicKey == nullptr) {
+            errorMessage = "Neighbor payment public key stored in channel is absent. Rejected.";
+            logNeighborError(neighborAddress);
+            return false;
+        }
+
+        if (*storedPaymentPublicKey != *participantKeyIt->second) {
+            errorMessage = "Neighbor payment public key stored in channel does not match payment key. Rejected.";
+            logNeighborError(neighborAddress);
+            return false;
+        }
+    }
+    return true;
 }
 
 bool BaseExchangePaymentTransaction::checkPublicKeysAppropriate()

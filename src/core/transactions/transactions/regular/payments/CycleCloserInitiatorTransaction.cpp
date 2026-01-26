@@ -882,8 +882,9 @@ TransactionResult::SharedConst CycleCloserInitiatorTransaction::sendFinalPathCon
             auto keyChain = mKeysStore->keychain(
                                 mTrustLinesManager->trustLineID(mNextNodeID));
             // coordinator should have one outgoing reservation to first intermediate node
-            // Receipt is addressed to next node; bind it to its payment public key.
-            auto recipientPaymentPublicKey = mContractorsManager->contractor(mNextNodeID)->paymentPublicKey();
+            // [19-05] Receipt is addressed to next node; bind it to stored payment public key.
+            const auto recipientContractor = mContractorsManager->contractor(mNextNodeID);
+            auto recipientPaymentPublicKey = recipientContractor->paymentPublicKey();
             if (recipientPaymentPublicKey == nullptr) {
                 return reject("Next node payment public key is absent. Rejected.");
             }

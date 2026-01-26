@@ -254,6 +254,10 @@ protected:
 
     bool checkAllNeighborsWithReservationsAreInFinalParticipantsList();
     bool checkAllPublicKeyHashesProperly();
+    /**
+     * [19-05] Verifies coordinator-provided payment public keys for neighbors with reservations.
+     */
+    bool checkNeighborPaymentPublicKeys(string &errorMessage) const;
     const TrustLineAmount totalReservedIncomingAmountToNode(
         ContractorID contractorID,
         const SerializedEquivalent equivalent) const;

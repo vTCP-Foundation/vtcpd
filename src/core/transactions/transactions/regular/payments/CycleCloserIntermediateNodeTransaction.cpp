@@ -759,8 +759,9 @@ TransactionResult::SharedConst CycleCloserIntermediateNodeTransaction::runCheckO
             auto outgoingReservedAmount = nodeReservations.begin()->second->amount();
             auto keyChain = mKeysStore->keychain(
                                 mTrustLinesManager->trustLineID(participantID));
-            // Receipt is addressed to participant; bind it to participant payment public key.
-            auto recipientPaymentPublicKey = mContractorsManager->contractor(participantID)->paymentPublicKey();
+            // [19-05] Receipt is addressed to participant; bind it to stored payment public key.
+            const auto recipientContractor = mContractorsManager->contractor(participantID);
+            auto recipientPaymentPublicKey = recipientContractor->paymentPublicKey();
             if (recipientPaymentPublicKey == nullptr) {
                 removeAllDataFromStorageConcerningTransaction(ioTransaction);
                 sendErrorMessageOnFinalAmountsConfiguration();
