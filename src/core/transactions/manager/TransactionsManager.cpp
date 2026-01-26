@@ -2721,6 +2721,16 @@ void TransactionsManager::launchRemoveOutdatedCryptoDataTransaction(
         false);
 }
 
+// Task 20-03: Stub for historical crypto data cleanup transaction launch.
+void TransactionsManager::launchCleanupHistoricalCryptoDataTransaction(
+    ContractorID contractorID,
+    const SerializedEquivalent equivalent)
+{
+    // TODO: Implement in Task 20-05.
+    info() << "launchCleanupHistoricalCryptoDataTransaction for contractor "
+           << contractorID << " equivalent " << equivalent;
+}
+
 // Creates and schedules periodic observer monitoring transaction for completed payments.
 void TransactionsManager::launchCompletedPaymentsObserverMonitoringTransaction()
 {
@@ -2994,6 +3004,18 @@ void TransactionsManager::subscribeForAuditSignal(
     signal.connect(
         boost::bind(
             &TransactionsManager::onAuditSlot,
+            this,
+            _1,
+            _2));
+}
+
+// Task 20-03: Connects history cleanup signal to the manager slot.
+void TransactionsManager::subscribeForHistoryCryptoDataCleanupSignal(
+    BaseTransaction::HistoryCryptoDataCleanupSignal &signal)
+{
+    signal.connect(
+        boost::bind(
+            &TransactionsManager::onHistoryCryptoDataCleanupSlot,
             this,
             _1,
             _2));
@@ -3314,6 +3336,16 @@ void TransactionsManager::onAuditSlot(
         error() << "There are no subsystems for onAuditSlot "
                    "with equivalent " << equivalent << " Details are: " << e.what();
     }
+}
+
+// Task 20-03: Launches cleanup transaction after audit completion.
+void TransactionsManager::onHistoryCryptoDataCleanupSlot(
+    ContractorID contractorID,
+    const SerializedEquivalent equivalent)
+{
+    launchCleanupHistoricalCryptoDataTransaction(
+        contractorID,
+        equivalent);
 }
 
 void TransactionsManager::onResumeTransactionSlot(

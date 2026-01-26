@@ -442,6 +442,11 @@ protected: // Transactions
     void launchRemoveOutdatedCryptoDataTransaction(
         RemoveOutdatedCryptoDataCommand::Shared command);
 
+    // Task 20-03: Stub launcher for cleanup of historical crypto data.
+    void launchCleanupHistoricalCryptoDataTransaction(
+        ContractorID contractorID,
+        const SerializedEquivalent equivalent);
+
     /*
      * Exchange rates transactions
      */
@@ -519,6 +524,10 @@ protected:
     void subscribeForAuditSignal(
         BaseTransaction::AuditSignal &signal);
 
+    // Task 20-03: Connects cleanup signal to manager slot.
+    void subscribeForHistoryCryptoDataCleanupSignal(
+        BaseTransaction::HistoryCryptoDataCleanupSignal &signal);
+
     void subscribeForRpcRequest(
         BaseTransaction::SendRpcRequestSignal &signal);
 
@@ -595,6 +604,11 @@ protected:
         const SerializedEquivalent equivalent);
 
     void onAuditSlot(
+        ContractorID contractorID,
+        const SerializedEquivalent equivalent);
+
+    // Task 20-03: Handles history cleanup signal and launches cleanup transaction.
+    void onHistoryCryptoDataCleanupSlot(
         ContractorID contractorID,
         const SerializedEquivalent equivalent);
 

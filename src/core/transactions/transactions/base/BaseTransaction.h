@@ -48,6 +48,8 @@ public:
     typedef signals::signal<void(ContractorID, const SerializedEquivalent, bool)> TrustLineActionSignal;
     typedef signals::signal<void(ContractorID, const SerializedEquivalent)> PublicKeysSharingSignal;
     typedef signals::signal<void(ContractorID, const SerializedEquivalent)> AuditSignal;
+    // Task 20-03: Signal for launching historical crypto data cleanup after audit completion.
+    typedef signals::signal<void(ContractorID, const SerializedEquivalent)> HistoryCryptoDataCleanupSignal;
     typedef signals::signal<void(ContractorID)> ProcessPongMessageSignal;
     typedef signals::signal<void(RpcRequest::Shared)> SendRpcRequestSignal;
 
@@ -390,6 +392,8 @@ public:
     mutable TrustLineActionSignal trustLineActionSignal;
     mutable PublicKeysSharingSignal publicKeysSharingSignal;
     mutable AuditSignal auditSignal;
+    // Task 20-03: Emits when historical crypto data cleanup should be started.
+    mutable HistoryCryptoDataCleanupSignal historyCryptoDataCleanupSignal;
     mutable SendRpcRequestSignal outgoingRpcRequestSignal;
 
 protected:
