@@ -516,6 +516,10 @@ TransactionResult::SharedConst AuditTargetTransaction::runAuditProcessingStage()
         mContractorID,
         mEquivalent,
         false);
+    // Task 20-04: trigger historical crypto data cleanup after audit completion.
+    historyCryptoDataCleanupSignal(
+        mContractorID,
+        mEquivalent);
 
     return resultDone();
 }
