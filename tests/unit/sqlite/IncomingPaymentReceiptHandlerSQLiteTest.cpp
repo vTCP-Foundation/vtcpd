@@ -124,7 +124,11 @@ protected:
 namespace {
 const AuditNumber kTestZeroAuditNumber = 0;
 const AuditNumber kTestUpdatedAuditNumber = 7;
+const AuditNumber kTestDeleteAuditNumber = 5;
+const AuditNumber kTestOtherAuditNumber = 6;
 const BlockNumber kTestBlockNumber = 100;
+const size_t kTestReceiptsToDelete = 2;
+const size_t kTestReceiptsToKeep = 3;
 } // namespace
 
 static TransactionUUID makeUUIDWithPrefix(uint8_t prefix)
@@ -499,6 +503,80 @@ TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, DeleteRecords_NonExistentTransac
     EXPECT_NO_THROW(
         handler->deleteRecords(transactionUUID)
     );
+}
+
+// deleteRecordsByAuditNumber Tests
+TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, DeleteRecordsByAuditNumber_DeletesMatchingRecords) {
+    TrustLineID trustLineID = generateTestTrustLineID();
+
+    for (size_t i = 0; i < kTestReceiptsToDelete; ++i) {
+        TransactionUUID transactionUUID = generateTestTransactionUUID();
+        handler->saveRecord(trustLineID, kTestDeleteAuditNumber, transactionUUID, generateTestKeyHash(),
+                            generateTestAmount(), generateTestSignature());
+    }
+
+    EXPECT_EQ(handler->countReceiptsByNumber(trustLineID, kTestDeleteAuditNumber), kTestReceiptsToDelete);
+
+    EXPECT_NO_THROW(
+        handler->deleteRecordsByAuditNumber(trustLineID, kTestDeleteAuditNumber)
+    );
+
+    EXPECT_TRUE(handler->receiptsByAuditNumber(trustLineID, kTestDeleteAuditNumber).empty());
+}
+
+TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, DeleteRecordsByAuditNumber_DoesNotDeleteOtherAuditNumbers) {
+    TrustLineID trustLineID = generateTestTrustLineID();
+
+    for (size_t i = 0; i < kTestReceiptsToDelete; ++i) {
+        TransactionUUID transactionUUID = generateTestTransactionUUID();
+        handler->saveRecord(trustLineID, kTestDeleteAuditNumber, transactionUUID, generateTestKeyHash(),
+                            generateTestAmount(), generateTestSignature());
+    }
+    for (size_t i = 0; i < kTestReceiptsToKeep; ++i) {
+        TransactionUUID transactionUUID = generateTestTransactionUUID();
+        handler->saveRecord(trustLineID, kTestOtherAuditNumber, transactionUUID, generateTestKeyHash(),
+                            generateTestAmount(), generateTestSignature());
+    }
+
+    EXPECT_NO_THROW(
+        handler->deleteRecordsByAuditNumber(trustLineID, kTestDeleteAuditNumber)
+    );
+
+    EXPECT_TRUE(handler->receiptsByAuditNumber(trustLineID, kTestDeleteAuditNumber).empty());
+    EXPECT_EQ(handler->receiptsByAuditNumber(trustLineID, kTestOtherAuditNumber).size(), kTestReceiptsToKeep);
+}
+
+TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, DeleteRecordsByAuditNumber_DoesNotDeleteOtherTrustLines) {
+    TrustLineID trustLineID = generateTestTrustLineID();
+    TrustLineID otherTrustLineID = generateTestTrustLineID();
+
+    for (size_t i = 0; i < kTestReceiptsToDelete; ++i) {
+        TransactionUUID transactionUUID = generateTestTransactionUUID();
+        handler->saveRecord(trustLineID, kTestDeleteAuditNumber, transactionUUID, generateTestKeyHash(),
+                            generateTestAmount(), generateTestSignature());
+    }
+    for (size_t i = 0; i < kTestReceiptsToKeep; ++i) {
+        TransactionUUID transactionUUID = generateTestTransactionUUID();
+        handler->saveRecord(otherTrustLineID, kTestDeleteAuditNumber, transactionUUID, generateTestKeyHash(),
+                            generateTestAmount(), generateTestSignature());
+    }
+
+    EXPECT_NO_THROW(
+        handler->deleteRecordsByAuditNumber(trustLineID, kTestDeleteAuditNumber)
+    );
+
+    EXPECT_TRUE(handler->receiptsByAuditNumber(trustLineID, kTestDeleteAuditNumber).empty());
+    EXPECT_EQ(handler->receiptsByAuditNumber(otherTrustLineID, kTestDeleteAuditNumber).size(), kTestReceiptsToKeep);
+}
+
+TEST_F(IncomingPaymentReceiptHandlerSQLiteTest, DeleteRecordsByAuditNumber_HandlesEmptyTable) {
+    TrustLineID trustLineID = generateTestTrustLineID();
+
+    EXPECT_NO_THROW(
+        handler->deleteRecordsByAuditNumber(trustLineID, kTestDeleteAuditNumber)
+    );
+
+    EXPECT_EQ(handler->countReceiptsByNumber(trustLineID, kTestDeleteAuditNumber), 0);
 }
 
 // isContainsKeyHash Tests
