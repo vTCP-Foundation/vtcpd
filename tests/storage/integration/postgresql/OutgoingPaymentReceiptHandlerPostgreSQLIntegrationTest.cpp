@@ -552,6 +552,83 @@ TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, deleteRecords_Val
     EXPECT_EQ(getReceiptCount(trustLineID), 0);
 }
 
+// Test deleteRecordsByAuditNumber method
+TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, deleteRecordsByAuditNumber_deletesMatchingRecords) {
+    const TrustLineID trustLineID = getValidTrustLineID();
+    const AuditNumber auditToDelete = 5;
+    const size_t expectedDeletedCount = 2;
+
+    auto transactionUUID1 = createTestTransactionUUID("deleteAuditTx1");
+    auto transactionUUID2 = createTestTransactionUUID("deleteAuditTx2");
+    auto ownPublicKeyHash1 = createTestKeyHash("testOwnKey");
+    auto ownPublicKeyHash2 = createTestKeyHash("testOwnKey1");
+    auto amount = createTestAmount(1000);
+
+    mHandler->saveRecord(trustLineID, auditToDelete, transactionUUID1, ownPublicKeyHash1, amount);
+    mHandler->saveRecord(trustLineID, auditToDelete, transactionUUID2, ownPublicKeyHash2, amount);
+
+    EXPECT_EQ(mHandler->countReceiptsByNumber(trustLineID, auditToDelete), expectedDeletedCount);
+
+    EXPECT_NO_THROW(mHandler->deleteRecordsByAuditNumber(trustLineID, auditToDelete));
+
+    EXPECT_TRUE(mHandler->receiptsByAuditNumber(trustLineID, auditToDelete).empty());
+    EXPECT_EQ(mHandler->countReceiptsByNumber(trustLineID, auditToDelete), 0);
+}
+
+TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, deleteRecordsByAuditNumber_doesNotDeleteOtherAuditNumbers) {
+    const TrustLineID trustLineID = getValidTrustLineID();
+    const AuditNumber auditToDelete = 5;
+    const AuditNumber auditToKeep = 6;
+    const size_t expectedKeepCount = 2;
+
+    auto deleteUUID1 = createTestTransactionUUID("deleteAuditTx1");
+    auto deleteUUID2 = createTestTransactionUUID("deleteAuditTx2");
+    auto keepUUID1 = createTestTransactionUUID("keepAuditTx1");
+    auto keepUUID2 = createTestTransactionUUID("keepAuditTx2");
+    auto ownKey1 = createTestKeyHash("testOwnKey");
+    auto ownKey2 = createTestKeyHash("testOwnKey1");
+    auto ownKey3 = createTestKeyHash("testOwnKey2");
+    auto ownKey4 = createTestKeyHash("testOwnKey3");
+    auto amount = createTestAmount(1000);
+
+    mHandler->saveRecord(trustLineID, auditToDelete, deleteUUID1, ownKey1, amount);
+    mHandler->saveRecord(trustLineID, auditToDelete, deleteUUID2, ownKey2, amount);
+    mHandler->saveRecord(trustLineID, auditToKeep, keepUUID1, ownKey3, amount);
+    mHandler->saveRecord(trustLineID, auditToKeep, keepUUID2, ownKey4, amount);
+
+    EXPECT_NO_THROW(mHandler->deleteRecordsByAuditNumber(trustLineID, auditToDelete));
+
+    EXPECT_TRUE(mHandler->receiptsByAuditNumber(trustLineID, auditToDelete).empty());
+    EXPECT_EQ(mHandler->countReceiptsByNumber(trustLineID, auditToKeep), expectedKeepCount);
+}
+
+TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, deleteRecordsByAuditNumber_doesNotDeleteOtherTrustLines) {
+    const TrustLineID trustLineID = getValidTrustLineID();
+    const TrustLineID otherTrustLineID = getValidTrustLineID2();
+    const AuditNumber auditToDelete = 5;
+    const size_t expectedOtherCount = 2;
+
+    auto deleteUUID1 = createTestTransactionUUID("deleteAuditTx1");
+    auto deleteUUID2 = createTestTransactionUUID("deleteAuditTx2");
+    auto keepUUID1 = createTestTransactionUUID("otherAuditTx1");
+    auto keepUUID2 = createTestTransactionUUID("otherAuditTx2");
+    auto ownKey1 = createTestKeyHash("testOwnKey");
+    auto ownKey2 = createTestKeyHash("testOwnKey1");
+    auto ownKey3 = createTestKeyHash("testOwnKey2");
+    auto ownKey4 = createTestKeyHash("testOwnKey3");
+    auto amount = createTestAmount(1000);
+
+    mHandler->saveRecord(trustLineID, auditToDelete, deleteUUID1, ownKey1, amount);
+    mHandler->saveRecord(trustLineID, auditToDelete, deleteUUID2, ownKey2, amount);
+    mHandler->saveRecord(otherTrustLineID, auditToDelete, keepUUID1, ownKey3, amount);
+    mHandler->saveRecord(otherTrustLineID, auditToDelete, keepUUID2, ownKey4, amount);
+
+    EXPECT_NO_THROW(mHandler->deleteRecordsByAuditNumber(trustLineID, auditToDelete));
+
+    EXPECT_TRUE(mHandler->receiptsByAuditNumber(trustLineID, auditToDelete).empty());
+    EXPECT_EQ(mHandler->countReceiptsByNumber(otherTrustLineID, auditToDelete), expectedOtherCount);
+}
+
 // Test isContainsKeyHash method
 TEST_F(OutgoingPaymentReceiptHandlerPostgreSQLIntegrationTest, isContainsKeyHash_ValidData_ReturnsTrue) {
     TrustLineID trustLineID = getValidTrustLineID();
