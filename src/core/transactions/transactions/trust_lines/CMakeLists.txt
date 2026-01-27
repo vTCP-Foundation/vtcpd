@@ -23,6 +23,8 @@ add_library(transactions__trustlines
     ConflictResolverInitiatorTransaction.cpp
     ConflictResolverContractorTransaction.h
     ConflictResolverContractorTransaction.cpp
+    CleanupHistoricalCryptoDataTransaction.h
+    CleanupHistoricalCryptoDataTransaction.cpp
     CheckTrustLineTransaction.h
     CheckTrustLineTransaction.cpp
     RemoveTrustLineTransaction.h

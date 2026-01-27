@@ -40,6 +40,7 @@
 #include "../transactions/trust_lines/RemoveTrustLineTransaction.h"
 #include "../transactions/trust_lines/ResetTrustLineSourceTransaction.h"
 #include "../transactions/trust_lines/ResetTrustLineDestinationTransaction.h"
+#include "../transactions/trust_lines/CleanupHistoricalCryptoDataTransaction.h"
 
 #include "../transactions/cycles/ThreeNodes/CyclesThreeNodesInitTransaction.h"
 #include "../transactions/cycles/ThreeNodes/CyclesThreeNodesReceiverTransaction.h"

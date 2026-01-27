@@ -2726,9 +2726,25 @@ void TransactionsManager::launchCleanupHistoricalCryptoDataTransaction(
     ContractorID contractorID,
     const SerializedEquivalent equivalent)
 {
-    // TODO: Implement in Task 20-05.
-    info() << "launchCleanupHistoricalCryptoDataTransaction for contractor "
-           << contractorID << " equivalent " << equivalent;
+    try {
+        auto transaction = make_shared<CleanupHistoricalCryptoDataTransaction>(
+            contractorID,
+            equivalent,
+            mContractorsManager,
+            mEquivalentsSubsystemsRouter->trustLinesManager(equivalent),
+            mStorageHandler,
+            mLog);
+
+        prepareAndSchedule(
+            transaction,
+            false,
+            false,
+            false,
+            true);
+    } catch (const NotFoundError &e) {
+        warning() << "Can't launch CleanupHistoricalCryptoDataTransaction. "
+                  << "Equivalent not found. Details: " << e.what();
+    }
 }
 
 // Creates and schedules periodic observer monitoring transaction for completed payments.
