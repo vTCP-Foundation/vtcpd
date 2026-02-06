@@ -100,6 +100,8 @@ private:
     bool mBlockNumberRequestSent;
     // Identifies which audit flow should resume after block retrieval.
     BlockNumberRequestPurpose mBlockNumberRequestPurpose;
+    // Stores locally finalized transactions not finalized on contractor side.
+    vector<TransactionUUID> mAsymmetricFinalizedTransactions;
     // Counts audit retries after update list response.
     uint8_t mAuditRetryCount;
     // Limits update list retries to a single attempt.

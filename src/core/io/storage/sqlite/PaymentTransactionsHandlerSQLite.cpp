@@ -322,6 +322,36 @@ BlockNumber PaymentTransactionsHandlerSQLite::effectiveClaimingBlockNumber(
                   "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
 }
 
+BlockNumber PaymentTransactionsHandlerSQLite::maximalClaimingBlockNumber(
+    const TransactionUUID &transactionUUID)
+{
+    string query = "SELECT maximal_claiming_block_number FROM " + mTableName +
+                   " WHERE uuid = ? LIMIT 1;";
+    SQLiteStatementRAII stmt(mDataBase, query.c_str());
+
+    // Create a local copy of the UUID data to ensure it remains valid
+    // throughout the entire SQLite operation
+    uint8_t uuidData[TransactionUUID::kBytesSize];
+    memcpy(uuidData, transactionUUID.data, TransactionUUID::kBytesSize);
+
+    int rc = sqlite3_bind_blob(stmt.get(), 1, uuidData, TransactionUUID::kBytesSize, SQLITE_STATIC);
+    if (rc != SQLITE_OK) {
+        throw IOError("PaymentTransactionsHandlerSQLite::maximalClaimingBlockNumber: Failed to bind transaction UUID. "
+                      "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+    }
+
+    rc = sqlite3_step(stmt.get());
+    if (rc == SQLITE_ROW) {
+        return static_cast<BlockNumber>(sqlite3_column_int64(stmt.get(), 0));
+    }
+    if (rc == SQLITE_DONE) {
+        throw NotFoundError("PaymentTransactionsHandlerSQLite::maximalClaimingBlockNumber: Transaction not found.");
+    }
+
+    throw IOError("PaymentTransactionsHandlerSQLite::maximalClaimingBlockNumber: Failed to execute SELECT. "
+                  "SQLite error: " + to_string(rc) + " (" + sqlite3_errmsg(mDataBase) + ").");
+}
+
 void PaymentTransactionsHandlerSQLite::deleteRecord(
     const TransactionUUID &transactionUUID)
 {

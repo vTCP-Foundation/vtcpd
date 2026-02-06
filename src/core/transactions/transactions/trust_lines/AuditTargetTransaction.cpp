@@ -363,6 +363,9 @@ TransactionResult::SharedConst AuditTargetTransaction::runAuditProcessingStage()
                        ConfirmationMessage::Audit_Invalid);
         }
 
+        // Store locally finalized transactions missing on initiator side.
+        mAsymmetricFinalizedTransactions = normalizedExtras;
+
         // Exclude locally finalized transactions that initiator couldn't observe.
         excludeTransactions(normalizedExtras);
     }
@@ -383,121 +386,123 @@ TransactionResult::SharedConst AuditTargetTransaction::runAuditProcessingStage()
         }
     }
 
-    auto ioTransaction = mStorageHandler->beginTransaction();
-    auto keyChain = mKeysStore->keychain(
-                        mTrustLines->trustLineID(mContractorID));
+    {
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        auto keyChain = mKeysStore->keychain(
+                            mTrustLines->trustLineID(mContractorID));
 
-    try {
-        // note: io transaction would commit automatically on destructor call.
-        // there is no need to call commit manually.
+        try {
+            // note: io transaction would commit automatically on destructor call.
+            // there is no need to call commit manually.
 
-        if (mMessage->outgoingAmount() != mTrustLines->incomingTrustAmount(mContractorID)) {
-            info() << "setIncomingTrustLineAmount " << mMessage->outgoingAmount();
-            setIncomingTrustLineAmount(ioTransaction);
-        }
+            if (mMessage->outgoingAmount() != mTrustLines->incomingTrustAmount(mContractorID)) {
+                info() << "setIncomingTrustLineAmount " << mMessage->outgoingAmount();
+                setIncomingTrustLineAmount(ioTransaction);
+            }
 
-        if (mMessage->incomingAmount() == TrustLine::kZeroAmount()
-                and mTrustLines->outgoingTrustAmount(mContractorID) != TrustLine::kZeroAmount()) {
-            info() << "closeOutgoingTrustLine";
-            closeOutgoingTrustLine(ioTransaction);
-        }
+            if (mMessage->incomingAmount() == TrustLine::kZeroAmount()
+                    and mTrustLines->outgoingTrustAmount(mContractorID) != TrustLine::kZeroAmount()) {
+                info() << "closeOutgoingTrustLine";
+                closeOutgoingTrustLine(ioTransaction);
+            }
 
-        auto contractorSerializedAuditData = getContractorSerializedAuditDataWithTransactionHash();
+            auto contractorSerializedAuditData = getContractorSerializedAuditDataWithTransactionHash();
 
-        if (!keyChain.checkSign(
-                    ioTransaction,
-                    contractorSerializedAuditData.first,
-                    contractorSerializedAuditData.second,
-                    mMessage->signature())) {
-            warning() << "Contractor didn't sign message correctly";
-            setTrustLineToConflict();
-            return sendAuditResponse(
-                       ConfirmationMessage::Audit_Invalid);
-        }
-        info() << "Signature is correct";
+            if (!keyChain.checkSign(
+                        ioTransaction,
+                        contractorSerializedAuditData.first,
+                        contractorSerializedAuditData.second,
+                        mMessage->signature())) {
+                warning() << "Contractor didn't sign message correctly";
+                setTrustLineToConflict();
+                return sendAuditResponse(
+                           ConfirmationMessage::Audit_Invalid);
+            }
+            info() << "Signature is correct";
 
-        auto serializedAuditData = getOwnSerializedAuditDataWithTransactionHash();
-        mOwnSignature = keyChain.sign(
-                                        ioTransaction,
-                                        serializedAuditData.first,
-                                        serializedAuditData.second);
+            auto serializedAuditData = getOwnSerializedAuditDataWithTransactionHash();
+            mOwnSignature = keyChain.sign(
+                                            ioTransaction,
+                                            serializedAuditData.first,
+                                            serializedAuditData.second);
 
-        keyChain.saveFullAudit(
-            ioTransaction,
-            mAuditNumber,
-            mOwnSignature,
-            mMessage->signature(),
-            mTrustLines->incomingTrustAmount(
-                mContractorID),
-            mTrustLines->outgoingTrustAmount(
-                mContractorID),
-            mAuditBalance);
+            keyChain.saveFullAudit(
+                ioTransaction,
+                mAuditNumber,
+                mOwnSignature,
+                mMessage->signature(),
+                mTrustLines->incomingTrustAmount(
+                    mContractorID),
+                mTrustLines->outgoingTrustAmount(
+                    mContractorID),
+                mAuditBalance);
 
-        mTrustLines->setTrustLineAuditNumber(
-            mContractorID,
-            mAuditNumber);
+            mTrustLines->setTrustLineAuditNumber(
+                mContractorID,
+                mAuditNumber);
 
-        const auto kTrustLineID = mTrustLines->trustLineID(mContractorID);
-        // Update receipt audit numbers and preserve excluded totals atomically.
-        ioTransaction->outgoingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
-            kTrustLineID,
-            mAuditNumber,
-            mCurrentTransactionList);
-        ioTransaction->incomingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
-            kTrustLineID,
-            mAuditNumber,
-            mCurrentTransactionList);
+            const auto kTrustLineID = mTrustLines->trustLineID(mContractorID);
+            // Update receipt audit numbers and preserve excluded totals atomically.
+            ioTransaction->outgoingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
+                kTrustLineID,
+                mAuditNumber,
+                mCurrentTransactionList);
+            ioTransaction->incomingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
+                kTrustLineID,
+                mAuditNumber,
+                mCurrentTransactionList);
 
-        mTrustLines->updateTrustLineTotalReceiptsAmounts(
-            mContractorID,
-            mExcludedIncomingReceiptsAmount,
-            mExcludedOutgoingReceiptsAmount);
+            mTrustLines->updateTrustLineTotalReceiptsAmounts(
+                mContractorID,
+                mExcludedIncomingReceiptsAmount,
+                mExcludedOutgoingReceiptsAmount);
 
-        mTrustLines->setTrustLineState(
-            mContractorID,
-            TrustLine::Active,
-            ioTransaction);
-
-        if (mTrustLines->isTrustLineEmpty(mContractorID)) {
             mTrustLines->setTrustLineState(
                 mContractorID,
-                TrustLine::Archived,
+                TrustLine::Active,
                 ioTransaction);
-            info() << "Trust Line become empty";
-        } else {
-            info() << "All data saved. Now TL is ready for using";
-        }
+
+            if (mTrustLines->isTrustLineEmpty(mContractorID)) {
+                mTrustLines->setTrustLineState(
+                    mContractorID,
+                    TrustLine::Archived,
+                    ioTransaction);
+                info() << "Trust Line become empty";
+            } else {
+                info() << "All data saved. Now TL is ready for using";
+            }
 
 #ifdef TESTS
-        mTrustLinesInfluenceController->testThrowExceptionOnTargetStage(
-            BaseTransaction::AuditTargetTransactionType);
-        mTrustLinesInfluenceController->testTerminateProcessOnTargetStage(
-            BaseTransaction::AuditTargetTransactionType);
+            mTrustLinesInfluenceController->testThrowExceptionOnTargetStage(
+                BaseTransaction::AuditTargetTransactionType);
+            mTrustLinesInfluenceController->testTerminateProcessOnTargetStage(
+                BaseTransaction::AuditTargetTransactionType);
 #endif
 
-    } catch (ValueError &e) {
-        warning() << "Attempt to change trust line from the node " << mContractorID << " failed. "
-                  << e.what();
-        return sendAuditErrorConfirmation(
-                   ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
-    } catch (IOError &e) {
-        ioTransaction->rollback();
-        mTrustLines->setIncoming(
-            mContractorID,
-            mPreviousIncomingAmount);
-        mTrustLines->setOutgoing(
-            mContractorID,
-            mPreviousOutgoingAmount);
-        mTrustLines->setTrustLineState(
-            mContractorID,
-            mPreviousState);
-        warning() << "Attempt to change trust line to the node " << mContractorID << " failed. "
-                  << "IO transaction can't be completed. "
-                  << "Details are: " << e.what();
+        } catch (ValueError &e) {
+            warning() << "Attempt to change trust line from the node " << mContractorID << " failed. "
+                      << e.what();
+            return sendAuditErrorConfirmation(
+                       ConfirmationMessage::ErrorShouldBeRemovedFromQueue);
+        } catch (IOError &e) {
+            ioTransaction->rollback();
+            mTrustLines->setIncoming(
+                mContractorID,
+                mPreviousIncomingAmount);
+            mTrustLines->setOutgoing(
+                mContractorID,
+                mPreviousOutgoingAmount);
+            mTrustLines->setTrustLineState(
+                mContractorID,
+                mPreviousState);
+            warning() << "Attempt to change trust line to the node " << mContractorID << " failed. "
+                      << "IO transaction can't be completed. "
+                      << "Details are: " << e.what();
 
-        // Rethrowing the exception,
-        // because the TA can't finish properly and no result may be returned.
-        throw e;
+            // Rethrowing the exception,
+            // because the TA can't finish properly and no result may be returned.
+            throw e;
+        }
     }
 
     // Sending confirmation back.
@@ -512,6 +517,9 @@ TransactionResult::SharedConst AuditTargetTransaction::runAuditProcessingStage()
     info() << "Send audit message";
 
     mTrustLines->resetAuditRule(mContractorID);
+    // Submit claim votes for locally finalized transactions missing on initiator side.
+    submitClaimVotesForAsymmetricTransactions(
+        mAsymmetricFinalizedTransactions);
     trustLineActionSignal(
         mContractorID,
         mEquivalent,

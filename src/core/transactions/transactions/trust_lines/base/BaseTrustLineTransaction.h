@@ -120,6 +120,10 @@ protected:
     // Sends audit message with normalized current transaction list and switches to response processing.
     void sendAuditMessageWithCurrentList();
 
+    // Submits SubmitClaimVotes RPCs for asymmetrically finalized transactions.
+    void submitClaimVotesForAsymmetricTransactions(
+        const vector<TransactionUUID> &transactionUUIDs);
+
     // Switches trust line to Conflict state.
     void setTrustLineToConflict();
 

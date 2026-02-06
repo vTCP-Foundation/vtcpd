@@ -96,6 +96,8 @@ private:
     bool mBlockNumberRequestSent;
     // Stores normalized initiator transaction list for comparison.
     vector<TransactionUUID> mInitiatorTransactionList;
+    // Stores locally finalized transactions missing on initiator side.
+    vector<TransactionUUID> mAsymmetricFinalizedTransactions;
 
     TrustLineAmount mPreviousIncomingAmount;
     TrustLineAmount mPreviousOutgoingAmount;

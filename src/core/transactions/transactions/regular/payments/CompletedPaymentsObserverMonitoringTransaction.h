@@ -90,15 +90,6 @@ protected:
         const sphincs::PublicKey::Shared &publicKey);
 
     /**
-     * Task 15-04: Serializes vote submission data for signing in canonical order.
-     */
-    pair<BytesShared, size_t> serializeSubmitClaimVotesForSigning(
-        const TransactionUUID &transactionUUID,
-        BlockNumber maxClaimBlockNumber,
-        const map<PaymentNodeID, sphincs::Signature::Shared> &votes,
-        const sphincs::PublicKey::Shared &publicKey);
-
-    /**
      * Validates that the next queued RPC response matches expected method.
      */
     bool hasExpectedRpcResponse(RpcMethod method) const;

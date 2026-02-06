@@ -16,12 +16,15 @@
 #include "../../../common/exceptions/RuntimeError.h"
 
 #include "../../../logger/Logger.h"
+#include "../../../crypto/sphincskeys.h"
+#include "../../../crypto/sphincsscheme.h"
 
 #include <boost/signals2.hpp>
 
 #include <vector>
 #include <deque>
 #include <utility>
+#include <map>
 #include <cstdint>
 #include <sstream>
 
@@ -192,6 +195,15 @@ public:
 protected:
     void sendRpcRequest(
         RpcRequest::Shared request) const;
+
+    /**
+     * Serializes SubmitClaimVotes payload for signing in canonical order.
+     */
+    static pair<BytesShared, size_t> serializeSubmitClaimVotesForSigning(
+        const TransactionUUID &transactionUUID,
+        BlockNumber maxClaimBlockNumber,
+        const map<PaymentNodeID, crypto::sphincs::Signature::Shared> &votes,
+        const crypto::sphincs::PublicKey::Shared &publicKey);
 
     BaseTransaction(
         const TransactionType type,

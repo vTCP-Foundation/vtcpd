@@ -2,9 +2,11 @@
 
 #include "../../../../network/rpc/requests/GetBlockNumberRpcRequest.h"
 #include "../../../../network/rpc/responses/GetBlockNumberRpcResponse.h"
+#include "../../../../network/rpc/requests/SubmitClaimVotesRpcRequest.h"
 
 #include <algorithm>
 #include <cstring>
+#include <exception>
 
 BaseTrustLineTransaction::BaseTrustLineTransaction(
     const TransactionType type,
@@ -652,6 +654,89 @@ void BaseTrustLineTransaction::sendAuditMessageWithCurrentList()
 
     // Keep transaction in response processing stage after sending audit message.
     mStep = ResponseProcessing;
+}
+
+void BaseTrustLineTransaction::submitClaimVotesForAsymmetricTransactions(
+    const vector<TransactionUUID> &transactionUUIDs)
+{
+    if (transactionUUIDs.empty()) {
+        return;
+    }
+
+    // Normalize list to avoid duplicate submissions.
+    const auto normalizedTransactions = AuditMessage::normalizedTransactionUUIDs(
+        transactionUUIDs);
+
+    try {
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        auto votesHandler = ioTransaction->paymentParticipantsVotesHandler();
+        auto paymentKeysHandler = ioTransaction->paymentKeysHandler();
+        auto paymentTransactionsHandler = ioTransaction->paymentTransactionsHandler();
+
+        // Load own payment public key used to verify SubmitClaimVotes payload.
+        sphincs::PublicKey::Shared publicKey;
+        try {
+            publicKey = paymentKeysHandler->getOwnPublicKey();
+        } catch (NotFoundError &e) {
+            warning() << "Missing payment public key for SubmitClaimVotes. Details are: " << e.what();
+            return;
+        } catch (IOError &e) {
+            warning() << "Failed to load payment public key for SubmitClaimVotes. Details are: " << e.what();
+            return;
+        }
+
+        // Submit vote signatures for each asymmetrically finalized transaction.
+        for (const auto &transactionUUID : normalizedTransactions) {
+            BlockNumber maxClaimBlockNumber = 0;
+            try {
+                maxClaimBlockNumber = paymentTransactionsHandler->maximalClaimingBlockNumber(
+                    transactionUUID);
+            } catch (NotFoundError &e) {
+                warning() << "Missing payment transaction for SubmitClaimVotes "
+                          << transactionUUID << ". Details are: " << e.what();
+                continue;
+            } catch (IOError &e) {
+                warning() << "Failed to load maximal claim block number for "
+                          << transactionUUID << ". Details are: " << e.what();
+                continue;
+            }
+
+            auto votes = votesHandler->participantsSignatures(transactionUUID);
+            if (votes.empty()) {
+                warning() << "No participant signatures for SubmitClaimVotes "
+                          << transactionUUID;
+                continue;
+            }
+
+            auto serializedData = BaseTransaction::serializeSubmitClaimVotesForSigning(
+                transactionUUID,
+                maxClaimBlockNumber,
+                votes,
+                publicKey);
+
+            auto signature = mKeysStore->signPaymentTransaction(
+                ioTransaction,
+                serializedData.first,
+                serializedData.second);
+            if (!signature.has_value()) {
+                warning() << "Failed to sign SubmitClaimVotes for transaction "
+                          << transactionUUID;
+                continue;
+            }
+
+            info() << "Submitting votes for transaction " << transactionUUID;
+            sendRpcRequest(
+                make_shared<SubmitClaimVotesRpcRequest>(
+                    currentTransactionUUID(),
+                    transactionUUID,
+                    maxClaimBlockNumber,
+                    votes,
+                    publicKey,
+                    *signature));
+        }
+    } catch (const exception &e) {
+        warning() << "Failed to submit claim votes: " << e.what();
+    }
 }
 
 void BaseTrustLineTransaction::setTrustLineToConflict()

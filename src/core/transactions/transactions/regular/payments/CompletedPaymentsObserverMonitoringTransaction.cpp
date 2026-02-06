@@ -329,7 +329,7 @@ TransactionResult::SharedConst CompletedPaymentsObserverMonitoringTransaction::r
                 continue;
             }
 
-            auto serializedData = serializeSubmitClaimVotesForSigning(
+            auto serializedData = BaseTransaction::serializeSubmitClaimVotesForSigning(
                 transactionUUID,
                 maxClaimBlockNumber,
                 votes,
@@ -478,69 +478,6 @@ CompletedPaymentsObserverMonitoringTransaction::serializeGetClaimStatusesForSign
             &claim.second,
             kBlockNumberSize);
         bytesBufferOffset += kBlockNumberSize;
-    }
-
-    memcpy(
-        serializedData.get() + bytesBufferOffset,
-        publicKey->data(),
-        kPublicKeySize);
-
-    return make_pair(
-        serializedData,
-        serializedDataSize);
-}
-
-pair<BytesShared, size_t>
-CompletedPaymentsObserverMonitoringTransaction::serializeSubmitClaimVotesForSigning(
-    const TransactionUUID &transactionUUID,
-    const BlockNumber maxClaimBlockNumber,
-    const map<PaymentNodeID, sphincs::Signature::Shared> &votes,
-    const sphincs::PublicKey::Shared &publicKey)
-{
-    constexpr size_t kUuidSize = TransactionUUID::kBytesSize;
-    constexpr size_t kBlockNumberSize = sizeof(BlockNumber);
-    constexpr size_t kVotesCountSize = sizeof(uint32_t);
-    constexpr size_t kPaymentNodeIdSize = sizeof(PaymentNodeID);
-    constexpr size_t kSignatureSize = sphincs::Signature::signatureSize();
-    constexpr size_t kPublicKeySize = sphincs::PublicKey::keySize();
-
-    const uint32_t votesCount = static_cast<uint32_t>(votes.size());
-    const size_t serializedDataSize =
-        kUuidSize + kBlockNumberSize + kVotesCountSize +
-        (votes.size() * (kPaymentNodeIdSize + kSignatureSize)) + kPublicKeySize;
-    BytesShared serializedData = tryMalloc(serializedDataSize);
-
-    size_t bytesBufferOffset = 0;
-    memcpy(
-        serializedData.get() + bytesBufferOffset,
-        transactionUUID.data,
-        kUuidSize);
-    bytesBufferOffset += kUuidSize;
-
-    memcpy(
-        serializedData.get() + bytesBufferOffset,
-        &maxClaimBlockNumber,
-        kBlockNumberSize);
-    bytesBufferOffset += kBlockNumberSize;
-
-    memcpy(
-        serializedData.get() + bytesBufferOffset,
-        &votesCount,
-        kVotesCountSize);
-    bytesBufferOffset += kVotesCountSize;
-
-    for (const auto &vote : votes) {
-        memcpy(
-            serializedData.get() + bytesBufferOffset,
-            &vote.first,
-            kPaymentNodeIdSize);
-        bytesBufferOffset += kPaymentNodeIdSize;
-
-        memcpy(
-            serializedData.get() + bytesBufferOffset,
-            vote.second->data(),
-            kSignatureSize);
-        bytesBufferOffset += kSignatureSize;
     }
 
     memcpy(

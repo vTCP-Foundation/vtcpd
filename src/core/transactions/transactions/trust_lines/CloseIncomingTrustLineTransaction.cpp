@@ -250,6 +250,9 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runResponsePro
             return resultDone();
         }
 
+        // Store locally finalized transactions missing on contractor side.
+        mAsymmetricFinalizedTransactions = normalizedUpdateList;
+
         ++mAuditRetryCount;
         excludeTransactions(normalizedUpdateList);
         mCountSendingAttempts = 0;
@@ -272,111 +275,116 @@ TransactionResult::SharedConst CloseIncomingTrustLineTransaction::runResponsePro
         return resultDone();
     }
 
-    auto ioTransaction = mStorageHandler->beginTransaction();
-    auto keyChain = mKeysStore->keychain(
-                        mTrustLines->trustLineID(mContractorID));
-    try {
+    {
+        auto ioTransaction = mStorageHandler->beginTransaction();
+        auto keyChain = mKeysStore->keychain(
+                            mTrustLines->trustLineID(mContractorID));
+        try {
 
-        // todo process ConfirmationMessage::OwnKeysAbsent and ConfirmationMessage::ContractorKeysAbsent
+            // todo process ConfirmationMessage::OwnKeysAbsent and ConfirmationMessage::ContractorKeysAbsent
 
-        if (message->state() != ConfirmationMessage::OK) {
-            warning() << "Contractor didn't accept closing incoming TL. Response code: " << message->state();
-            mTrustLines->setTrustLineState(
-                mContractorID,
-                TrustLine::ConflictResolving,
-                ioTransaction);
-            // todo run conflict resolving TA
-            return resultDone();
-        }
+            if (message->state() != ConfirmationMessage::OK) {
+                warning() << "Contractor didn't accept closing incoming TL. Response code: " << message->state();
+                mTrustLines->setTrustLineState(
+                    mContractorID,
+                    TrustLine::ConflictResolving,
+                    ioTransaction);
+                // todo run conflict resolving TA
+                return resultDone();
+            }
 
 #ifdef TESTS
-        mTrustLinesInfluenceController->testThrowExceptionOnSourceProcessingResponseStage(
-            BaseTransaction::CloseIncomingTrustLineTransactionType);
-        mTrustLinesInfluenceController->testTerminateProcessOnSourceProcessingResponseStage(
-            BaseTransaction::CloseIncomingTrustLineTransactionType);
+            mTrustLinesInfluenceController->testThrowExceptionOnSourceProcessingResponseStage(
+                BaseTransaction::CloseIncomingTrustLineTransactionType);
+            mTrustLinesInfluenceController->testTerminateProcessOnSourceProcessingResponseStage(
+                BaseTransaction::CloseIncomingTrustLineTransactionType);
 #endif
 
-        auto contractorSerializedAuditData = getContractorSerializedAuditDataWithTransactionHash();
-        if (!keyChain.checkSign(
-                    ioTransaction,
-                    contractorSerializedAuditData.first,
-                    contractorSerializedAuditData.second,
-                    message->signature())) {
-            warning() << "Contractor didn't sign message correctly";
+            auto contractorSerializedAuditData = getContractorSerializedAuditDataWithTransactionHash();
+            if (!keyChain.checkSign(
+                        ioTransaction,
+                        contractorSerializedAuditData.first,
+                        contractorSerializedAuditData.second,
+                        message->signature())) {
+                warning() << "Contractor didn't sign message correctly";
+                mTrustLines->setTrustLineState(
+                    mContractorID,
+                    TrustLine::ConflictResolving,
+                    ioTransaction);
+                // todo run conflict resolver TA
+                return resultDone();
+            }
+
+            keyChain.saveContractorAuditPart(
+                ioTransaction,
+                mAuditNumber,
+                message->signature());
+
+            // Update receipt audit numbers and preserve excluded amounts atomically.
+            ioTransaction->outgoingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
+                mTrustLines->trustLineID(mContractorID),
+                mAuditNumber,
+                mCurrentTransactionList);
+            ioTransaction->incomingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
+                mTrustLines->trustLineID(mContractorID),
+                mAuditNumber,
+                mCurrentTransactionList);
+            mTrustLines->updateTrustLineTotalReceiptsAmounts(
+                mContractorID,
+                mExcludedIncomingReceiptsAmount,
+                mExcludedOutgoingReceiptsAmount);
+
+            if (mTrustLines->isTrustLineEmpty(mContractorID)) {
+                mTrustLines->setTrustLineState(
+                    mContractorID,
+                    TrustLine::Archived,
+                    ioTransaction);
+                info() << "Trust Line become empty";
+                try {
+                    mEventsInterfaceManager->writeEvent(
+                        Event::closeTrustLineEvent(
+                            mContractorsManager->selfContractor()->mainAddress(),
+                            mContractorsManager->contractorMainAddress(mContractorID),
+                            mEquivalent));
+                } catch (std::exception &e) {
+                    warning() << "Can't write close TL event " << e.what();
+                }
+            } else {
+                mTrustLines->setTrustLineState(
+                    mContractorID,
+                    TrustLine::Active,
+                    ioTransaction);
+                info() << "All data saved. Now TL is ready for using";
+            }
+
+            populateHistory(ioTransaction, TrustLineRecord::ClosingIncoming);
+
+        } catch (ValueError &e) {
+            ioTransaction->rollback();
             mTrustLines->setTrustLineState(
                 mContractorID,
                 TrustLine::ConflictResolving,
                 ioTransaction);
-            // todo run conflict resolver TA
+            // todo need correct reaction
+            error() << "Attempt to save audit from contractor " << mContractorID << " failed. "
+                    << "Details are: " << e.what();
+            return resultDone();
+        } catch (IOError &e) {
+            ioTransaction->rollback();
+            mTrustLines->setTrustLineState(
+                mContractorID,
+                TrustLine::ConflictResolving);
+            // todo need correct reaction
+            error() << "Attempt to process confirmation from contractor " << mContractorID << " failed. "
+                    << "IO transaction can't be completed. Details are: " << e.what();
             return resultDone();
         }
-
-        keyChain.saveContractorAuditPart(
-            ioTransaction,
-            mAuditNumber,
-            message->signature());
-
-        // Update receipt audit numbers and preserve excluded amounts atomically.
-        ioTransaction->outgoingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
-            mTrustLines->trustLineID(mContractorID),
-            mAuditNumber,
-            mCurrentTransactionList);
-        ioTransaction->incomingPaymentReceiptHandler()->updateAuditNumberByTransactionUUIDs(
-            mTrustLines->trustLineID(mContractorID),
-            mAuditNumber,
-            mCurrentTransactionList);
-        mTrustLines->updateTrustLineTotalReceiptsAmounts(
-            mContractorID,
-            mExcludedIncomingReceiptsAmount,
-            mExcludedOutgoingReceiptsAmount);
-
-        if (mTrustLines->isTrustLineEmpty(mContractorID)) {
-            mTrustLines->setTrustLineState(
-                mContractorID,
-                TrustLine::Archived,
-                ioTransaction);
-            info() << "Trust Line become empty";
-            try {
-                mEventsInterfaceManager->writeEvent(
-                    Event::closeTrustLineEvent(
-                        mContractorsManager->selfContractor()->mainAddress(),
-                        mContractorsManager->contractorMainAddress(mContractorID),
-                        mEquivalent));
-            } catch (std::exception &e) {
-                warning() << "Can't write close TL event " << e.what();
-            }
-        } else {
-            mTrustLines->setTrustLineState(
-                mContractorID,
-                TrustLine::Active,
-                ioTransaction);
-            info() << "All data saved. Now TL is ready for using";
-        }
-
-        populateHistory(ioTransaction, TrustLineRecord::ClosingIncoming);
-
-    } catch (ValueError &e) {
-        ioTransaction->rollback();
-        mTrustLines->setTrustLineState(
-            mContractorID,
-            TrustLine::ConflictResolving,
-            ioTransaction);
-        // todo need correct reaction
-        error() << "Attempt to save audit from contractor " << mContractorID << " failed. "
-                << "Details are: " << e.what();
-        return resultDone();
-    } catch (IOError &e) {
-        ioTransaction->rollback();
-        mTrustLines->setTrustLineState(
-            mContractorID,
-            TrustLine::ConflictResolving);
-        // todo need correct reaction
-        error() << "Attempt to process confirmation from contractor " << mContractorID << " failed. "
-                << "IO transaction can't be completed. Details are: " << e.what();
-        return resultDone();
     }
 
     mTrustLines->resetAuditRule(mContractorID);
+    // Submit claim votes for locally finalized transactions missing on contractor side.
+    submitClaimVotesForAsymmetricTransactions(
+        mAsymmetricFinalizedTransactions);
     trustLineActionSignal(
         mContractorID,
         mEquivalent,

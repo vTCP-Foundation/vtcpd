@@ -86,6 +86,12 @@ public:
         const TransactionUUID &transactionUUID) override;
 
     /**
+     * Returns maximal claiming block number for the specified transaction.
+     */
+    BlockNumber maximalClaimingBlockNumber(
+        const TransactionUUID &transactionUUID) override;
+
+    /**
      * Deletes transaction record from database.
      */
     void deleteRecord(

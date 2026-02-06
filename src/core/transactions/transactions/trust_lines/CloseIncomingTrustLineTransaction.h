@@ -99,6 +99,8 @@ private:
     BlockNumber mCurrentBlockNumber;
     // Prevents duplicate block number RPC requests.
     bool mBlockNumberRequestSent;
+    // Stores locally finalized transactions not finalized on contractor side.
+    vector<TransactionUUID> mAsymmetricFinalizedTransactions;
     // Counts retries after update list response.
     uint8_t mAuditRetryCount;
     // Limits update list retries to a single attempt.

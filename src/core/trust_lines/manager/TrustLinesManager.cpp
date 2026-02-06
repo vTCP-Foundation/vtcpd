@@ -852,11 +852,6 @@ void TrustLinesManager::updateTrustLineTotalReceiptsAmounts(
 
     auto trustLine = mTrustLines[contractorID];
 
-    // Remove excluded receipts to keep only amounts finalized in the audit.
-    const TrustLineBalance kNewBalance =
-        trustLine->balance() - excludedIncoming + excludedOutgoing;
-    trustLine->setBalance(kNewBalance);
-
     // Preserve excluded receipts totals for future audits.
     trustLine->setTotalIncomingReceiptsAmount(excludedIncoming);
     trustLine->setTotalOutgoingReceiptsAmount(excludedOutgoing);
